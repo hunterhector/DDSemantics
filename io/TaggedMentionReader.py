@@ -1,21 +1,17 @@
 import os
-from nltk import tokenize
-import nltk
-import string
+import logging
 from collections import defaultdict
-import glob
 
 
 class TaggedMentionReader:
     def __init__(self, config):
-        self.data_folder = config['data_folder']
+        self.experiment_folder = config['experiment_folder']
 
-        self.tag_folders = os.path.join(self.data_folder, "tags")
-        self.source_folders = os.path.join(self.data_folder, "sources")
-
-        self.data_configs = config['data_configs']
+        self.data_files = config['data_files']
+        self.data_format = config['format']
 
         self.no_punct = config['no_punct']
+        self.no_sentence = config['no_sentence']
 
         self.token2i = defaultdict(lambda: len(self.token2i))
         self.tag2i = defaultdict(lambda: len(self.tag2i))
@@ -23,72 +19,63 @@ class TaggedMentionReader:
         self.unk = self.token2i["<unk>"]
         self.none_tag = self.tag2i["NONE"]
 
-        tokenizer_type = config['tokenizer_type']
-        language = config['language']
-        if tokenizer_type == 'twitter':
-            self.tokenizer = tokenize.TweetTokenizer
-        elif tokenizer_type == 'moses':
-            self.tokenizer = tokenize.moses.MosesDetokenizer(lang=language)
-        else:
-            # Default word tokenzier.
-            self.tokenizer = tokenize.treebank.TreebankWordTokenizer()
-
     def hash(self):
         import pickle
-        tag_path = os.path.join(self.data_folder, 'tags_dict.pickle')
-        source_path = os.path.join(self.data_folder, 'tokens_dict.pickle')
+        tag_path = os.path.join(self.experiment_folder, 'tags_dict.pickle')
+        word_path = os.path.join(self.experiment_folder, 'tokens_dict.pickle')
 
-        if os.path.exists(tag_path) and os.path.exists(source_path):
+        if os.path.exists(tag_path) and os.path.exists(word_path):
             with open(tag_path) as tag_pickle:
                 self.tag2i = pickle.load(tag_pickle)
-            with open(source_path) as source_pickle:
+            with open(word_path) as source_pickle:
                 self.token2i = pickle.load(source_pickle)
         else:
             # Hash the tokens and tags.
-            for tag_folder, source_folder, data_config in zip(
-                    self.tag_folders, self.source_folders, self.data_configs):
-                text_suffix = data_config['text_suffix']
-                tag_suffix = data_config['tag_suffix']
+            for data_file in self.data_files:
+                with open(data_file) as data:
+                    for line in data:
+                        if line.startswith("#") or not line.strip():
+                            continue
+                        parts = line.split()
+                        token = parts[1]
+                        tag = parts[9]
+                        self.token2i[token]
+                        self.tag2i[tag]
 
-                for tag_pickle in glob.glob(tag_folder + "/*." + tag_suffix):
-                    docid = os.path.basename(tag_pickle).replace(tag_suffix, "")
-
-                    source_file = os.path.join(source_folder,
-                                               docid + text_suffix)
-
-                    with open(source_file) as source:
-                        for sent in source:
-                            tokens = self.tokenizer.tokenize(sent)
-                            [self.token2i[t] for t in tokens]
-
-                    with open(tag_pickle) as tag_in:
-                        for line in tag_in:
-                            tags = line.split(" ")
-                            [self.tag2i[t] for t in tags]
-
+            # Finalize the dict.
             self.token2i = defaultdict(lambda: self.unk, self.token2i)
             self.tag2i = defaultdict(lambda: self.none_tag, self.tag2i)
 
+        logging.info("Corpus with [%d] words and [%d] tokens.",
+                     len(self.token2i), len(self.tag2i))
+
     def read(self):
-        for tag_folder, source_folder, data_config in zip(self.tag_folders,
-                                                          self.source_folders,
-                                                          self.data_configs):
-            text_suffix = data_config['text_suffix']
-            tag_suffix = data_config['tag_suffix']
+        for data_file in self.data_files:
+            with open(data_file) as data:
+                token_ids = []
+                tag_ids = []
+                for line in data:
+                    if line.startswith("#"):
+                        if line.startswith("# doc"):
+                            docid = line.spit("=")[1].strip()
+                    elif not line.strip():
+                        if not self.no_sentence:
+                            # Yield data for each sentence.
+                            yield token_ids, tag_ids
+                            token_ids = []
+                            tag_ids = []
+                    else:
+                        parts = line.split()
+                        token = parts[1]
+                        pos = parts[7]
+                        tag = parts[9]
 
-            for tag_file in glob.glob(tag_folder + "/*." + tag_suffix):
-                docid = os.path.basename(tag_file).replace(tag_suffix, "")
+                        if pos == 'punct' and self.no_punct:
+                            continue
 
-                source_file = os.path.join(source_folder, docid + text_suffix)
+                        token_ids.append(self.token2i[token])
+                        tag_ids.append(self.tag2i[tag])
 
-                with open(source_file) as source:
-                    for sent in source:
-                        tokens = self.tokenizer.tokenize(sent)
-                        token_ids = [self.token2i[t] for t in tokens]
-
-                with open(tag_file) as tag_in:
-                    for line in tag_in:
-                        tags = line.split(" ")
-                        tag_ids = [self.tag2i[t] for t in tags]
-
-                yield token_ids, tag_ids
+                if self.no_sentence:
+                    # Yield data for whole document.
+                    yield token_ids, tag_ids
