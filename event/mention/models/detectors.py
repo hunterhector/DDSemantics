@@ -1,6 +1,17 @@
-from event.mention.DetectorBase import MentionDetector
+import torch.nn as nn
 import torch.nn.fuciontal as F
 from torch.nn import ModuleList, Conv2d, Embedding
+
+
+class MentionDetector(nn.Module):
+    def __init__(self):
+        pass
+
+    def train(self):
+        pass
+
+    def test(self):
+        pass
 
 
 class TextCNN(MentionDetector):
