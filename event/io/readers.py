@@ -1,6 +1,7 @@
 import os
 import logging
 from collections import defaultdict
+import torch
 
 
 class TaggedMentionReader:
@@ -22,6 +23,8 @@ class TaggedMentionReader:
 
         self.unk = self.token2i["<unk>"]
         self.none_tag = self.tag2i["NONE"]
+
+        self.__batch_data = []
 
     def hash(self):
         import pickle
@@ -68,7 +71,7 @@ class TaggedMentionReader:
     def reveal_tags(self, tag_ids):
         return [self.i2tag[t] for t in tag_ids]
 
-    def read(self):
+    def parse(self):
         for data_file in self.data_files:
             with open(data_file) as data:
                 token_ids = []
@@ -99,3 +102,32 @@ class TaggedMentionReader:
 
                         token_ids.append(self.token2i[token])
                         tag_ids.append(self.tag2i[tag])
+
+    def read_window(self, window_size):
+        token_ids, tag_ids = self.parse()
+        assert len(token_ids) == len(tag_ids)
+
+        token_pad = [self.unk] * window_size
+        tag_pad = [self.none_tag] * window_size
+
+        token_ids = token_pad + token_ids + token_pad
+        tag_ids = tag_pad + tag_ids + tag_pad
+
+        for i in range(len(token_ids)):
+            start = i
+            end = i + window_size * 2 + 1
+            yield token_ids[start: end], tag_ids[start:end]
+
+    def convert_batch(self):
+        tokens, tags = zip(*self.__batch_data)
+        return torch.FloatTensor(tokens), torch.FloatTensor(tags)
+
+    def read_batch(self, window_size, batch_size):
+        token_ids, tag_ids = self.read_window(window_size)
+
+        if batch_size < len(self.__batch_data):
+            self.__batch_data.append((token_ids, tag_ids))
+        else:
+            data = self.convert_batch()
+            self.__batch_data.clear()
+            return data
