@@ -5,7 +5,7 @@ import torch
 
 
 class TaggedMentionReader:
-    def __init__(self, data_files, config):
+    def __init__(self, data_files, config, token2i=None, tag2i=None):
         self.experiment_folder = config.experiment_folder
 
         self.data_files = data_files
@@ -15,14 +15,29 @@ class TaggedMentionReader:
         self.no_punct = config.no_punct
         self.no_sentence = config.no_sentence
 
-        self.token2i = defaultdict(lambda: len(self.token2i))
-        self.tag2i = defaultdict(lambda: len(self.tag2i))
+        self.batch_size = config.batch_size
+        self.window_size = config.window_size
 
-        self.i2token = {}
-        self.i2tag = {}
+        if token2i is None and tag2i is None:
+            self.token2i = defaultdict(lambda: len(self.token2i))
+            self.unk = self.token2i["<unk>"]
 
-        self.unk = self.token2i["<unk>"]
-        self.none_tag = self.tag2i["NONE"]
+            self.tag2i = defaultdict(lambda: len(self.tag2i))
+            self.none_tag = self.tag2i["NONE"]
+
+            self.hash()
+        else:
+            assert token2i is not None
+            assert tag2i is not None
+
+            self.token2i = token2i
+            self.tag2i = tag2i
+
+        self.i2token = dict([(v, k) for k, v in self.token2i.items()])
+        self.i2tag = dict([(v, k) for k, v in self.tag2i.items()])
+
+        logging.info("Corpus with [%d] words and [%d] tokens.",
+                     len(self.token2i), len(self.tag2i))
 
         self.__batch_data = []
 
@@ -58,12 +73,6 @@ class TaggedMentionReader:
         # Setup default UNK.
         self.token2i = defaultdict(lambda: self.unk, self.token2i)
         self.tag2i = defaultdict(lambda: self.none_tag, self.tag2i)
-
-        self.i2token = dict([(v, k) for k, v in self.token2i.items()])
-        self.i2tag = dict([(v, k) for k, v in self.tag2i.items()])
-
-        logging.info("Corpus with [%d] words and [%d] tokens.",
-                     len(self.token2i), len(self.tag2i))
 
     def reveal_tokens(self, token_ids):
         return [self.i2token[t] for t in token_ids]
@@ -122,12 +131,24 @@ class TaggedMentionReader:
         tokens, tags = zip(*self.__batch_data)
         return torch.FloatTensor(tokens), torch.FloatTensor(tags)
 
-    def read_batch(self, window_size, batch_size):
-        token_ids, tag_ids = self.read_window(window_size)
+    def read_batch(self):
+        token_ids, tag_ids = self.read_window(self.window_size)
 
-        if batch_size < len(self.__batch_data):
+        if self.batch_size < len(self.__batch_data):
             self.__batch_data.append((token_ids, tag_ids))
         else:
             data = self.convert_batch()
             self.__batch_data.clear()
             return data
+
+    def token_dict(self):
+        return self.token2i
+
+    def tag_dict(self):
+        return self.tag2i
+
+    def num_classes(self):
+        return len(self.i2tag)
+
+    def vocab_size(self):
+        return len(self.i2token)

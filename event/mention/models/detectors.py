@@ -1,5 +1,5 @@
 import torch.nn as nn
-import torch.nn.fuciontal as F
+import torch.nn.functional as F
 from torch.nn import ModuleList, Conv2d, Embedding
 from torch.autograd import Variable
 import torch
@@ -14,40 +14,54 @@ class MentionDetector(nn.Module):
 
 
 class TextCNN(MentionDetector):
-    def __init__(self, config):
+    def __init__(self, config, num_classes, vocab_size):
         super().__init__()
 
         w_embed_dim = config.word_embedding_dim
-        w_vocab_size = config.vocab_size
 
+        filter_sizes = config.filter_sizes
+
+        filter_num = config.filter_num
+
+        self.fix_embedding = config.fix_embedding
+
+        window_size = config.window_size
         position_embed_dim = config.position_embedding_dim
-        window_sizes = config.window_sizes
 
-        class_num = config.number_classes
-        filter_size = config.filter_size
+        self.word_embed = Embedding(vocab_size, w_embed_dim)
+        self.position_embed = Embedding(2 * window_size + 1, position_embed_dim)
 
-        fix_embedding = config.fix_embeding
-
-        self.word_embed = Embedding(w_vocab_size, w_embed_dim)
-
-        full_embed_dim = w_embed_dim + position_embed_dim
-
-        self.l_pos_embed = [
-            Embedding(win, position_embed_dim) for win in window_sizes
-        ]
+        self.full_embed_dim = w_embed_dim + position_embed_dim
 
         self.convs1 = ModuleList(
-            [Conv2d(1, filter_size, (win, full_embed_dim)) for win in
-             window_sizes]
+            [Conv2d(1, filter_num, (fs, self.full_embed_dim)) for fs in
+             filter_sizes]
         )
 
         self.dropout = nn.Dropout(config.dropout)
-        self.linear = nn.Linear(len(window_sizes) * filter_size, class_num)
+
+        self.linear = nn.Linear(len(filter_sizes) * filter_num, num_classes)
+
+        # Add batch size dimension.
+        self.positions = torch.IntTensor(range(2 * window_size + 1))
 
     def forward(self, *input):
-        x = self.embed(input)
+        print("Model input")
+        print(input)
+
+        # (Batch, Length, Emb Dimension)
+        word_embed = self.word_embed(input)
+
+        position_embed = self.position_embed(self.positions)
+
+        x = torch.cat((word_embed, position_embed), -1)
+
+        # Add a single dimension for channel in.
         x = x.unsqueeze(1)
         # [(N, Co, W), ...]*len(Ks)
+
+        print('embedded')
+
         x = [F.relu(conv(x)).squeeze(3) for conv in self.convs1]
         # [(N, Co), ...]*len(Ks)
         x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]

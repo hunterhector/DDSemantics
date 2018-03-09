@@ -3,25 +3,24 @@ from event.util import set_basic_log
 from event.mention.models.detectors import TextCNN
 import logging
 import torch
-import torch.nn.fuciontal as F
+import torch.nn.functional as F
 import os
 
 use_cuda = torch.cuda.is_available()
 
 
 class DetectionRunner:
-    def __init__(self, config):
-        self.init_model(config)
+    def __init__(self, config, num_classes, vocab_size):
+        self.init_model(config, num_classes, vocab_size)
         self.model_dir = config.model_dir
         self.model_name = config.model_name
 
-    def init_model(self, config):
-        self.model_type = config.model_type
-        self.model = TextCNN(config)
+    def init_model(self, config, num_classes, vocab_size):
+        self.model = TextCNN(config, num_classes, vocab_size)
         if use_cuda:
             self.model.cuda()
 
-    def train(self, reader, dev_data):
+    def train(self, train_reader, dev_reader):
         optimizer = torch.optim.Adam(self.model.parameters())
         self.model.train()
 
@@ -35,12 +34,15 @@ class DetectionRunner:
         best_res = 0
 
         for epoch in range(epoch):
-            input, labels = reader.read_batch()
+            input, labels = train_reader.read_batch()
             optimizer.zero_grad()
 
             if use_cuda:
                 input, labels = input.cuda(), labels.cuda()
 
+            print("Batch:")
+            print(input)
+            print(labels)
             logits = self.model(input)
             loss = F.cross_entropy(logits, labels)
             loss.backward()
@@ -50,7 +52,7 @@ class DetectionRunner:
 
             # Eval on dev.
             if not step % log_every_k:
-                dev_res = self.eval(dev_data)
+                dev_res = self.eval(dev_reader)
 
                 if dev_res > best_res:
                     best_res = dev_res
@@ -77,12 +79,20 @@ class DetectionRunner:
 
 
 def main(config):
-    reader = TaggedMentionReader(config.train_data_files, config)
-    reader.hash()
+    train_reader = TaggedMentionReader(config.train_files, config)
 
-    detector = DetectionRunner(config)
-    detector.train(reader, )
-    detector.test(reader)
+    dev_reader = TaggedMentionReader(config.dev_files, config,
+                                     train_reader.token_dict(),
+                                     train_reader.tag_dict())
+
+    test_reader = TaggedMentionReader(config.test_files, config,
+                                      train_reader.token_dict(),
+                                      train_reader.tag_dict())
+
+    detector = DetectionRunner(config, train_reader.num_classes(),
+                               train_reader.vocab_size())
+    detector.train(train_reader, dev_reader)
+    detector.test(test_reader)
 
 
 if __name__ == '__main__':
@@ -91,12 +101,7 @@ if __name__ == '__main__':
     parser = OptionPerLineParser(description='Event Mention Detector.',
                                  fromfile_prefix_chars='@')
 
-    parser.add_argument('--word_embedding_dim', type=float, default=300)
-    parser.add_argument('--position_embedding_dim', type=float, default=50)
-    parser.add_argument('--dropout', type=float, default=0.5,
-                        help='the probability for dropout [default: 0.5]')
-
-    parser.add_argument('--model_name', type=str)
+    parser.add_argument('--model_name', type=str, default='cnn')
 
     parser.add_argument('--experiment_folder', type=str)
     parser.add_argument('--model_dir', type=str)
@@ -108,11 +113,22 @@ if __name__ == '__main__':
     parser.add_argument('--test_files',
                         type=lambda s: [item for item in s.split(',')])
 
+    parser.add_argument('--word_embedding_dim', type=int, default=300)
+    parser.add_argument('--position_embedding_dim', type=int, default=50)
+    parser.add_argument('--dropout', type=float, default=0.5,
+                        help='the probability for dropout [default: 0.5]')
+    parser.add_argument('--filter_sizes', default='2,3,4',
+                        type=lambda s: [int(item) for item in s.split(',')])
+    parser.add_argument('--filter_num', default=100, type=int,
+                        help='Number of filters for each type.')
+    parser.add_argument('--fix_embedding', type=bool, default=False)
+
+    parser.add_argument('--window_size', type=int, default=30)
+    parser.add_argument('--batch_size', type=int, default=50)
+
     parser.add_argument('--format', type=str, default="conllu")
     parser.add_argument('--no_punct', type=bool, default=False)
     parser.add_argument('--no_sentence', type=bool, default=False)
-
-    parser.add_argument('--model_type', type=str, default="cnn")
 
     arguments = parser.parse_args()
 
