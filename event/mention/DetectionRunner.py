@@ -1,26 +1,34 @@
 from event.io.readers import TaggedMentionReader
 from event.util import set_basic_log
-from event.mention.models.detectors import TextCNN
+from event.mention.models.detectors import (
+    TextCNN,
+    FrameMappingDetector
+)
 import logging
 import torch
 import torch.nn.functional as F
 import os
 
-use_cuda = torch.cuda.is_available()
-
 
 class DetectionRunner:
     def __init__(self, config, num_classes, vocab_size):
-        self.init_model(config, num_classes, vocab_size)
         self.model_dir = config.model_dir
         self.model_name = config.model_name
+        self.trainable = True
+
+        self.init_model(config, num_classes, vocab_size)
 
     def init_model(self, config, num_classes, vocab_size):
-        self.model = TextCNN(config, num_classes, vocab_size)
-        if use_cuda:
-            self.model.cuda()
+        if self.model_name == 'cnn':
+            self.model = TextCNN(config, num_classes, vocab_size)
+        elif self.model_name == 'frame':
+            self.model = FrameMappingDetector(config)
+            self.trainable = False
 
     def train(self, train_reader, dev_reader):
+        if not self.trainable:
+            return
+
         optimizer = torch.optim.Adam(self.model.parameters())
         self.model.train()
 
@@ -36,9 +44,6 @@ class DetectionRunner:
         for epoch in range(epoch):
             input, labels = train_reader.read_batch()
             optimizer.zero_grad()
-
-            if use_cuda:
-                input, labels = input.cuda(), labels.cuda()
 
             print("Batch:")
             print(input)
@@ -64,7 +69,7 @@ class DetectionRunner:
                             "Early stop with patience %d." % early_patience
                         )
 
-    def eval(self, dev_data):
+    def eval(self, dev_reader):
         return 0
 
     def save(self):
@@ -73,9 +78,13 @@ class DetectionRunner:
         path = os.path.join(self.model_dir, self.model_name)
         torch.save(self.model, path)
 
-    def test(self, reader):
-        reader.hash()
-        self.model.test()
+    def predict(self, test_reader):
+        test_reader.hash()
+        for data in test_reader.read_window():
+            tokens, tags = data
+            print(test_reader.reveal_tokens(tokens))
+            print(test_reader.reveal_tags(tags))
+            self.model.predict(data)
 
 
 def main(config):
@@ -91,8 +100,11 @@ def main(config):
 
     detector = DetectionRunner(config, train_reader.num_classes(),
                                train_reader.vocab_size())
+
     detector.train(train_reader, dev_reader)
-    detector.test(test_reader)
+    detector.predict(test_reader)
+
+
 
 
 if __name__ == '__main__':
@@ -117,18 +129,19 @@ if __name__ == '__main__':
     parser.add_argument('--position_embedding_dim', type=int, default=50)
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='the probability for dropout [default: 0.5]')
-    parser.add_argument('--filter_sizes', default='2,3,4',
+    parser.add_argument('--window_sizes', default='2,3,4,5',
                         type=lambda s: [int(item) for item in s.split(',')])
     parser.add_argument('--filter_num', default=100, type=int,
                         help='Number of filters for each type.')
     parser.add_argument('--fix_embedding', type=bool, default=False)
 
-    parser.add_argument('--window_size', type=int, default=30)
     parser.add_argument('--batch_size', type=int, default=50)
 
     parser.add_argument('--format', type=str, default="conllu")
     parser.add_argument('--no_punct', type=bool, default=False)
     parser.add_argument('--no_sentence', type=bool, default=False)
+
+    parser.add_argument('--frame_lexicon', type=str, default=False)
 
     arguments = parser.parse_args()
 

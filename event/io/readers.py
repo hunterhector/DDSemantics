@@ -16,13 +16,13 @@ class TaggedMentionReader:
         self.no_sentence = config.no_sentence
 
         self.batch_size = config.batch_size
-        self.window_size = config.window_size
+        self.window_size = max(config.window_sizes)
 
         if token2i is None and tag2i is None:
             self.token2i = defaultdict(lambda: len(self.token2i))
-            self.unk = self.token2i["<unk>"]
-
             self.tag2i = defaultdict(lambda: len(self.tag2i))
+
+            self.unk = self.token2i["<unk>"]
             self.none_tag = self.tag2i["NONE"]
 
             self.hash()
@@ -32,6 +32,9 @@ class TaggedMentionReader:
 
             self.token2i = token2i
             self.tag2i = tag2i
+
+            self.unk = self.token2i["<unk>"]
+            self.none_tag = self.tag2i["NONE"]
 
         self.i2token = dict([(v, k) for k, v in self.token2i.items()])
         self.i2tag = dict([(v, k) for k, v in self.tag2i.items()])
@@ -112,27 +115,31 @@ class TaggedMentionReader:
                         token_ids.append(self.token2i[token])
                         tag_ids.append(self.tag2i[tag])
 
-    def read_window(self, window_size):
-        token_ids, tag_ids = self.parse()
+    def read_window(self):
+        token_ids, tag_ids = next(self.parse())
         assert len(token_ids) == len(tag_ids)
 
-        token_pad = [self.unk] * window_size
-        tag_pad = [self.none_tag] * window_size
+        token_pad = [self.unk] * self.window_size
+        tag_pad = [self.none_tag] * self.window_size
 
         token_ids = token_pad + token_ids + token_pad
         tag_ids = tag_pad + tag_ids + tag_pad
 
         for i in range(len(token_ids)):
             start = i
-            end = i + window_size * 2 + 1
+            end = i + self.window_size * 2 + 1
             yield token_ids[start: end], tag_ids[start:end]
 
     def convert_batch(self):
         tokens, tags = zip(*self.__batch_data)
-        return torch.FloatTensor(tokens), torch.FloatTensor(tags)
+        tokens, tags = torch.FloatTensor(tokens), torch.FloatTensor(tags)
+        if torch.cuda.is_available():
+            tokens.cuda()
+            tags.cuda()
+        return tokens, tags
 
     def read_batch(self):
-        token_ids, tag_ids = self.read_window(self.window_size)
+        token_ids, tag_ids = self.read_window()
 
         if self.batch_size < len(self.__batch_data):
             self.__batch_data.append((token_ids, tag_ids))

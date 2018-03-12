@@ -5,31 +5,43 @@ from torch.autograd import Variable
 import torch
 
 
-class MentionDetector(nn.Module):
-    def __init__(self):
+class MentionDetector:
+    def __init__(self, **kwargs):
         super().__init__()
 
-    def forward(self, *input):
+    def predict(self, *input):
         pass
 
 
-class TextCNN(MentionDetector):
-    def __init__(self, config, num_classes, vocab_size):
+class DLMentionDetector(nn.Module, MentionDetector):
+    def __init__(self, **kwargs):
         super().__init__()
+        if torch.cuda.is_available():
+            self.model.cuda()
+
+    def forward(self, *input):
+        raise NotImplementedError
+
+
+class TextCNN(DLMentionDetector):
+    def __init__(self, config, num_classes, vocab_size):
+        super().__init__(config=config)
 
         w_embed_dim = config.word_embedding_dim
 
-        filter_sizes = config.filter_sizes
+        filter_sizes = config.window_sizes
 
         filter_num = config.filter_num
 
+        max_filter_size = max(config.window_sizes)
+
         self.fix_embedding = config.fix_embedding
 
-        window_size = config.window_size
         position_embed_dim = config.position_embedding_dim
 
         self.word_embed = Embedding(vocab_size, w_embed_dim)
-        self.position_embed = Embedding(2 * window_size + 1, position_embed_dim)
+        self.position_embed = Embedding(2 * max_filter_size + 1,
+                                        position_embed_dim)
 
         self.full_embed_dim = w_embed_dim + position_embed_dim
 
@@ -43,7 +55,7 @@ class TextCNN(MentionDetector):
         self.linear = nn.Linear(len(filter_sizes) * filter_num, num_classes)
 
         # Add batch size dimension.
-        self.positions = torch.IntTensor(range(2 * window_size + 1))
+        self.positions = torch.IntTensor(range(2 * max_filter_size + 1))
 
     def forward(self, *input):
         print("Model input")
@@ -67,11 +79,52 @@ class TextCNN(MentionDetector):
         x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]
         x = torch.cat(x, 1)
         x = self.dropout(x)  # (N, len(Ks)*Co)
-        logit = self.linear(x)  # (N, C)
+        logits = self.linear(x)  # (N, C)
 
-        return logit
+        return logits
+
+    def predict(self, *input):
+        logits = self.forward(input)
+        return torch.max(logits, 1)[1]
 
     def conv_pool(self, x, conv):
         x = F.relu(conv(x)).squeeze(3)
         x = F.max_pool1d(x, x.size(2)).squeeze(2)
         return x
+
+
+class FrameMappingDetector(MentionDetector):
+    def __init__(self, config):
+        super().__init__(config=config)
+        self.experiment_folder = config.experiment_folder
+        self.load_frame_lex(config.frame_lexicon)
+        self.load_ontology()
+
+    def load_frame_lex(self, frame_path):
+        import xml.etree.ElementTree as ET
+        import os
+
+        ns = {'berkeley': 'http://framenet.icsi.berkeley.edu'}
+
+        lex_mapping = {}
+
+        for file in os.listdir(frame_path):
+            with open(os.path.join(frame_path, file)) as f:
+                tree = ET.parse(f)
+                frame = tree.getroot()
+                frame_name = frame.get('name')
+                for lexUnit in frame.findall('berkeley:lexUnit', ns):
+                    lex = lexUnit.get('name')
+                    lexeme = lexUnit.findall('berkeley:lexeme', ns)[0].get(
+                        'name')
+                    if lexeme not in lex_mapping:
+                        lex_mapping[lexeme] = []
+
+                    lex_mapping[lexeme].append(frame_name)
+
+    def load_ontology(self):
+        pass
+
+    def predict(self, *input):
+        import sys
+        sys.stdin.readline()
