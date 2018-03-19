@@ -2,14 +2,85 @@ import os
 import logging
 from collections import defaultdict
 import torch
+import numpy as np
+import pickle
+
+
+class Vocab:
+    def __init__(self, base_folder, name, embedding_path=None, emb_dim=100):
+        self.fixed = False
+        self.base_folder = base_folder
+        self.name = name
+
+        if self.load_map():
+            logging.info("Loaded existing vocabulary mapping.")
+            self.fix()
+        else:
+            logging.info("Creating new vocabulary mapping file.")
+            self.token2i = defaultdict(lambda: len(self.token2i))
+
+        self.unk = self.token2i["<unk>"]
+
+        if embedding_path:
+            logging.info("Loading embeddings from %s." % embedding_path)
+            self.embedding = self.load_embedding(embedding_path, emb_dim)
+            self.fix()
+
+        self.i2token = dict([(v, k) for k, v in self.token2i.items()])
+
+    def __call__(self, *args, **kwargs):
+        return self.token_dict()[args[0]]
+
+    def load_embedding(self, embedding_path, emb_dim):
+        with open(embedding_path, 'r') as f:
+            emb_list = []
+            for line in f:
+                parts = line.split()
+                word = parts[0]
+                if len(parts) > 1:
+                    embedding = np.array([float(val) for val in parts[1:]])
+                else:
+                    embedding = np.random.rand(1, emb_dim)
+
+                self.token2i[word]
+                emb_list.append(embedding)
+            logging.info("Loaded %d words." % len(emb_list))
+            return np.vstack(emb_list)
+
+    def fix(self):
+        # After fixed, the vocabulary won't grow.
+        self.token2i = defaultdict(lambda: self.unk, self.token2i)
+        self.fixed = True
+        self.dump_map()
+
+    def reveal_origin(self, token_ids):
+        return [self.i2token[t] for t in token_ids]
+
+    def token_dict(self):
+        return self.token2i
+
+    def vocab_size(self):
+        return len(self.i2token)
+
+    def dump_map(self):
+        path = os.path.join(self.base_folder, self.name + '.pickle')
+        with open(path, 'wb') as p:
+            pickle.dump(dict(self.token2i), p)
+
+    def load_map(self):
+        path = os.path.join(self.base_folder, self.name + '.pickle')
+        if os.path.exists(path):
+            with open(path, 'rb') as p:
+                self.token2i = pickle.load(p)
+                return True
+        else:
+            return False
 
 
 class TaggedMentionReader:
-    def __init__(self, data_files, config, token2i=None, tag2i=None):
+    def __init__(self, data_files, config, token_vocab, tag_vocab=None):
         self.experiment_folder = config.experiment_folder
-
         self.data_files = data_files
-
         self.data_format = config.format
 
         self.no_punct = config.no_punct
@@ -18,73 +89,23 @@ class TaggedMentionReader:
         self.batch_size = config.batch_size
         self.window_size = max(config.window_sizes)
 
-        if token2i is None and tag2i is None:
-            self.token2i = defaultdict(lambda: len(self.token2i))
-            self.tag2i = defaultdict(lambda: len(self.tag2i))
+        self.token_vocab = token_vocab
 
-            self.unk = self.token2i["<unk>"]
-            self.none_tag = self.tag2i["NONE"]
-
-            self.hash()
+        if tag_vocab:
+            self.tag_vocab = tag_vocab
         else:
-            assert token2i is not None
-            assert tag2i is not None
+            self.tag_vocab = Vocab(self.experiment_folder, 'tags')
 
-            self.token2i = token2i
-            self.tag2i = tag2i
-
-            self.unk = self.token2i["<unk>"]
-            self.none_tag = self.tag2i["NONE"]
-
-        self.i2token = dict([(v, k) for k, v in self.token2i.items()])
-        self.i2tag = dict([(v, k) for k, v in self.tag2i.items()])
-
-        logging.info("Corpus with [%d] words and [%d] tokens.",
-                     len(self.token2i), len(self.tag2i))
+        logging.info("Corpus with [%d] words, [%d] tags.",
+                     self.token_vocab.vocab_size(),
+                     self.tag_vocab.vocab_size()
+                     )
 
         self.__batch_data = []
 
-    def hash(self):
-        import pickle
-        tag_path = os.path.join(self.experiment_folder, 'tags_dict.pickle')
-        word_path = os.path.join(self.experiment_folder, 'tokens_dict.pickle')
-
-        if os.path.exists(tag_path) and os.path.exists(word_path):
-            with open(tag_path, 'rb') as tag_pickle:
-                self.tag2i = pickle.load(tag_pickle)
-            with open(word_path, 'rb') as source_pickle:
-                self.token2i = pickle.load(source_pickle)
-        else:
-            # Hash the tokens and tags.
-            for data_file in self.data_files:
-                with open(data_file) as data:
-                    for line in data:
-                        if line.startswith("#") or not line.strip():
-                            continue
-                        parts = line.split()
-                        token = parts[1]
-                        tag = parts[9]
-                        self.token2i[token]
-                        self.tag2i[tag]
-
-            # Write hashed pickle.
-            with open(tag_path, 'wb') as tag_pickle:
-                pickle.dump(dict(self.tag2i), tag_pickle)
-            with open(word_path, 'wb') as word_pickle:
-                pickle.dump(dict(self.token2i), word_pickle)
-
-        # Setup default UNK.
-        self.token2i = defaultdict(lambda: self.unk, self.token2i)
-        self.tag2i = defaultdict(lambda: self.none_tag, self.tag2i)
-
-    def reveal_tokens(self, token_ids):
-        return [self.i2token[t] for t in token_ids]
-
-    def reveal_tags(self, tag_ids):
-        return [self.i2tag[t] for t in tag_ids]
-
     def parse(self):
         for data_file in self.data_files:
+            logging.info("Loading data from [%s] " % data_file)
             with open(data_file) as data:
                 token_ids = []
                 tag_ids = []
@@ -104,7 +125,7 @@ class TaggedMentionReader:
                             token_ids = []
                             tag_ids = []
                     else:
-                        parts = line.split()
+                        parts = line.lower().split()
                         token = parts[1]
                         pos = parts[7]
                         tag = parts[9]
@@ -112,23 +133,25 @@ class TaggedMentionReader:
                         if pos == 'punct' and self.no_punct:
                             continue
 
-                        token_ids.append(self.token2i[token])
-                        tag_ids.append(self.tag2i[tag])
+                        token_ids.append(self.token_vocab(token))
+                        tag_ids.append(self.tag_vocab(tag))
 
     def read_window(self):
-        token_ids, tag_ids = next(self.parse())
-        assert len(token_ids) == len(tag_ids)
+        for token_ids, tag_ids in self.parse():
+            assert len(token_ids) == len(tag_ids)
 
-        token_pad = [self.unk] * self.window_size
-        tag_pad = [self.none_tag] * self.window_size
+            token_pad = [self.token_vocab.unk] * self.window_size
+            tag_pad = [self.tag_vocab.unk] * self.window_size
 
-        token_ids = token_pad + token_ids + token_pad
-        tag_ids = tag_pad + tag_ids + tag_pad
+            actual_len = len(token_ids)
 
-        for i in range(len(token_ids)):
-            start = i
-            end = i + self.window_size * 2 + 1
-            yield token_ids[start: end], tag_ids[start:end]
+            token_ids = token_pad + token_ids + token_pad
+            tag_ids = tag_pad + tag_ids + tag_pad
+
+            for i in range(actual_len):
+                start = i
+                end = i + self.window_size * 2 + 1
+                yield token_ids[start: end], tag_ids[start:end]
 
     def convert_batch(self):
         tokens, tags = zip(*self.__batch_data)
@@ -148,14 +171,5 @@ class TaggedMentionReader:
             self.__batch_data.clear()
             return data
 
-    def token_dict(self):
-        return self.token2i
-
-    def tag_dict(self):
-        return self.tag2i
-
     def num_classes(self):
-        return len(self.i2tag)
-
-    def vocab_size(self):
-        return len(self.i2token)
+        return self.tag_vocab.vocab_size()

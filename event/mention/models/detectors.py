@@ -98,6 +98,9 @@ class FrameMappingDetector(MentionDetector):
         super().__init__(config=config)
         self.experiment_folder = config.experiment_folder
         self.load_frame_lex(config.frame_lexicon)
+        self.entieis, self.events = self.load_wordlist(
+            config.entity_list, config.event_list
+        )
         self.load_ontology()
 
     def load_frame_lex(self, frame_path):
@@ -122,9 +125,21 @@ class FrameMappingDetector(MentionDetector):
 
                     lex_mapping[lexeme].append(frame_name)
 
+    def load_wordlist(self, entity_file, event_file):
+        events = set()
+        entities = set()
+        with open(event_file) as fin:
+            for line in fin:
+                events.add(line.strip())
+        with open(entity_file) as fin:
+            for line in fin:
+                entities.add(line.strip())
+        return entities, events
+
     def load_ontology(self):
         pass
 
     def predict(self, *input):
+        print(input)
         import sys
         sys.stdin.readline()

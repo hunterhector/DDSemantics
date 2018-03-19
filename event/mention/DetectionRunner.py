@@ -1,4 +1,7 @@
-from event.io.readers import TaggedMentionReader
+from event.io.readers import (
+    TaggedMentionReader,
+    Vocab
+)
 from event.util import set_basic_log
 from event.mention.models.detectors import (
     TextCNN,
@@ -69,6 +72,8 @@ class DetectionRunner:
                             "Early stop with patience %d." % early_patience
                         )
 
+        train_reader.tag_vocab.fix()
+
     def eval(self, dev_reader):
         return 0
 
@@ -79,32 +84,37 @@ class DetectionRunner:
         torch.save(self.model, path)
 
     def predict(self, test_reader):
-        test_reader.hash()
         for data in test_reader.read_window():
             tokens, tags = data
-            print(test_reader.reveal_tokens(tokens))
-            print(test_reader.reveal_tags(tags))
+            # print(test_reader.reveal_origin(tokens))
+            # print(test_reader.reveal_tags(tags))
             self.model.predict(data)
 
 
 def main(config):
-    train_reader = TaggedMentionReader(config.train_files, config)
+    token_vocab = Vocab(config.experiment_folder, 'tokens',
+                        embedding_path=config.word_embedding,
+                        emb_dim=config.word_embedding_dim)
 
-    dev_reader = TaggedMentionReader(config.dev_files, config,
-                                     train_reader.token_dict(),
-                                     train_reader.tag_dict())
+    if config.tag_embedding is not None:
+        tag_vocab = Vocab(config.experiment_folder, 'tag',
+                          embedding_path=config.tag_embedding,
+                          emb_dim=config.tag_embedding_dim)
+    else:
+        tag_vocab = None
 
-    test_reader = TaggedMentionReader(config.test_files, config,
-                                      train_reader.token_dict(),
-                                      train_reader.tag_dict())
+    train_reader = TaggedMentionReader(config.train_files, config, token_vocab,
+                                       tag_vocab)
+    dev_reader = TaggedMentionReader(config.dev_files, config, token_vocab,
+                                     train_reader.tag_vocab)
+    test_reader = TaggedMentionReader(config.test_files, config, token_vocab,
+                                      train_reader.tag_vocab)
 
     detector = DetectionRunner(config, train_reader.num_classes(),
-                               train_reader.vocab_size())
+                               token_vocab.vocab_size())
 
     detector.train(train_reader, dev_reader)
     detector.predict(test_reader)
-
-
 
 
 if __name__ == '__main__':
@@ -125,8 +135,16 @@ if __name__ == '__main__':
     parser.add_argument('--test_files',
                         type=lambda s: [item for item in s.split(',')])
 
+    parser.add_argument('--word_embedding', type=str,
+                        help='Word embedding path')
     parser.add_argument('--word_embedding_dim', type=int, default=300)
+
     parser.add_argument('--position_embedding_dim', type=int, default=50)
+
+    parser.add_argument('--tag_embedding', type=str,
+                        help='Frame embedding path')
+    parser.add_argument('--tag_embedding_dim', type=int, default=50)
+
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='the probability for dropout [default: 0.5]')
     parser.add_argument('--window_sizes', default='2,3,4,5',
@@ -141,7 +159,10 @@ if __name__ == '__main__':
     parser.add_argument('--no_punct', type=bool, default=False)
     parser.add_argument('--no_sentence', type=bool, default=False)
 
-    parser.add_argument('--frame_lexicon', type=str, default=False)
+    # Frame based detector.
+    parser.add_argument('--frame_lexicon', type=str, help='Frame lexicon path')
+    parser.add_argument('--event_list', help='Lexicon for events', type=str)
+    parser.add_argument('--entity_list', help='Lexicon for entities', type=str)
 
     arguments = parser.parse_args()
 
