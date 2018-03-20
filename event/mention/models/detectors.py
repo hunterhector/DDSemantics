@@ -3,6 +3,8 @@ import torch.nn.functional as F
 from torch.nn import ModuleList, Conv2d, Embedding
 from torch.autograd import Variable
 import torch
+import logging
+import math
 
 
 class MentionDetector:
@@ -16,8 +18,6 @@ class MentionDetector:
 class DLMentionDetector(nn.Module, MentionDetector):
     def __init__(self, **kwargs):
         super().__init__()
-        if torch.cuda.is_available():
-            self.model.cuda()
 
     def forward(self, *input):
         raise NotImplementedError
@@ -94,13 +94,14 @@ class TextCNN(DLMentionDetector):
 
 
 class FrameMappingDetector(MentionDetector):
-    def __init__(self, config):
+    def __init__(self, config, token_vocab):
         super().__init__(config=config)
         self.experiment_folder = config.experiment_folder
-        self.load_frame_lex(config.frame_lexicon)
-        self.entieis, self.events = self.load_wordlist(
+        self.lex_mapping = self.load_frame_lex(config.frame_lexicon)
+        self.entities, self.events = self.load_wordlist(
             config.entity_list, config.event_list
         )
+        self.token_vocab = token_vocab
         self.load_ontology()
 
     def load_frame_lex(self, frame_path):
@@ -124,6 +125,7 @@ class FrameMappingDetector(MentionDetector):
                         lex_mapping[lexeme] = []
 
                     lex_mapping[lexeme].append(frame_name)
+        return lex_mapping
 
     def load_wordlist(self, entity_file, event_file):
         events = set()
@@ -140,6 +142,18 @@ class FrameMappingDetector(MentionDetector):
         pass
 
     def predict(self, *input):
-        print(input)
-        import sys
-        sys.stdin.readline()
+        for words, _, feature_list in input:
+            print(words)
+            print(self.token_vocab.reveal_origin(words))
+            print(feature_list)
+
+            center = math.floor(len(words) / 2)
+            lemma = feature_list[center][0]
+
+            if lemma in self.lex_mapping:
+                frames = self.lex_mapping[lemma]
+
+                print("Triggered frame %s by %s" % (frames, lemma))
+
+                import sys
+                sys.stdin.readline()

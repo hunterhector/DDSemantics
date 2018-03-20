@@ -1,5 +1,5 @@
 from event.io.readers import (
-    TaggedMentionReader,
+    ConllUReader,
     Vocab
 )
 from event.util import set_basic_log
@@ -14,18 +14,21 @@ import os
 
 
 class DetectionRunner:
-    def __init__(self, config, num_classes, vocab_size):
+    def __init__(self, config, token_vocab, tag_vocab):
         self.model_dir = config.model_dir
         self.model_name = config.model_name
         self.trainable = True
 
-        self.init_model(config, num_classes, vocab_size)
+        self.init_model(config, token_vocab, tag_vocab)
 
-    def init_model(self, config, num_classes, vocab_size):
+    def init_model(self, config, token_vocab, tag_vocab):
         if self.model_name == 'cnn':
-            self.model = TextCNN(config, num_classes, vocab_size)
+            self.model = TextCNN(config, tag_vocab.vocab_size(),
+                                 token_vocab.vocab_size())
+            if torch.cuda.is_available():
+                self.model.cuda()
         elif self.model_name == 'frame':
-            self.model = FrameMappingDetector(config)
+            self.model = FrameMappingDetector(config, token_vocab)
             self.trainable = False
 
     def train(self, train_reader, dev_reader):
@@ -48,9 +51,9 @@ class DetectionRunner:
             input, labels = train_reader.read_batch()
             optimizer.zero_grad()
 
-            print("Batch:")
-            print(input)
-            print(labels)
+            # print("Batch:")
+            # print(input)
+            # print(labels)
             logits = self.model(input)
             loss = F.cross_entropy(logits, labels)
             loss.backward()
@@ -85,7 +88,7 @@ class DetectionRunner:
 
     def predict(self, test_reader):
         for data in test_reader.read_window():
-            tokens, tags = data
+            tokens, tags, features = data
             # print(test_reader.reveal_origin(tokens))
             # print(test_reader.reveal_tags(tags))
             self.model.predict(data)
@@ -96,24 +99,18 @@ def main(config):
                         embedding_path=config.word_embedding,
                         emb_dim=config.word_embedding_dim)
 
-    if config.tag_embedding is not None:
-        tag_vocab = Vocab(config.experiment_folder, 'tag',
-                          embedding_path=config.tag_embedding,
-                          emb_dim=config.tag_embedding_dim)
-    else:
-        tag_vocab = None
+    tag_vocab = Vocab(config.experiment_folder, 'tag',
+                      embedding_path=config.tag_list)
 
-    train_reader = TaggedMentionReader(config.train_files, config, token_vocab,
-                                       tag_vocab)
-    dev_reader = TaggedMentionReader(config.dev_files, config, token_vocab,
-                                     train_reader.tag_vocab)
-    test_reader = TaggedMentionReader(config.test_files, config, token_vocab,
-                                      train_reader.tag_vocab)
-
-    detector = DetectionRunner(config, train_reader.num_classes(),
-                               token_vocab.vocab_size())
-
+    train_reader = ConllUReader(config.train_files, config, token_vocab,
+                                tag_vocab)
+    dev_reader = ConllUReader(config.dev_files, config, token_vocab,
+                              train_reader.tag_vocab)
+    detector = DetectionRunner(config, token_vocab, tag_vocab)
     detector.train(train_reader, dev_reader)
+
+    test_reader = ConllUReader(config.test_files, config, token_vocab,
+                               train_reader.tag_vocab)
     detector.predict(test_reader)
 
 
@@ -123,7 +120,7 @@ if __name__ == '__main__':
     parser = OptionPerLineParser(description='Event Mention Detector.',
                                  fromfile_prefix_chars='@')
 
-    parser.add_argument('--model_name', type=str, default='cnn')
+    parser.add_argument('--model_name', type=str)
 
     parser.add_argument('--experiment_folder', type=str)
     parser.add_argument('--model_dir', type=str)
@@ -141,7 +138,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--position_embedding_dim', type=int, default=50)
 
-    parser.add_argument('--tag_embedding', type=str,
+    parser.add_argument('--tag_list', type=str,
                         help='Frame embedding path')
     parser.add_argument('--tag_embedding_dim', type=int, default=50)
 

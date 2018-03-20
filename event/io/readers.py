@@ -64,8 +64,9 @@ class Vocab:
 
     def dump_map(self):
         path = os.path.join(self.base_folder, self.name + '.pickle')
-        with open(path, 'wb') as p:
-            pickle.dump(dict(self.token2i), p)
+        if not os.path.exists(path):
+            with open(path, 'wb') as p:
+                pickle.dump(dict(self.token2i), p)
 
     def load_map(self):
         path = os.path.join(self.base_folder, self.name + '.pickle')
@@ -77,8 +78,8 @@ class Vocab:
             return False
 
 
-class TaggedMentionReader:
-    def __init__(self, data_files, config, token_vocab, tag_vocab=None):
+class ConllUReader:
+    def __init__(self, data_files, config, token_vocab, tag_vocab):
         self.experiment_folder = config.experiment_folder
         self.data_files = data_files
         self.data_format = config.format
@@ -89,17 +90,15 @@ class TaggedMentionReader:
         self.batch_size = config.batch_size
         self.window_size = max(config.window_sizes)
 
+        logging.info("Batch size is %d, window size is %d." % (
+            self.batch_size, self.window_size))
+
         self.token_vocab = token_vocab
+        self.tag_vocab = tag_vocab
 
-        if tag_vocab:
-            self.tag_vocab = tag_vocab
-        else:
-            self.tag_vocab = Vocab(self.experiment_folder, 'tags')
-
-        logging.info("Corpus with [%d] words, [%d] tags.",
+        logging.info("Corpus with [%d] words and [%d] tags.",
                      self.token_vocab.vocab_size(),
-                     self.tag_vocab.vocab_size()
-                     )
+                     self.tag_vocab.vocab_size())
 
         self.__batch_data = []
 
@@ -108,6 +107,7 @@ class TaggedMentionReader:
             logging.info("Loading data from [%s] " % data_file)
             with open(data_file) as data:
                 token_ids = []
+                features = []
                 tag_ids = []
                 for line in data:
                     if line.startswith("#"):
@@ -117,11 +117,11 @@ class TaggedMentionReader:
                                 # Yield data for whole document if we didn't
                                 # yield per sentence.
                                 if token_ids:
-                                    yield token_ids, tag_ids
+                                    yield token_ids, tag_ids, features
                     elif not line.strip():
                         if not self.no_sentence:
                             # Yield data for each sentence.
-                            yield token_ids, tag_ids
+                            yield token_ids, tag_ids, features
                             token_ids = []
                             tag_ids = []
                     else:
@@ -133,25 +133,34 @@ class TaggedMentionReader:
                         if pos == 'punct' and self.no_punct:
                             continue
 
+                        lemma = parts[2]
+                        features.append([lemma, pos])
+
                         token_ids.append(self.token_vocab(token))
                         tag_ids.append(self.tag_vocab(tag))
 
     def read_window(self):
-        for token_ids, tag_ids in self.parse():
+        for token_ids, tag_ids, features in self.parse():
             assert len(token_ids) == len(tag_ids)
 
             token_pad = [self.token_vocab.unk] * self.window_size
             tag_pad = [self.tag_vocab.unk] * self.window_size
 
+            feature_dim = len(features[0])
+
+            feature_pad = [["UNK"] * feature_dim] * self.window_size
+
             actual_len = len(token_ids)
 
             token_ids = token_pad + token_ids + token_pad
             tag_ids = tag_pad + tag_ids + tag_pad
+            features = feature_pad + features + feature_pad
 
             for i in range(actual_len):
                 start = i
                 end = i + self.window_size * 2 + 1
-                yield token_ids[start: end], tag_ids[start:end]
+                yield token_ids[start: end], tag_ids[start:end], features[
+                                                                 start:end]
 
     def convert_batch(self):
         tokens, tags = zip(*self.__batch_data)
@@ -162,14 +171,13 @@ class TaggedMentionReader:
         return tokens, tags
 
     def read_batch(self):
-        token_ids, tag_ids = self.read_window()
-
-        if self.batch_size < len(self.__batch_data):
-            self.__batch_data.append((token_ids, tag_ids))
-        else:
-            data = self.convert_batch()
-            self.__batch_data.clear()
-            return data
+        for token_ids, tag_ids, features in self.read_window():
+            if len(self.__batch_data) < self.batch_size:
+                self.__batch_data.append((token_ids, tag_ids))
+            else:
+                data = self.convert_batch()
+                self.__batch_data.clear()
+                return data
 
     def num_classes(self):
         return self.tag_vocab.vocab_size()
