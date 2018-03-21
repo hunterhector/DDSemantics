@@ -91,7 +91,11 @@ class DetectionRunner:
             tokens, tags, features = data
             # print(test_reader.reveal_origin(tokens))
             # print(test_reader.reveal_tags(tags))
-            self.model.predict(data)
+            tag = self.model.predict(data)
+
+            print("Tag is " + tag)
+            import sys
+            sys.stdin.readline()
 
 
 def main(config):
@@ -144,6 +148,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='the probability for dropout [default: 0.5]')
+    parser.add_argument('--context_size', default=30, type=int)
     parser.add_argument('--window_sizes', default='2,3,4,5',
                         type=lambda s: [int(item) for item in s.split(',')])
     parser.add_argument('--filter_num', default=100, type=int,
@@ -160,6 +165,8 @@ if __name__ == '__main__':
     parser.add_argument('--frame_lexicon', type=str, help='Frame lexicon path')
     parser.add_argument('--event_list', help='Lexicon for events', type=str)
     parser.add_argument('--entity_list', help='Lexicon for entities', type=str)
+    parser.add_argument('--relation_list', help='Lexicon for relations',
+                        type=str)
 
     arguments = parser.parse_args()
 

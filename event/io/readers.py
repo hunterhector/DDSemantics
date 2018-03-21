@@ -88,10 +88,12 @@ class ConllUReader:
         self.no_sentence = config.no_sentence
 
         self.batch_size = config.batch_size
-        self.window_size = max(config.window_sizes)
 
-        logging.info("Batch size is %d, window size is %d." % (
-            self.batch_size, self.window_size))
+        self.window_sizes = config.window_sizes
+        self.context_size = config.context_size
+
+        logging.info("Batch size is %d, context size is %d." % (
+            self.batch_size, self.context_size))
 
         self.token_vocab = token_vocab
         self.tag_vocab = tag_vocab
@@ -106,9 +108,11 @@ class ConllUReader:
         for data_file in self.data_files:
             logging.info("Loading data from [%s] " % data_file)
             with open(data_file) as data:
+                sentence_id = 0
                 token_ids = []
-                features = []
                 tag_ids = []
+                features = []
+                parsed_data = (token_ids, tag_ids, features)
                 for line in data:
                     if line.startswith("#"):
                         if line.startswith("# doc"):
@@ -117,38 +121,43 @@ class ConllUReader:
                                 # Yield data for whole document if we didn't
                                 # yield per sentence.
                                 if token_ids:
-                                    yield token_ids, tag_ids, features
+                                    yield parsed_data
+                                    [d.clear() for d in parsed_data]
+                                    sentence_id += 1
                     elif not line.strip():
                         if not self.no_sentence:
                             # Yield data for each sentence.
-                            yield token_ids, tag_ids, features
-                            token_ids = []
-                            tag_ids = []
+                            yield parsed_data
+                            [d.clear() for d in parsed_data]
+                        sentence_id += 1
                     else:
                         parts = line.lower().split()
                         token = parts[1]
-                        pos = parts[7]
+                        lemma = parts[2]
+                        pos = parts[4]
+                        head = parts[6]
+                        dep = parts[7]
                         tag = parts[9]
 
                         if pos == 'punct' and self.no_punct:
                             continue
 
-                        lemma = parts[2]
-                        features.append([lemma, pos])
-
-                        token_ids.append(self.token_vocab(token))
-                        tag_ids.append(self.tag_vocab(tag))
+                        parsed_data[0].append(self.token_vocab(token))
+                        parsed_data[1].append(self.tag_vocab(tag))
+                        parsed_data[2].append(
+                            (lemma, pos, head, dep, sentence_id)
+                        )
 
     def read_window(self):
         for token_ids, tag_ids, features in self.parse():
             assert len(token_ids) == len(tag_ids)
 
-            token_pad = [self.token_vocab.unk] * self.window_size
-            tag_pad = [self.tag_vocab.unk] * self.window_size
+            token_pad = [self.token_vocab.unk] * self.context_size
+            tag_pad = [self.tag_vocab.unk] * self.context_size
 
             feature_dim = len(features[0])
 
-            feature_pad = [["UNK"] * feature_dim] * self.window_size
+            feature_pad = [["UNK"] * feature_dim] * self.context_size
 
             actual_len = len(token_ids)
 
@@ -158,12 +167,12 @@ class ConllUReader:
 
             for i in range(actual_len):
                 start = i
-                end = i + self.window_size * 2 + 1
+                end = i + self.context_size * 2 + 1
                 yield token_ids[start: end], tag_ids[start:end], features[
                                                                  start:end]
 
     def convert_batch(self):
-        tokens, tags = zip(*self.__batch_data)
+        tokens, tags, features = zip(*self.__batch_data)
         tokens, tags = torch.FloatTensor(tokens), torch.FloatTensor(tags)
         if torch.cuda.is_available():
             tokens.cuda()
@@ -173,7 +182,7 @@ class ConllUReader:
     def read_batch(self):
         for token_ids, tag_ids, features in self.read_window():
             if len(self.__batch_data) < self.batch_size:
-                self.__batch_data.append((token_ids, tag_ids))
+                self.__batch_data.append((token_ids, tag_ids, features))
             else:
                 data = self.convert_batch()
                 self.__batch_data.clear()

@@ -28,17 +28,12 @@ class TextCNN(DLMentionDetector):
         super().__init__(config=config)
 
         w_embed_dim = config.word_embedding_dim
-
         filter_sizes = config.window_sizes
-
         filter_num = config.filter_num
-
         max_filter_size = max(config.window_sizes)
 
         self.fix_embedding = config.fix_embedding
-
         position_embed_dim = config.position_embedding_dim
-
         self.word_embed = Embedding(vocab_size, w_embed_dim)
         self.position_embed = Embedding(2 * max_filter_size + 1,
                                         position_embed_dim)
@@ -51,9 +46,7 @@ class TextCNN(DLMentionDetector):
         )
 
         self.dropout = nn.Dropout(config.dropout)
-
         self.linear = nn.Linear(len(filter_sizes) * filter_num, num_classes)
-
         # Add batch size dimension.
         self.positions = torch.IntTensor(range(2 * max_filter_size + 1))
 
@@ -63,9 +56,7 @@ class TextCNN(DLMentionDetector):
 
         # (Batch, Length, Emb Dimension)
         word_embed = self.word_embed(input)
-
         position_embed = self.position_embed(self.positions)
-
         x = torch.cat((word_embed, position_embed), -1)
 
         # Add a single dimension for channel in.
@@ -99,7 +90,7 @@ class FrameMappingDetector(MentionDetector):
         self.experiment_folder = config.experiment_folder
         self.lex_mapping = self.load_frame_lex(config.frame_lexicon)
         self.entities, self.events = self.load_wordlist(
-            config.entity_list, config.event_list
+            config.entity_list, config.event_list, config.relation_list
         )
         self.token_vocab = token_vocab
         self.load_ontology()
@@ -127,15 +118,28 @@ class FrameMappingDetector(MentionDetector):
                     lex_mapping[lexeme].append(frame_name)
         return lex_mapping
 
-    def load_wordlist(self, entity_file, event_file):
-        events = set()
-        entities = set()
+    def load_wordlist(self, entity_file, event_file, relation_file):
+        events = {}
+        entities = {}
         with open(event_file) as fin:
             for line in fin:
-                events.add(line.strip())
+                parts = line.strip().split()
+                if len(parts) == 2:
+                    word, ontology = line.strip().split()
+                    events[word] = ontology
         with open(entity_file) as fin:
             for line in fin:
-                entities.add(line.strip())
+                parts = line.strip().split()
+                if len(parts) == 2:
+                    word, ontology = line.strip().split()
+                    entities[word] = ontology
+        with open(relation_file) as fin:
+            for line in fin:
+                parts = line.strip().split()
+                if len(parts) == 4:
+                    relation_subtype, relation_type, domain, range_type = parts
+
+
         return entities, events
 
     def load_ontology(self):
@@ -143,17 +147,41 @@ class FrameMappingDetector(MentionDetector):
 
     def predict(self, *input):
         for words, _, feature_list in input:
-            print(words)
-            print(self.token_vocab.reveal_origin(words))
-            print(feature_list)
-
             center = math.floor(len(words) / 2)
-            lemma = feature_list[center][0]
+            lemmas = [features[0] for features in feature_list]
+            pos_list = [features[1] for features in feature_list]
+            deps = [(features[3], features[4]) for features in feature_list]
 
-            if lemma in self.lex_mapping:
-                frames = self.lex_mapping[lemma]
+            center_lemma = lemmas[center]
+            word = self.token_vocab.reveal_origin(words)[center]
 
-                print("Triggered frame %s by %s" % (frames, lemma))
+            unknown_type = "O"
+            event_type = unknown_type
 
-                import sys
-                sys.stdin.readline()
+            if word in self.events:
+                event_type = self.events[word]
+
+            if center_lemma in self.events:
+                event_type = self.events[center_lemma]
+
+            if not event_type == unknown_type:
+                self.predict_args(center, event_type, lemmas, pos_list, deps)
+
+            return event_type
+
+    def predict_args(self, center, event_type, context, pos_list, deps):
+        for distance in range(1, center + 1):
+            left = center - distance
+            right = center + distance
+
+            left_lemma = context[left]
+            right_lemma = context[right]
+
+            if left_lemma in self.entities:
+                self.check_arg(context[center], event_type, left_lemma, deps)
+
+            if right_lemma in self.entities:
+                self.check_arg(context[center], event_type, right_lemma, deps)
+
+    def check_arg(self, predicate, event_type, arg_lemma, features):
+        entity_type = self.entities[arg_lemma]
