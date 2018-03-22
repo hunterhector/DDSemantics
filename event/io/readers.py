@@ -117,27 +117,24 @@ class ConllUReader:
                     if line.startswith("#"):
                         if line.startswith("# doc"):
                             docid = line.split("=")[1].strip()
-                            if self.no_sentence:
-                                # Yield data for whole document if we didn't
-                                # yield per sentence.
-                                if token_ids:
-                                    yield parsed_data
-                                    [d.clear() for d in parsed_data]
-                                    sentence_id += 1
+                            # if self.no_sentence:
+                            #     # Yield data for whole document if we didn't
+                            #     # yield per sentence.
+                            #     if parsed_data[0]:
+                            #         yield parsed_data
+                            #         [d.clear() for d in parsed_data]
+                            #         sentence_id += 1
                     elif not line.strip():
-                        if not self.no_sentence:
-                            # Yield data for each sentence.
-                            yield parsed_data
-                            [d.clear() for d in parsed_data]
+                        # Yield data when seeing sentence break.
+                        yield parsed_data
+                        [d.clear() for d in parsed_data]
                         sentence_id += 1
                     else:
                         parts = line.lower().split()
-                        token = parts[1]
-                        lemma = parts[2]
-                        pos = parts[4]
-                        head = parts[6]
-                        dep = parts[7]
-                        tag = parts[9]
+                        _, token, lemma, _, pos, _, head, dep, _, tag \
+                            = parts[:10]
+
+                        spans = [int(x) for x in parts[-1].split(",")]
 
                         if pos == 'punct' and self.no_punct:
                             continue
@@ -145,7 +142,7 @@ class ConllUReader:
                         parsed_data[0].append(self.token_vocab(token))
                         parsed_data[1].append(self.tag_vocab(tag))
                         parsed_data[2].append(
-                            (lemma, pos, head, dep, sentence_id)
+                            (lemma, pos, head, dep, sentence_id, spans)
                         )
 
     def read_window(self):

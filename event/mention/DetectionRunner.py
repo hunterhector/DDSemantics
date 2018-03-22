@@ -11,6 +11,7 @@ import logging
 import torch
 import torch.nn.functional as F
 import os
+import json
 
 
 class DetectionRunner:
@@ -86,16 +87,73 @@ class DetectionRunner:
         path = os.path.join(self.model_dir, self.model_name)
         torch.save(self.model, path)
 
-    def predict(self, test_reader):
+    def predict(self, test_reader, collector):
+        event_id = 0
+        entity_id = 0
         for data in test_reader.read_window():
             tokens, tags, features = data
             # print(test_reader.reveal_origin(tokens))
             # print(test_reader.reveal_tags(tags))
-            tag = self.model.predict(data)
+            l_tags, l_args = self.model.predict(data)
 
-            print("Tag is " + tag)
-            import sys
-            sys.stdin.readline()
+            center = int(len(tokens) / 2)
+
+            token_id = tokens[center]
+            feature = features[center]
+            span = feature[-1]
+            event_lemma = feature[0]
+
+            for t, args in zip(l_tags, l_args):
+                if not t == "O":
+                    role_ids = {}
+                    for role, (entity_lemma, span, entity_type) in args.items():
+                        entity_id += 1
+                        entity_details = {
+                            'entity_type': entity_type,
+                            'surface': entity_lemma
+                        }
+                        eid = "Entity_%d" % entity_id
+
+                        collector.add_interp(eid, 'Entity', span,
+                                             entity_details)
+                        role_ids[role] = eid
+
+                    event_details = {
+                        'arguments': {},
+                        'surface': event_lemma,
+                        'event_type': t
+                    }
+                    for role, role_id in role_ids.items():
+                        event_details['arguments'][role] = role_id
+
+                    collector.add_interp("Event_%d" % event_id, 'Event', span,
+                                         event_details)
+
+                    event_id += 1
+
+
+class InterpCollector:
+    def __init__(self, docid, out_path):
+        self.info = {
+            "id": docid,
+            "interp": []
+        }
+        self.out_path = out_path
+
+    def add_interp(self, interp_id, record_type, char_span, details):
+        interp = {
+            'id': interp_id,
+            'record_type': record_type,
+            'char_span': char_span,
+        }
+        for k, v in details.items():
+            interp[k] = v
+
+        self.info['interp'].append(interp)
+
+    def write(self):
+        with open(self.out_path, 'w') as out:
+            json.dump(self.info, out, indent=2)
 
 
 def main(config):
@@ -113,9 +171,13 @@ def main(config):
     detector = DetectionRunner(config, token_vocab, tag_vocab)
     detector.train(train_reader, dev_reader)
 
+    res_collector = InterpCollector('bellingcat', config.output)
+
     test_reader = ConllUReader(config.test_files, config, token_vocab,
                                train_reader.tag_vocab)
-    detector.predict(test_reader)
+    detector.predict(test_reader, res_collector)
+
+    res_collector.write()
 
 
 if __name__ == '__main__':
@@ -135,6 +197,8 @@ if __name__ == '__main__':
                         type=lambda s: [item for item in s.split(',')])
     parser.add_argument('--test_files',
                         type=lambda s: [item for item in s.split(',')])
+
+    parser.add_argument('--output', type=str)
 
     parser.add_argument('--word_embedding', type=str,
                         help='Word embedding path')

@@ -89,7 +89,7 @@ class FrameMappingDetector(MentionDetector):
         super().__init__(config=config)
         self.experiment_folder = config.experiment_folder
         self.lex_mapping = self.load_frame_lex(config.frame_lexicon)
-        self.entities, self.events = self.load_wordlist(
+        self.entities, self.events, self.relations = self.load_wordlist(
             config.entity_list, config.event_list, config.relation_list
         )
         self.token_vocab = token_vocab
@@ -121,6 +121,7 @@ class FrameMappingDetector(MentionDetector):
     def load_wordlist(self, entity_file, event_file, relation_file):
         events = {}
         entities = {}
+        relations = {}
         with open(event_file) as fin:
             for line in fin:
                 parts = line.strip().split()
@@ -136,16 +137,25 @@ class FrameMappingDetector(MentionDetector):
         with open(relation_file) as fin:
             for line in fin:
                 parts = line.strip().split()
-                if len(parts) == 4:
-                    relation_subtype, relation_type, domain, range_type = parts
+                if parts:
+                    event_type = parts[0]
+                    args = parts[1:]
 
+                    if event_type not in relations:
+                        relations[event_type] = {}
 
-        return entities, events
+                    for arg in args:
+                        arg_role, arg_types = arg.split(":")
+                        relations[event_type][arg_role] = arg_types.split(",")
+
+        return entities, events, relations
 
     def load_ontology(self):
         pass
 
     def predict(self, *input):
+        l_types = []
+        l_args = []
         for words, _, feature_list in input:
             center = math.floor(len(words) / 2)
             lemmas = [features[0] for features in feature_list]
@@ -157,6 +167,7 @@ class FrameMappingDetector(MentionDetector):
 
             unknown_type = "O"
             event_type = unknown_type
+            args = {}
 
             if word in self.events:
                 event_type = self.events[word]
@@ -165,11 +176,35 @@ class FrameMappingDetector(MentionDetector):
                 event_type = self.events[center_lemma]
 
             if not event_type == unknown_type:
-                self.predict_args(center, event_type, lemmas, pos_list, deps)
+                res = self.predict_args(center, event_type, lemmas, pos_list,
+                                         deps)
 
-            return event_type
+                for role, entity in res.items():
+                    if entity:
+                        index, entity_type = entity
+                        features = feature_list[index]
+                        args[role] = features[0], features[-1], entity_type
+
+            l_types.append(event_type)
+            l_args.append(args)
+        return l_types, l_args
 
     def predict_args(self, center, event_type, context, pos_list, deps):
+        if event_type not in self.relations:
+            return {}
+
+        expected_relations = self.relations[event_type]
+        expected_relations["Location"] = ["Loc", "GPE"]
+        expected_relations["Time"] = ["Time"]
+
+        filled_relations = dict([(k, None) for k in expected_relations])
+        num_to_fill = len(filled_relations)
+
+        relation_lookup = {}
+        for role, types in expected_relations.items():
+            for t in types:
+                relation_lookup[t] = role
+
         for distance in range(1, center + 1):
             left = center - distance
             right = center + distance
@@ -178,10 +213,36 @@ class FrameMappingDetector(MentionDetector):
             right_lemma = context[right]
 
             if left_lemma in self.entities:
-                self.check_arg(context[center], event_type, left_lemma, deps)
+                arg_type = self.check_arg(context[center], event_type,
+                                          left_lemma, deps)
+                if arg_type in relation_lookup:
+                    possible_rel = relation_lookup[arg_type]
+                    if filled_relations[possible_rel] is None:
+                        filled_relations[possible_rel] = (left, arg_type)
+                        num_to_fill -= 1
 
             if right_lemma in self.entities:
-                self.check_arg(context[center], event_type, right_lemma, deps)
+                arg_type = self.check_arg(context[center], event_type,
+                                          right_lemma, deps)
+                if arg_type in relation_lookup:
+                    possible_rel = relation_lookup[arg_type]
+                    if filled_relations[possible_rel] is None:
+                        filled_relations[possible_rel] = (right, arg_type)
+                        num_to_fill -= 1
+
+            if num_to_fill == 0:
+                break
+
+        return filled_relations
 
     def check_arg(self, predicate, event_type, arg_lemma, features):
-        entity_type = self.entities[arg_lemma]
+        unknown_type = "O"
+
+        entity_type = unknown_type
+        if arg_lemma in self.entities:
+            entity_type = self.entities[arg_lemma]
+
+        if not entity_type == unknown_type:
+            return entity_type
+
+        return None
