@@ -112,18 +112,12 @@ class ConllUReader:
                 token_ids = []
                 tag_ids = []
                 features = []
-                parsed_data = (token_ids, tag_ids, features)
+                meta = []
+                parsed_data = (token_ids, tag_ids, features, meta)
                 for line in data:
                     if line.startswith("#"):
                         if line.startswith("# doc"):
                             docid = line.split("=")[1].strip()
-                            # if self.no_sentence:
-                            #     # Yield data for whole document if we didn't
-                            #     # yield per sentence.
-                            #     if parsed_data[0]:
-                            #         yield parsed_data
-                            #         [d.clear() for d in parsed_data]
-                            #         sentence_id += 1
                     elif not line.strip():
                         # Yield data when seeing sentence break.
                         yield parsed_data
@@ -142,11 +136,14 @@ class ConllUReader:
                         parsed_data[0].append(self.token_vocab(token))
                         parsed_data[1].append(self.tag_vocab(tag))
                         parsed_data[2].append(
-                            (lemma, pos, head, dep, sentence_id, spans)
+                            (lemma, pos, head, dep)
+                        )
+                        parsed_data[3].append(
+                            (token, spans, docid, sentence_id)
                         )
 
     def read_window(self):
-        for token_ids, tag_ids, features in self.parse():
+        for token_ids, tag_ids, features, meta in self.parse():
             assert len(token_ids) == len(tag_ids)
 
             token_pad = [self.token_vocab.unk] * self.context_size
@@ -165,8 +162,8 @@ class ConllUReader:
             for i in range(actual_len):
                 start = i
                 end = i + self.context_size * 2 + 1
-                yield token_ids[start: end], tag_ids[start:end], features[
-                                                                 start:end]
+                yield token_ids[start: end], tag_ids[start:end], \
+                      features[start:end], meta[i]
 
     def convert_batch(self):
         tokens, tags, features = zip(*self.__batch_data)
@@ -177,7 +174,7 @@ class ConllUReader:
         return tokens, tags
 
     def read_batch(self):
-        for token_ids, tag_ids, features in self.read_window():
+        for token_ids, tag_ids, features, meta in self.read_window():
             if len(self.__batch_data) < self.batch_size:
                 self.__batch_data.append((token_ids, tag_ids, features))
             else:

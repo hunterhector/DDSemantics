@@ -156,11 +156,11 @@ class FrameMappingDetector(MentionDetector):
     def predict(self, *input):
         l_types = []
         l_args = []
-        for words, _, feature_list in input:
+        for words, _, feature_list, meta in input:
             center = math.floor(len(words) / 2)
             lemmas = [features[0] for features in feature_list]
             pos_list = [features[1] for features in feature_list]
-            deps = [(features[3], features[4]) for features in feature_list]
+            deps = [(features[2], features[3]) for features in feature_list]
 
             center_lemma = lemmas[center]
             word = self.token_vocab.reveal_origin(words)[center]
@@ -177,7 +177,7 @@ class FrameMappingDetector(MentionDetector):
 
             if not event_type == unknown_type:
                 res = self.predict_args(center, event_type, lemmas, pos_list,
-                                         deps)
+                                        deps)
 
                 for role, entity in res.items():
                     if entity:

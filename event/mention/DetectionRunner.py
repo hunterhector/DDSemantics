@@ -2,6 +2,7 @@ from event.io.readers import (
     ConllUReader,
     Vocab
 )
+from event.io.collectors import InterpCollector
 from event.util import set_basic_log
 from event.mention.models.detectors import (
     TextCNN,
@@ -88,72 +89,30 @@ class DetectionRunner:
         torch.save(self.model, path)
 
     def predict(self, test_reader, collector):
-        event_id = 0
-        entity_id = 0
+        event_idx = 0
+        entity_idx = 0
         for data in test_reader.read_window():
-            tokens, tags, features = data
-            # print(test_reader.reveal_origin(tokens))
-            # print(test_reader.reveal_tags(tags))
+            tokens, tags, features, meta = data
+
             l_tags, l_args = self.model.predict(data)
 
-            center = int(len(tokens) / 2)
+            token, p_span, docid, sid = meta
 
-            token_id = tokens[center]
-            feature = features[center]
-            span = feature[-1]
-            event_lemma = feature[0]
+            collector.add_doc(docid, 'report')
+            collector.add_sentence(sid, [0, 0])
 
             for t, args in zip(l_tags, l_args):
                 if not t == "O":
-                    role_ids = {}
-                    for role, (entity_lemma, span, entity_type) in args.items():
-                        entity_id += 1
-                        entity_details = {
-                            'entity_type': entity_type,
-                            'surface': entity_lemma
-                        }
-                        eid = "Entity_%d" % entity_id
-
-                        collector.add_interp(eid, 'Entity', span,
-                                             entity_details)
-                        role_ids[role] = eid
-
-                    event_details = {
-                        'arguments': {},
-                        'surface': event_lemma,
-                        'event_type': t
-                    }
-                    for role, role_id in role_ids.items():
-                        event_details['arguments'][role] = role_id
-
-                    collector.add_interp("Event_%d" % event_id, 'Event', span,
-                                         event_details)
-
-                    event_id += 1
-
-
-class InterpCollector:
-    def __init__(self, docid, out_path):
-        self.info = {
-            "id": docid,
-            "interp": []
-        }
-        self.out_path = out_path
-
-    def add_interp(self, interp_id, record_type, char_span, details):
-        interp = {
-            'id': interp_id,
-            'record_type': record_type,
-            'char_span': char_span,
-        }
-        for k, v in details.items():
-            interp[k] = v
-
-        self.info['interp'].append(interp)
-
-    def write(self):
-        with open(self.out_path, 'w') as out:
-            json.dump(self.info, out, indent=2)
+                    collector.add_event(sid, p_span, p_span, token, t)
+                    for role, (
+                            entity_lemma, a_span, entity_type
+                    ) in args.items():
+                        entity_idx += 1
+                        print(sid, a_span, entity_lemma, entity_type)
+                        collector.add_entity(sid, a_span, entity_lemma,
+                                             entity_type)
+                        collector.add_arg(event_idx, entity_idx)
+                    event_idx += 1
 
 
 def main(config):
@@ -171,10 +130,14 @@ def main(config):
     detector = DetectionRunner(config, token_vocab, tag_vocab)
     detector.train(train_reader, dev_reader)
 
-    res_collector = InterpCollector('bellingcat', config.output)
+    #     def __init__(self, component_name, run_id, out_path):
+    res_collector = InterpCollector('Event_hector_frames', 1, config.output)
 
     test_reader = ConllUReader(config.test_files, config, token_vocab,
                                train_reader.tag_vocab)
+
+    # res_collector.add_doc('bellingcat', 'report')
+
     detector.predict(test_reader, res_collector)
 
     res_collector.write()
