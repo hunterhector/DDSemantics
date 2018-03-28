@@ -92,17 +92,26 @@ class DetectionRunner:
         event_idx = 0
         entity_idx = 0
         for data in test_reader.read_window():
-            tokens, tags, features, meta = data
+            tokens, tags, features, l_meta = data
 
             l_tags, l_args = self.model.predict(data)
 
-            token, p_span, docid, sid = meta
+            # token, p_span, docid, sid = l_meta
 
-            collector.add_doc(docid, 'report')
-            collector.add_sentence(sid, [0, 0])
+            center = int(len(l_meta) / 2)
 
-            for t, args in zip(l_tags, l_args):
+            collector.add_doc(l_meta[center][2], 'report')
+            collector.add_sentence(l_meta[center][3], [0, 0])
+
+            print(l_tags)
+            print(l_meta)
+
+            for t, args, meta in zip(l_tags, l_args, l_meta):
                 if not t == "O":
+
+                    print(t, meta)
+                    token, p_span, _, sid = meta
+
                     collector.add_event(sid, p_span, p_span, token, t)
                     for role, (
                             entity_lemma, a_span, entity_type

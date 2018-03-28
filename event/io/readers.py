@@ -109,6 +109,7 @@ class ConllUReader:
             logging.info("Loading data from [%s] " % data_file)
             with open(data_file) as data:
                 sentence_id = 0
+
                 token_ids = []
                 tag_ids = []
                 features = []
@@ -153,17 +154,20 @@ class ConllUReader:
 
             feature_pad = [["UNK"] * feature_dim] * self.context_size
 
+            meta_pad = ["EMTPY"] * self.context_size
+
             actual_len = len(token_ids)
 
             token_ids = token_pad + token_ids + token_pad
             tag_ids = tag_pad + tag_ids + tag_pad
             features = feature_pad + features + feature_pad
+            meta = meta_pad + meta + meta_pad
 
             for i in range(actual_len):
                 start = i
                 end = i + self.context_size * 2 + 1
                 yield token_ids[start: end], tag_ids[start:end], \
-                      features[start:end], meta[i]
+                      features[start:end], meta[start:end]
 
     def convert_batch(self):
         tokens, tags, features = zip(*self.__batch_data)
