@@ -66,15 +66,8 @@ class InterpCollector:
         self.frames[sent_id] = sent_info
         self.frame_collection['frames'].append(sent_info)
         self.sentence_spans[sent_id] = span
-        print("Adding sentence id", sent_id)
 
-    def get_id(self, prefix, index):
-        return '%s-%s-text-cmu-r%s-%d' % (
-            prefix,
-            self.frame_collection['object_meta']['document_id'],
-            self.run_id,
-            index,
-        )
+        return sent_id
 
     def add_entity(self, sentence_index, span, text, entity_type):
         sentence_id = self.get_id('sent', sentence_index)
@@ -93,9 +86,12 @@ class InterpCollector:
         }
         sentence_start = self.sentence_spans[sentence_id][0]
         entity_info['start'] = span[0] - sentence_start
-        entity_info['end'] = span[1] - span[0]
+        entity_info['length'] = span[1] - span[0]
         self.frame_collection['frames'].append(entity_info)
+
         self.frames[entity_id] = entity_info
+
+        return entity_id
 
     def add_event(self, sentence_index, trigger_span, extent_span, text,
                   evm_type):
@@ -124,18 +120,25 @@ class InterpCollector:
 
         sentence_start = self.sentence_spans[sentence_id][0]
         event_info['trigger']['start'] = trigger_span[0] - sentence_start
-        event_info['trigger']['end'] = trigger_span[1] - trigger_span[0]
+        event_info['trigger']['length'] = trigger_span[1] - trigger_span[0]
 
         event_info['extent']['start'] = extent_span[0] - sentence_start
-        event_info['extent']['end'] = extent_span[1] - extent_span[0]
+        event_info['extent']['length'] = extent_span[1] - extent_span[0]
 
         self.frame_collection['frames'].append(event_info)
         self.frames[event_id] = event_info
 
-    def add_arg(self, evm_index, ent_index, arg_role):
-        evm_id = self.get_id('evm', evm_index)
-        ent_id = self.get_id('ent', ent_index)
+        return event_id
 
+    def get_id(self, prefix, index):
+        return '%s-%s-text-cmu-r%s-%d' % (
+            prefix,
+            self.frame_collection['object_meta']['document_id'],
+            self.run_id,
+            index,
+        )
+
+    def add_arg(self, evm_id, ent_id, arg_role):
         entity = self.frames[ent_id]
 
         arg = {
@@ -162,7 +165,11 @@ class InterpCollector:
         self.frame_collection['frames'].append(relation_info)
         self.frames[relation_id] = relation_info
 
-    def write(self):
-        mode = 'a' if os.path.exists(self.out_path) else 'w'
+    def write(self, append=False):
+        if append:
+            mode = 'a' if os.path.exists(self.out_path) else 'w'
+        else:
+            mode = 'w'
+
         with open(self.out_path, mode) as out:
             json.dump(self.frame_collection, out, indent=2)

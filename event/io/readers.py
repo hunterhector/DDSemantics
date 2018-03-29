@@ -115,13 +115,19 @@ class ConllUReader:
                 features = []
                 meta = []
                 parsed_data = (token_ids, tag_ids, features, meta)
+
+                sent_start = (-1, -1)
+                sent_end = (-1, -1)
+
                 for line in data:
                     if line.startswith("#"):
                         if line.startswith("# doc"):
                             docid = line.split("=")[1].strip()
                     elif not line.strip():
                         # Yield data when seeing sentence break.
-                        yield parsed_data
+                        yield parsed_data, (
+                            sentence_id, (sent_start[1], sent_end[1])
+                        )
                         [d.clear() for d in parsed_data]
                         sentence_id += 1
                     else:
@@ -129,7 +135,7 @@ class ConllUReader:
                         _, token, lemma, _, pos, _, head, dep, _, tag \
                             = parts[:10]
 
-                        spans = [int(x) for x in parts[-1].split(",")]
+                        span = [int(x) for x in parts[-1].split(",")]
 
                         if pos == 'punct' and self.no_punct:
                             continue
@@ -140,34 +146,35 @@ class ConllUReader:
                             (lemma, pos, head, dep)
                         )
                         parsed_data[3].append(
-                            (token, spans, docid, sentence_id)
+                            (token, span, docid)
                         )
 
+                        if not sentence_id == sent_start[0]:
+                            sent_start = [sentence_id, span[0]]
+
+                        sent_end = [sentence_id, span[1]]
+
     def read_window(self):
-        for token_ids, tag_ids, features, meta in self.parse():
+        for (token_ids, tag_ids, features, meta), sent_meta in self.parse():
             assert len(token_ids) == len(tag_ids)
 
             token_pad = [self.token_vocab.unk] * self.context_size
             tag_pad = [self.tag_vocab.unk] * self.context_size
 
-            feature_dim = len(features[0])
-
-            feature_pad = [["UNK"] * feature_dim] * self.context_size
-
-            meta_pad = ["EMTPY"] * self.context_size
+            feature_pad = ["EMPTY"] * self.context_size
 
             actual_len = len(token_ids)
 
             token_ids = token_pad + token_ids + token_pad
             tag_ids = tag_pad + tag_ids + tag_pad
             features = feature_pad + features + feature_pad
-            meta = meta_pad + meta + meta_pad
+            meta = feature_pad + meta + feature_pad
 
             for i in range(actual_len):
                 start = i
                 end = i + self.context_size * 2 + 1
                 yield token_ids[start: end], tag_ids[start:end], \
-                      features[start:end], meta[start:end]
+                      features[start:end], meta[start:end], sent_meta
 
     def convert_batch(self):
         tokens, tags, features = zip(*self.__batch_data)

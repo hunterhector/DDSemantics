@@ -53,9 +53,6 @@ class DetectionRunner:
             input, labels = train_reader.read_batch()
             optimizer.zero_grad()
 
-            # print("Batch:")
-            # print(input)
-            # print(labels)
             logits = self.model(input)
             loss = F.cross_entropy(logits, labels)
             loss.backward()
@@ -92,36 +89,34 @@ class DetectionRunner:
         event_idx = 0
         entity_idx = 0
         for data in test_reader.read_window():
-            tokens, tags, features, l_meta = data
+            tokens, tags, features, l_word_meta, sent_meta = data
 
-            l_tags, l_args = self.model.predict(data)
+            # Found the center lemma's type and possible arguments in
+            # the window.
+            event_type, args = self.model.predict(data)
 
-            # token, p_span, docid, sid = l_meta
+            center = int(len(l_word_meta) / 2)
+            sid, sent_span = sent_meta
 
-            center = int(len(l_meta) / 2)
+            collector.add_doc(l_word_meta[center][2], 'report')
+            collector.add_sentence(sid, sent_span)
 
-            collector.add_doc(l_meta[center][2], 'report')
-            collector.add_sentence(l_meta[center][3], [0, 0])
+            if not event_type == self.model.unknown_type:
+                p_token, p_span, _ = l_word_meta[center]
+                event_id = collector.add_event(sid, p_span, p_span, p_token,
+                                               event_type)
 
-            print(l_tags)
-            print(l_meta)
+                for role, (index, entity_type) in args.items():
+                    a_token, a_span, _ = l_word_meta[index]
 
-            for t, args, meta in zip(l_tags, l_args, l_meta):
-                if not t == "O":
+                    entity_id = collector.add_entity(sid, a_span, a_token,
+                                                     entity_type)
 
-                    print(t, meta)
-                    token, p_span, _, sid = meta
+                    collector.add_arg(event_id, entity_id, role)
 
-                    collector.add_event(sid, p_span, p_span, token, t)
-                    for role, (
-                            entity_lemma, a_span, entity_type
-                    ) in args.items():
-                        entity_idx += 1
-                        print(sid, a_span, entity_lemma, entity_type)
-                        collector.add_entity(sid, a_span, entity_lemma,
-                                             entity_type)
-                        collector.add_arg(event_idx, entity_idx)
-                    event_idx += 1
+                    entity_idx += 1
+
+                event_idx += 1
 
 
 def main(config):

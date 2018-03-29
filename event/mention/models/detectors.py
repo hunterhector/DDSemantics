@@ -10,6 +10,7 @@ import math
 class MentionDetector:
     def __init__(self, **kwargs):
         super().__init__()
+        self.unknown_type = "UNKNOWN"
 
     def predict(self, *input):
         pass
@@ -51,9 +52,6 @@ class TextCNN(DLMentionDetector):
         self.positions = torch.IntTensor(range(2 * max_filter_size + 1))
 
     def forward(self, *input):
-        print("Model input")
-        print(input)
-
         # (Batch, Length, Emb Dimension)
         word_embed = self.word_embed(input)
         position_embed = self.position_embed(self.positions)
@@ -62,8 +60,6 @@ class TextCNN(DLMentionDetector):
         # Add a single dimension for channel in.
         x = x.unsqueeze(1)
         # [(N, Co, W), ...]*len(Ks)
-
-        print('embedded')
 
         x = [F.relu(conv(x)).squeeze(3) for conv in self.convs1]
         # [(N, Co), ...]*len(Ks)
@@ -154,11 +150,11 @@ class FrameMappingDetector(MentionDetector):
         pass
 
     def predict(self, *input):
-        l_types = []
-        l_args = []
+        event_type = self.unknown_type
+        args = {}
+        # l_args = []
 
-        # TODO: Currently not producing correct dimension.
-        for words, _, l_feature, l_meta in input:
+        for words, _, l_feature, word_meta, sent_meta in input:
             center = math.floor(len(words) / 2)
             lemmas = [features[0] for features in l_feature]
             pos_list = [features[1] for features in l_feature]
@@ -167,20 +163,13 @@ class FrameMappingDetector(MentionDetector):
             center_lemma = lemmas[center]
             word = self.token_vocab.reveal_origin(words)[center]
 
-            unknown_type = "O"
-            event_type = unknown_type
-            args = {}
-
             if word in self.events:
                 event_type = self.events[word]
 
             if center_lemma in self.events:
                 event_type = self.events[center_lemma]
 
-            print(l_feature, len(l_feature))
-            print(l_meta, len(l_meta))
-
-            if not event_type == unknown_type:
+            if not event_type == self.unknown_type:
                 res = self.predict_args(center, event_type, lemmas, pos_list,
                                         deps)
 
@@ -189,15 +178,10 @@ class FrameMappingDetector(MentionDetector):
                         index, entity_type = entity
                         features = l_feature[index]
 
-                        print(index, entity_type, features)
+                        args[role] = index, entity_type
 
-                        meta = l_meta[index]
-
-                        args[role] = features[0], meta[1], entity_type
-
-            l_types.append(event_type)
-            l_args.append(args)
-        return l_types, l_args
+            # l_args.append(args)
+        return event_type, args
 
     def predict_args(self, center, event_type, context, pos_list, deps):
         if event_type not in self.relations:
