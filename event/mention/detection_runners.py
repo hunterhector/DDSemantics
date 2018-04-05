@@ -88,6 +88,7 @@ class DetectionRunner:
     def predict(self, test_reader, collector):
         event_idx = 0
         entity_idx = 0
+
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
 
@@ -103,8 +104,17 @@ class DetectionRunner:
 
             if not event_type == self.model.unknown_type:
                 p_token, p_span = l_word_meta[center]
-                event_id = collector.add_event(sid, p_span, p_span, p_token,
-                                               event_type)
+
+                extent_span = [p_span[0], p_span[1]]
+                for role, (index, entity_type) in args.items():
+                    a_token, a_span = l_word_meta[index]
+                    if a_span[0] < extent_span[0]:
+                        extent_span[0] = a_span[0]
+                    if a_span[1] > extent_span[1]:
+                        extent_span[1] = a_span[1]
+
+                event_id = collector.add_event(sid, p_span, extent_span,
+                                               p_token, event_type)
 
                 for role, (index, entity_type) in args.items():
                     a_token, a_span = l_word_meta[index]

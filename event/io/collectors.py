@@ -121,16 +121,23 @@ class InterpCollector:
         sentence_id = self.get_id('sent', sentence_index)
         event_id = self.get_id('evm', self.event_index)
         self.event_index += 1
+
+        sentence_start = self.sentence_spans[sentence_id][0]
+
         event_info = {
             '@type': 'event_mention',
             '@id': event_id,
             'trigger': {
                 '@type': 'text_span',
                 'reference': sentence_id,
+                'start': trigger_span[0] - sentence_start,
+                'length': trigger_span[1] - trigger_span[0],
             },
             'extent': {
                 '@type': 'text_span',
                 'reference': sentence_id,
+                'start': extent_span[0] - sentence_start,
+                'length': extent_span[1] - extent_span[0],
             },
             'text': text,
             'parent_scope': sentence_id,
@@ -140,13 +147,6 @@ class InterpCollector:
                 'args': [],
             }
         }
-
-        sentence_start = self.sentence_spans[sentence_id][0]
-        event_info['trigger']['start'] = trigger_span[0] - sentence_start
-        event_info['trigger']['length'] = trigger_span[1] - trigger_span[0]
-
-        event_info['extent']['start'] = extent_span[0] - sentence_start
-        event_info['extent']['length'] = extent_span[1] - extent_span[0]
 
         self.frame_collection['frames'].append(event_info)
         self.frames[event_id] = event_info
