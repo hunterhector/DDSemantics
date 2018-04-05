@@ -113,8 +113,10 @@ class ConllUReader:
                 token_ids = []
                 tag_ids = []
                 features = []
-                meta = []
-                parsed_data = (token_ids, tag_ids, features, meta)
+                token_meta = []
+                parsed_data = (
+                    token_ids, tag_ids, features, token_meta
+                )
 
                 sent_start = (-1, -1)
                 sent_end = (-1, -1)
@@ -126,7 +128,7 @@ class ConllUReader:
                     elif not line.strip():
                         # Yield data when seeing sentence break.
                         yield parsed_data, (
-                            sentence_id, (sent_start[1], sent_end[1])
+                            sentence_id, (sent_start[1], sent_end[1]), docid
                         )
                         [d.clear() for d in parsed_data]
                         sentence_id += 1
@@ -146,7 +148,7 @@ class ConllUReader:
                             (lemma, pos, head, dep)
                         )
                         parsed_data[3].append(
-                            (token, span, docid)
+                            (token, span)
                         )
 
                         if not sentence_id == sent_start[0]:
@@ -155,7 +157,7 @@ class ConllUReader:
                         sent_end = [sentence_id, span[1]]
 
     def read_window(self):
-        for (token_ids, tag_ids, features, meta), sent_meta in self.parse():
+        for (token_ids, tag_ids, features, token_meta), meta in self.parse():
             assert len(token_ids) == len(tag_ids)
 
             token_pad = [self.token_vocab.unk] * self.context_size
@@ -168,13 +170,13 @@ class ConllUReader:
             token_ids = token_pad + token_ids + token_pad
             tag_ids = tag_pad + tag_ids + tag_pad
             features = feature_pad + features + feature_pad
-            meta = feature_pad + meta + feature_pad
+            token_meta = feature_pad + token_meta + feature_pad
 
             for i in range(actual_len):
                 start = i
                 end = i + self.context_size * 2 + 1
                 yield token_ids[start: end], tag_ids[start:end], \
-                      features[start:end], meta[start:end], sent_meta
+                      features[start:end], token_meta[start:end], meta
 
     def convert_batch(self):
         tokens, tags, features = zip(*self.__batch_data)

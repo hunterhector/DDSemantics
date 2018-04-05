@@ -89,25 +89,25 @@ class DetectionRunner:
         event_idx = 0
         entity_idx = 0
         for data in test_reader.read_window():
-            tokens, tags, features, l_word_meta, sent_meta = data
+            tokens, tags, features, l_word_meta, meta = data
 
             # Found the center lemma's type and possible arguments in
             # the window.
             event_type, args = self.model.predict(data)
 
             center = int(len(l_word_meta) / 2)
-            sid, sent_span = sent_meta
+            sid, sent_span, docid = meta
 
-            collector.add_doc(l_word_meta[center][2], 'report')
+            collector.add_doc(docid, 'report', 'belcat', 'text', 'html')
             collector.add_sentence(sid, sent_span)
 
             if not event_type == self.model.unknown_type:
-                p_token, p_span, _ = l_word_meta[center]
+                p_token, p_span = l_word_meta[center]
                 event_id = collector.add_event(sid, p_span, p_span, p_token,
                                                event_type)
 
                 for role, (index, entity_type) in args.items():
-                    a_token, a_span, _ = l_word_meta[index]
+                    a_token, a_span = l_word_meta[index]
 
                     entity_id = collector.add_entity(sid, a_span, a_token,
                                                      entity_type)
