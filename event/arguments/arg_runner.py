@@ -8,6 +8,10 @@ from traitlets.config.loader import PyFileConfigLoader
 import torch
 
 import logging
+import sys
+
+from event.io.readers import EventAsArgCloze
+from event.arguments.loss import cross_entropy
 
 
 class ArgRunner(Configurable):
@@ -18,6 +22,9 @@ class ArgRunner(Configurable):
         self.model = EventPairCompositionModel(self.para)
 
         self.nb_epochs = self.para.nb_epochs
+        self.criterion = cross_entropy
+
+        self.reader = EventAsArgCloze()
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
@@ -25,16 +32,20 @@ class ArgRunner(Configurable):
 
         optimizer = torch.optim.Adam(self.model.parameters())
 
-        print(self.model.parameters)
-
         for epoch in range(self.nb_epochs):
-            for line in train_in:
-                output = self.model(self.process_data(line))
-                loss = criterion(output, label)
-                loss.backward()
-                optimizer.step()
+            with open(train_in) as train_data:
+                for cloze_task in self.reader.read_clozes(train_data):
+                    doc_events, event_index, cloze_role, answer, wrong = cloze_task
+
+                    print(event_index, cloze_role, answer, wrong)
+
+                    output = self.model(self.process_data(line))
+                    loss = self.criterion(output, label)
+                    loss.backward()
+                    optimizer.step()
 
     def process_data(self, line):
+        print(line)
         pass
 
 
@@ -47,7 +58,7 @@ if __name__ == '__main__':
         model_out = Unicode(help='model dump out name').tag(config=True)
 
 
-    import sys
+    logging.basicConfig(level=logging.INFO)
 
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
     basic_para = Basic(config=conf)
