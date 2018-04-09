@@ -7,7 +7,7 @@ class ArgFrameMapper:
     def __init__(self):
         self.args_frame_count = {}
         self.frame_args_count = {}
-        self.len_arg_fields = 4
+        self.len_arg_fields = 5
 
     def read_dataset(self, data_in):
         batch = 10000
@@ -15,10 +15,13 @@ class ArgFrameMapper:
 
         logging.info("Reading: " + data_in)
 
+        num_format_errors = 0
+
         with open(data_in) as data:
             for line in data:
                 line = line.strip()
                 if line.startswith("#"):
+                    doc_name = line.rstrip("#")
                     continue
                 elif line == "":
                     continue
@@ -28,13 +31,19 @@ class ArgFrameMapper:
                 fields = line.split("\t")
 
                 if len(fields) < 3:
+                    num_format_errors += 1
                     continue
 
                 predicate, context, frame = fields[:3]
-                arg_fields = fields[3:]
+
+                arg_fields = fields[3:-1]
                 for arg in [arg_fields[x:x + self.len_arg_fields] for x in
                             range(0, len(arg_fields), self.len_arg_fields)]:
-                    prop, fe, entity, _ = arg
+                    if len(arg) < self.len_arg_fields:
+                        num_format_errors += 1
+                        continue
+
+                    prop, fe = arg[:2]
 
                     prop_entry = (predicate, prop)
                     frame_entry = (frame, fe)
@@ -71,7 +80,8 @@ class ArgFrameMapper:
                         from_frame[prop_entry] = 1
 
                     if count % batch == 0:
-                        logging.info("%d lines processed." % count)
+                        logging.info("%d lines processed, %d errors." % (
+                            count, num_format_errors))
 
     def write(self, out_dir):
         if not os.path.exists(out_dir):
