@@ -1,12 +1,15 @@
 import logging
 import os
 import operator
+from collections import Counter
 
 
 class ArgFrameMapper:
     def __init__(self):
-        self.args_frame_count = {}
-        self.frame_args_count = {}
+        self.args_fe_map = {}
+        self.fe_args_map = {}
+        self.fe_count = Counter()
+        self.arg_count = Counter()
         self.len_arg_fields = 5
 
     def read_dataset(self, data_in):
@@ -46,33 +49,41 @@ class ArgFrameMapper:
                     prop, fe = arg[:2]
 
                     prop_entry = (predicate, prop)
-                    frame_entry = (frame, fe)
+                    fe_entry = (frame, fe)
 
-                    if prop == "NA":
-                        self.frame_args_count[frame_entry] = {}
-                        continue
+                    if not prop == "NA":
+                        self.arg_count[prop_entry] += 1
 
-                    if fe == "NA":
-                        self.args_frame_count[prop_entry] = {}
-                        continue
+                    if not fe == "NA":
+                        self.fe_count[fe_entry] += 1
+
+                    # if prop == "NA":
+                    #     if fe_entry not in self.fe_args_map:
+                    #         self.fe_args_map[fe_entry] = {}
+                    #     continue
+                    #
+                    # if fe == "NA":
+                    #     if prop_entry not in self.args_fe_map:
+                    #         self.args_fe_map[prop_entry] = {}
+                    #     continue
 
                     from_prop = {}
-                    if prop_entry in self.args_frame_count:
-                        from_prop = self.args_frame_count[prop_entry]
+                    if prop_entry in self.args_fe_map:
+                        from_prop = self.args_fe_map[prop_entry]
                     else:
-                        self.args_frame_count[prop_entry] = from_prop
+                        self.args_fe_map[prop_entry] = from_prop
 
                     try:
-                        from_prop[frame_entry] += 1
+                        from_prop[fe_entry] += 1
                     except KeyError:
-                        from_prop[frame_entry] = 1
+                        from_prop[fe_entry] = 1
 
                     from_frame = {}
 
-                    if frame_entry in self.frame_args_count:
-                        from_frame = self.frame_args_count[frame_entry]
+                    if fe_entry in self.fe_args_map:
+                        from_frame = self.fe_args_map[fe_entry]
                     else:
-                        self.frame_args_count[frame_entry] = from_frame
+                        self.fe_args_map[fe_entry] = from_frame
 
                     try:
                         from_frame[prop_entry] += 1
@@ -88,15 +99,15 @@ class ArgFrameMapper:
             os.makedirs(out_dir)
 
         with open(os.path.join(out_dir, 'args_frames.tsv'), 'w') as out:
-            for key, val in self.args_frame_count.items():
-                out.write("%s\t%s\n" % (
-                    ' '.join(key), self.sorted_counts(val)
+            for key, val in self.args_fe_map.items():
+                out.write("%s %s\t%s\n" % (
+                    ' '.join(key), self.arg_count[key], self.sorted_counts(val)
                 ))
 
         with open(os.path.join(out_dir, 'frames_args.tsv'), 'w') as out:
-            for key, val in self.frame_args_count.items():
-                out.write("%s\t%s\n" % (
-                    ' '.join(key), self.sorted_counts(val)
+            for key, val in self.fe_args_map.items():
+                out.write("%s %s\t%s\n" % (
+                    ' '.join(key), self.fe_count[key], self.sorted_counts(val)
                 ))
 
     @staticmethod
