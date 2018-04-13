@@ -9,16 +9,18 @@ class FrameCompressor:
     def __init__(self):
         self.h_ferel = {}
         self.__load_frame_relation()
+        self.fe_mappings = {}
+        self.fe_counts = Counter()
 
     def __load_frame_relation(self):
         for rel in fn.fe_relations():
             subFe = (rel.subFrame.name, rel.subFEName)
             superFe = (rel.superFrame.name, rel.superFEName)
-            self.h_ferel[subFe] = superFe
+            if rel.type.name in ['Subframe', 'Inheritance']:
+                self.h_ferel[subFe] = superFe
 
     def load_fe_mapping(self, fe_mapping_file):
         not_found_fes = {}
-        fe_mappings = {}
 
         with open(fe_mapping_file) as fe_mapping:
             for line in fe_mapping:
@@ -31,18 +33,19 @@ class FrameCompressor:
 
                 fe_parts = fe_info.split()
                 frame_name = fe_parts[0]
-                count = fe_parts[-1]
+                fe_count = int(fe_parts[-1])
                 fe_name = "_".join(fe_parts[1:-1])
 
-                arg_fields = arg_info.split()
-
-                args = []
+                fe = (frame_name, fe_name)
 
                 seen_predicates = set()
+                self.fe_counts[fe] += fe_count
 
+                arg_fields = arg_info.split()
+                args = []
                 for arg in [arg_fields[x:x + 3] for x in
                             range(0, len(arg_fields), 3)]:
-                    predicate, role, count = arg
+                    predicate, role, _ = arg
                     if not role == 'NA':
                         args.append(arg)
 
@@ -51,20 +54,19 @@ class FrameCompressor:
                 args.sort(key=operator.itemgetter(2), reverse=True)
 
                 if len(args) == 0:
-                    not_found_fes[
-                        (frame_name, fe_name, count)] = seen_predicates
+                    not_found_fes[fe] = seen_predicates
                 else:
-                    fe_mappings[(frame_name, fe_name)] = args
+                    self.fe_mappings[fe] = args
 
-        return fe_mappings, not_found_fes
+        return not_found_fes
 
-    def use_parent_syntax(self, fe_mappings, frame, fe, target_pred):
-        fe_name = (frame, fe)
-        if fe_name in self.h_ferel:
-            super_fe = self.h_ferel[fe_name]
-            if super_fe in fe_mappings:
+    def use_parent_syntax(self, fe, target_pred):
+        # fe_name = (frame, fe)
+        if fe in self.h_ferel:
+            super_fe = self.h_ferel[fe]
+            if super_fe in self.fe_mappings:
                 arg_roles = Counter()
-                for predicate, arg, count in fe_mappings[super_fe]:
+                for predicate, arg, count in self.fe_mappings[super_fe]:
                     arg_roles[arg] += 1
                     if target_pred == predicate:
                         return arg
@@ -72,14 +74,13 @@ class FrameCompressor:
                 sorted_roles = sorted(arg_roles.items(), reverse=True,
                                       key=operator.itemgetter(1))
                 most_role = sorted_roles[0][0]
-
-                # print("Using most syntax role %s" % most_role)
                 return most_role
-
+            else:
+                return self.use_parent_syntax(super_fe, target_pred)
         return None
 
-    def fill_blank(self, fe_mappings, not_found_frames):
-        print("trying to map: %d" % len(not_found_frames))
+    def fill_blank(self, not_found_frames):
+        print("Trying to map: %d" % len(not_found_frames))
 
         not_mapped = []
 
@@ -88,7 +89,7 @@ class FrameCompressor:
             found_map = False
             for predicate in predicates:
                 arg = self.use_parent_syntax(
-                    fe_mappings, frame_name, fe_name, predicate
+                    (frame_name, fe_name), predicate
                 )
                 if arg:
                     args.append((predicate, arg, 0))
@@ -97,9 +98,15 @@ class FrameCompressor:
             if not found_map:
                 not_mapped.append((frame_name, fe_name))
 
-        print("Number not mappable: %d" % len(not_mapped))
-        print(not_mapped[:10])
-        # fe_mappings[(frame_name, fe_name)] = args
+        not_mapped_frames = [t[0] for t in not_mapped]
+
+        print("Number not mappable: %d fe in %d frames." % (
+            len(not_mapped), len(not_mapped_frames)))
+
+        for fe in not_mapped:
+            print("%s: %d\n" % (str(fe), self.fe_counts[fe]))
+
+        print(not_mapped)
 
     def demo(self):
         pass
@@ -110,8 +117,8 @@ if __name__ == '__main__':
 
     frame_mapping_file = sys.argv[1]
     compressor = FrameCompressor()
-    fe_mappings, not_found_fes = compressor.load_fe_mapping(frame_mapping_file)
+    not_found_fes = compressor.load_fe_mapping(frame_mapping_file)
     logging.info("Loaded %d frame elements, %d frame elements not mapped.",
-                 len(fe_mappings),
+                 len(compressor.fe_mappings),
                  len(not_found_fes))
-    compressor.fill_blank(fe_mappings, not_found_fes)
+    compressor.fill_blank(not_found_fes)
