@@ -14,7 +14,9 @@ with open(out_file, 'w') as out:
         root = tree.getroot()
         doc = root[0]
 
-        out.write("# doc = %s\n" % file)
+        docid = file.split(".")[0]
+
+        out.write("# newdoc id = %s\n" % docid)
 
         for text in doc:
             sent_id = 0
@@ -42,7 +44,7 @@ with open(out_file, 'w') as out:
                     l_tokens.append([token_id, word, lemmatizer.lemmatize(word),
                                    "_", pos, "_", "_", "_", "_", "_", span])
 
-                out.write("# sentence = %d\n" % sent_id)
+                out.write("# sent_id = %d\n" % sent_id)
 
                 for tokens in l_tokens:
                     out.write("\t".join([str(t) for t in tokens]))

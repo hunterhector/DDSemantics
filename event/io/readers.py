@@ -124,7 +124,7 @@ class ConllUReader:
 
                 for line in data:
                     if line.startswith("#"):
-                        if line.startswith("# doc"):
+                        if line.startswith("# newdoc"):
                             docid = line.split("=")[1].strip()
                     elif not line.strip():
                         # Yield data when seeing sentence break.
