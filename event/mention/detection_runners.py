@@ -3,7 +3,6 @@ from event.io.readers import (
     Vocab
 )
 from event.io.collectors import InterpCollector
-from event.util import set_basic_log
 from event.mention.models.detectors import (
     TextCNN,
     FrameMappingDetector
@@ -99,8 +98,8 @@ class DetectionRunner:
             center = int(len(l_word_meta) / 2)
             sid, sent_span, docid = meta
 
-            collector.add_doc(docid, 'report', 'belcat', 'text', 'html')
-            collector.add_sentence(sid, sent_span)
+            collector.add_doc(docid, 'report', 'text', 'ltf')
+            sent_id = collector.add_sentence(sid, sent_span, "")
 
             if not event_type == self.model.unknown_type:
                 p_token, p_span = l_word_meta[center]
@@ -119,7 +118,7 @@ class DetectionRunner:
                 for role, (index, entity_type) in args.items():
                     a_token, a_span = l_word_meta[index]
 
-                    entity_id = collector.add_entity(sid, a_span, a_token,
+                    entity_id = collector.add_entity(sent_id, a_span, a_token,
                                                      entity_type)
 
                     collector.add_arg(event_id, entity_id, role)
@@ -145,7 +144,8 @@ def main(config):
     detector.train(train_reader, dev_reader)
 
     #     def __init__(self, component_name, run_id, out_path):
-    res_collector = InterpCollector('Event_hector_frames', 1, config.output)
+    res_collector = InterpCollector('Event_hector_frames', 1, config.output,
+                                    'belcat')
 
     test_reader = ConllUReader(config.test_files, config, token_vocab,
                                train_reader.tag_vocab)
@@ -158,60 +158,13 @@ def main(config):
 
 
 if __name__ == '__main__':
-    from event.util import OptionPerLineParser
+    from event import util
 
-    parser = OptionPerLineParser(description='Event Mention Detector.',
-                                 fromfile_prefix_chars='@')
-
-    parser.add_argument('--model_name', type=str)
-
-    parser.add_argument('--experiment_folder', type=str)
-    parser.add_argument('--model_dir', type=str)
-
-    parser.add_argument('--train_files',
-                        type=lambda s: [item for item in s.split(',')])
-    parser.add_argument('--dev_files',
-                        type=lambda s: [item for item in s.split(',')])
-    parser.add_argument('--test_files',
-                        type=lambda s: [item for item in s.split(',')])
-
-    parser.add_argument('--output', type=str)
-
-    parser.add_argument('--word_embedding', type=str,
-                        help='Word embedding path')
-    parser.add_argument('--word_embedding_dim', type=int, default=300)
-
-    parser.add_argument('--position_embedding_dim', type=int, default=50)
-
-    parser.add_argument('--tag_list', type=str,
-                        help='Frame embedding path')
-    parser.add_argument('--tag_embedding_dim', type=int, default=50)
-
-    parser.add_argument('--dropout', type=float, default=0.5,
-                        help='the probability for dropout [default: 0.5]')
-    parser.add_argument('--context_size', default=30, type=int)
-    parser.add_argument('--window_sizes', default='2,3,4,5',
-                        type=lambda s: [int(item) for item in s.split(',')])
-    parser.add_argument('--filter_num', default=100, type=int,
-                        help='Number of filters for each type.')
-    parser.add_argument('--fix_embedding', type=bool, default=False)
-
-    parser.add_argument('--batch_size', type=int, default=50)
-
-    parser.add_argument('--format', type=str, default="conllu")
-    parser.add_argument('--no_punct', type=bool, default=False)
-    parser.add_argument('--no_sentence', type=bool, default=False)
-
-    # Frame based detector.
-    parser.add_argument('--frame_lexicon', type=str, help='Frame lexicon path')
-    parser.add_argument('--event_list', help='Lexicon for events', type=str)
-    parser.add_argument('--entity_list', help='Lexicon for entities', type=str)
-    parser.add_argument('--relation_list', help='Lexicon for relations',
-                        type=str)
+    parser = util.basic_parser()
 
     arguments = parser.parse_args()
 
-    set_basic_log()
+    util.set_basic_log()
 
     logging.info("Starting with the following config:")
     logging.info(arguments)
