@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+import os
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -8,6 +9,13 @@ class OptionPerLineParser(argparse.ArgumentParser):
         if arg_line.startswith("#"):
             return []
         return arg_line.split()
+
+
+def ensure_dir(p):
+    parent = os.path.dirname(p)
+    if not os.path.exists(parent):
+        os.makedirs(parent)
+
 
 def basic_parser():
     parser = OptionPerLineParser(description='Event Mention Detector.',
