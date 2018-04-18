@@ -80,7 +80,7 @@ class Vocab:
 
 
 class ConllUReader:
-    def __init__(self, data_files, config, token_vocab, tag_vocab):
+    def __init__(self, data_files, config, token_vocab, tag_vocab, language):
         self.experiment_folder = config.experiment_folder
         self.data_files = data_files
         self.data_format = config.format
@@ -98,6 +98,8 @@ class ConllUReader:
 
         self.token_vocab = token_vocab
         self.tag_vocab = tag_vocab
+
+        self.language = language
 
         logging.info("Corpus with [%d] words and [%d] tags.",
                      self.token_vocab.vocab_size(),

@@ -17,6 +17,17 @@ def ensure_dir(p):
         os.makedirs(parent)
 
 
+def tokens_to_sent(tokens, sent_start):
+    sent = ""
+
+    for token, span in tokens:
+        if span[0] > len(sent) + sent_start:
+            padding = ' ' * (span[0] - len(sent) - sent_start)
+            sent += padding
+        sent += token
+    return sent
+
+
 def basic_parser():
     parser = OptionPerLineParser(description='Event Mention Detector.',
                                  fromfile_prefix_chars='@')
@@ -66,6 +77,8 @@ def basic_parser():
     parser.add_argument('--entity_list', help='Lexicon for entities', type=str)
     parser.add_argument('--relation_list', help='Lexicon for relations',
                         type=str)
+
+    parser.add_argument('--language', help='Language code', type=str)
 
     return parser
 

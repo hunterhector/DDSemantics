@@ -2,7 +2,7 @@ from event.io.readers import (
     ConllUReader,
     Vocab
 )
-from event.io.collectors import InterpCollector
+from event.io.csr import CSR
 from event.mention.models.detectors import (
     TextCNN,
     FrameMappingDetector
@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 import os
 import json
+from event import util
 
 
 class DetectionRunner:
@@ -84,10 +85,12 @@ class DetectionRunner:
         path = os.path.join(self.model_dir, self.model_name)
         torch.save(self.model, path)
 
-    def predict(self, test_reader, collector):
+    def predict(self, test_reader, csr):
         event_idx = 0
         entity_idx = 0
 
+        last_sent = None
+        sent_tokens = []
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
 
@@ -98,13 +101,24 @@ class DetectionRunner:
             center = int(len(l_word_meta) / 2)
             sid, sent_span, docid = meta
 
-            collector.add_doc(docid, 'report', 'text', 'ltf')
-            sent_id = collector.add_sentence(sid, sent_span, "")
+            csr.add_doc(docid, 'report', test_reader.language)
+            sent_id = csr.add_sentence(sid, sent_span)
+
+            token, span = l_word_meta[center]
+
+            if last_sent and not sent_id == last_sent:
+                # New sentence, write last sent text.
+                sent_text = util.tokens_to_sent(sent_tokens,
+                                                csr.current_sentences[
+                                                    last_sent].span.begin)
+                csr.set_sentence_text(last_sent, sent_text)
+                sent_tokens.clear()
+
+            sent_tokens.append((token, span))
+            last_sent = sent_id
 
             if not event_type == self.model.unknown_type:
-                p_token, p_span = l_word_meta[center]
-
-                extent_span = [p_span[0], p_span[1]]
+                extent_span = [span[0], span[1]]
                 for role, (index, entity_type) in args.items():
                     a_token, a_span = l_word_meta[index]
                     if a_span[0] < extent_span[0]:
@@ -112,16 +126,17 @@ class DetectionRunner:
                     if a_span[1] > extent_span[1]:
                         extent_span[1] = a_span[1]
 
-                event_id = collector.add_event(sid, p_span, extent_span,
-                                               p_token, event_type)
+                event_id = csr.add_event_mention(sent_id, span, token,
+                                                 'aida', event_type)
 
                 for role, (index, entity_type) in args.items():
                     a_token, a_span = l_word_meta[index]
 
-                    entity_id = collector.add_entity(sent_id, a_span, a_token,
-                                                     entity_type)
+                    entity_id = csr. \
+                        add_entity_mention(sent_id, a_span, a_token, 'aida',
+                                           entity_type)
 
-                    collector.add_arg(event_id, entity_id, role)
+                    csr.add_arg(event_id, entity_id, 'aida', role)
 
                     entity_idx += 1
 
@@ -137,20 +152,17 @@ def main(config):
                       embedding_path=config.tag_list)
 
     train_reader = ConllUReader(config.train_files, config, token_vocab,
-                                tag_vocab)
+                                tag_vocab, config.language)
     dev_reader = ConllUReader(config.dev_files, config, token_vocab,
-                              train_reader.tag_vocab)
+                              train_reader.tag_vocab, config.language)
     detector = DetectionRunner(config, token_vocab, tag_vocab)
     detector.train(train_reader, dev_reader)
 
     #     def __init__(self, component_name, run_id, out_path):
-    res_collector = InterpCollector('Event_hector_frames', 1, config.output,
-                                    'belcat')
+    res_collector = CSR('Event_hector_frames', 1, config.output, 'belcat')
 
     test_reader = ConllUReader(config.test_files, config, token_vocab,
                                train_reader.tag_vocab)
-
-    # res_collector.add_doc('bellingcat', 'report')
 
     detector.predict(test_reader, res_collector)
 
