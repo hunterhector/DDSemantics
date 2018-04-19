@@ -136,16 +136,19 @@ class ConllUReader:
                         [d.clear() for d in parsed_data]
                         sentence_id += 1
                     else:
-                        parts = line.lower().split()
+                        parts = line.split()
                         _, token, lemma, _, pos, _, head, dep, _, tag \
                             = parts[:10]
+                        lemma = lemma.lower()
+                        pos = pos.lower()
 
                         span = [int(x) for x in parts[-1].split(",")]
 
                         if pos == 'punct' and self.no_punct:
+                            # Simulate the non-punctuation audio input.
                             continue
 
-                        parsed_data[0].append(self.token_vocab(token))
+                        parsed_data[0].append(self.token_vocab(token.lower()))
                         parsed_data[1].append(self.tag_vocab(tag))
                         parsed_data[2].append(
                             (lemma, pos, head, dep)

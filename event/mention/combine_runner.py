@@ -48,8 +48,8 @@ def add_edl_entities(edl_file, csr):
 
 
 def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
-    evm_id = csr.add_event_mention(sent_id, mention_span,
-                                   text, 'tac', kbp_type)
+    evm_id, interp = csr.add_event_mention(sent_id, mention_span,
+                                           text, 'tac', kbp_type)
 
     if len(args) > 0:
         pb_name = args[0]
@@ -62,10 +62,10 @@ def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
             ent_id = csr.add_entity_mention(sent_id, arg_span,
                                             arg_text, 'tac', 'arg')
             if not fn_role == 'N/A':
-                csr.add_arg(evm_id, ent_id, 'framenet', fn_role)
+                csr.add_arg(interp, evm_id, ent_id, 'framenet', fn_role)
 
             if not pb_role == 'N/A':
-                csr.add_arg(evm_id, ent_id, 'propbank', pb_role)
+                csr.add_arg(interp, evm_id, ent_id, 'propbank', pb_role)
 
     return evm_id
 
@@ -106,6 +106,7 @@ def add_tac_events(kbp_file, csr):
 
                 if sent_info:
                     sent_id, sent = sent_info
+
                     csr_e_id = add_tac_event(csr, sent_id, mention_span, text,
                                              kbp_type, parts[7:])
                     evms[kbp_eid] = csr_e_id
