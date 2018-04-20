@@ -30,6 +30,7 @@ def construct_text(doc_sentences):
     return doc_texts
 
 
+
 def strip_ns(name):
     return name.split(':', 1)[1]
 

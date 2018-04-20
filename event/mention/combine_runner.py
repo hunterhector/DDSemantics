@@ -132,6 +132,9 @@ def main(config):
     detector = DetectionRunner(config, token_vocab, tag_vocab)
     detector.train(train_reader, dev_reader)
 
+    assert config.test_files is not None
+    assert config.output is not None
+
     csr = CSR('Frames_hector_combined', 1, config.output, 'data')
 
     test_reader = ConllUReader(config.test_files, config, token_vocab,
