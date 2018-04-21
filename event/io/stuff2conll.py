@@ -100,11 +100,11 @@ def txt2conllu(in_dir, out_file):
 def main():
     in_dir = sys.argv[1]
     out_file = sys.argv[2]
-    format = sys.argv[3]
+    format_in = sys.argv[3]
 
-    if format == 'txt':
+    if format_in == 'txt':
         txt2conllu(in_dir, out_file)
-    elif format == 'ltf':
+    elif format_in == 'ltf':
         txt2conllu(in_dir, out_file)
 
 

@@ -86,11 +86,6 @@ class DetectionRunner:
         torch.save(self.model, path)
 
     def predict(self, test_reader, csr):
-        event_idx = 0
-        entity_idx = 0
-
-        last_sent = None
-        sent_tokens = []
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
 
@@ -99,23 +94,8 @@ class DetectionRunner:
             event_type, args = self.model.predict(data)
 
             center = int(len(l_word_meta) / 2)
-            sid, sent_span, docid = meta
-
-            csr.add_doc(docid, 'report', test_reader.language)
-            sent_id = csr.add_sentence(sid, sent_span)
 
             token, span = l_word_meta[center]
-
-            if last_sent and not sent_id == last_sent:
-                # New sentence, write last sent text.
-                sent_text = util.tokens_to_sent(sent_tokens,
-                                                csr.current_sentences[
-                                                    last_sent].span.begin)
-                csr.set_sentence_text(last_sent, sent_text)
-                sent_tokens.clear()
-
-            sent_tokens.append((token, span))
-            last_sent = sent_id
 
             if not event_type == self.model.unknown_type:
                 extent_span = [span[0], span[1]]
@@ -126,21 +106,24 @@ class DetectionRunner:
                     if a_span[1] > extent_span[1]:
                         extent_span[1] = a_span[1]
 
-                event_id, interp = csr.add_event_mention(sent_id, span, token,
-                                                         'aida', event_type)
+                event_info = csr.add_event_mention(span, token, 'aida',
+                                                   event_type)
 
-                for role, (index, entity_type) in args.items():
-                    a_token, a_span = l_word_meta[index]
+                if event_info:
+                    event_id, interp = event_info
+                    for role, (index, entity_type) in args.items():
+                        a_token, a_span = l_word_meta[index]
 
-                    entity_id = csr. \
-                        add_entity_mention(sent_id, a_span, a_token, 'aida',
-                                           entity_type)
+                        entity_id = csr.get_entity_mention(a_span)
 
-                    csr.add_arg(interp, event_id, entity_id, 'aida', role)
+                        if not entity_id:
+                            entity_id = csr.add_entity_mention(
+                                a_span, a_token, 'aida', entity_type
+                            )
 
-                    entity_idx += 1
-
-                event_idx += 1
+                        if entity_id:
+                            csr.add_arg(interp, event_id, entity_id, 'aida',
+                                        role)
 
 
 def main(config):

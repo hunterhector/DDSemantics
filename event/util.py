@@ -41,8 +41,7 @@ def basic_parser():
                         type=lambda s: [item for item in s.split(',')])
     parser.add_argument('--dev_files',
                         type=lambda s: [item for item in s.split(',')])
-    parser.add_argument('--test_files',
-                        type=lambda s: [item for item in s.split(',')])
+    parser.add_argument('--test_folder', type=str)
 
     parser.add_argument('--output', type=str)
 

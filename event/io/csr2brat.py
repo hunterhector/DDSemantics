@@ -30,7 +30,6 @@ def construct_text(doc_sentences):
     return doc_texts
 
 
-
 def strip_ns(name):
     return name.split(':', 1)[1]
 
@@ -94,7 +93,8 @@ class CrsConverter:
                 elif frame_type == 'relation_mention':
                     relations.append((get_type(frame), frame['interp']['args']))
 
-            self.data = doc_sentences, event_mentions, event_args, entity_mentions, relations
+            self.data = doc_sentences, event_mentions, event_args, \
+                        entity_mentions, relations
 
     def write_brat(self, output_dir):
         if not os.path.exists(output_dir):
@@ -128,8 +128,8 @@ class CrsConverter:
                         onto, raw_type = entity_type.split(':')
                         full_type = onto + '_' + raw_type
 
-                        if not entity_type == 'tac:arg':
-                            continue
+                        # if not entity_type == 'tac:arg':
+                        #     continue
 
                         entity_types[onto].add(full_type)
 
@@ -176,8 +176,8 @@ class CrsConverter:
                                     arg_anno = arg_type + ':' + entity2tid[
                                         arg_entity]
                                     event_anno += ' ' + arg_anno
-                                    event_types[onto][full_type].add(
-                                        arg_type + ':tac_arg')
+                                    # input(entity_types[arg_entity])
+                                    event_types[onto][full_type].add(arg_type)
                         event_anno += '\n'
 
                         text_bound_index += 1
@@ -195,12 +195,14 @@ class CrsConverter:
                     out.write('\t' + t + '\n')
 
             out.write('[relations]\n\n')
+            out.write(
+                '<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, <OVL-TYPE>:<ANY>\n\n')
 
             out.write('[attributes]\n\n')
 
             out.write('[events]\n\n')
             out.write('#Definition of events.\n\n')
-            out.write('other_event\trelation:tac_arg\n')
+            out.write('other_event\trelation:<ENTITY>\n')
 
             for onto, type_args in event_types.items():
                 out.write('!{}\n'.format(onto + '_event'))
@@ -209,7 +211,7 @@ class CrsConverter:
                     out.write('\t' + t)
                     sep = '\t'
                     for arg in args:
-                        out.write('{}{}'.format(sep, arg))
+                        out.write('{}{}:<ENTITY>'.format(sep, arg))
                         sep = ', '
                     out.write('\n')
 

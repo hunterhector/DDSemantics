@@ -4,6 +4,17 @@ from collections import defaultdict
 import logging
 
 
+def rep(t):
+    if t == 'WEA':
+        return 'Weapon'
+    elif t == 'VEH':
+        return 'Vehicle'
+    elif t == 'null':
+        return 'GeneralEntity'
+    else:
+        return t.lower().title()
+
+
 class Jsonable:
     def json_rep(self):
         raise NotImplementedError
@@ -171,6 +182,9 @@ class EntityMention(SpanInterpFrame):
 
     def add_type(self, ontology, entity_type, score=1):
         type_interp = Interp(self.interp_type)
+
+        entity_type = rep(entity_type)
+
         type_interp.add_fields('type', 'type', ontology + ":" + entity_type,
                                score=score)
         self.interps.append(type_interp)
@@ -251,14 +265,13 @@ class CSR:
         self._docs = {}
 
         self.current_doc = None
-        self.num_sents = 0
         self.current_sentences = {}
         self.current_entities = {}
         self.current_events = {}
         self.args = defaultdict(dict)
         self.relations = {}
 
-        self._span_map = defaultdict(list)
+        self._span_map = defaultdict(dict)
 
         self.__frame_collection = [
             self._docs,
@@ -282,7 +295,7 @@ class CSR:
         self._span_map.clear()
         for frames in self.__frame_collection:
             frames.clear()
-        self.num_sents = 0
+        # self.num_sents = 0
         self.entity_index = 0
         self.event_index = 0
         self.relation_index = 0
@@ -297,68 +310,126 @@ class CSR:
         self.current_doc = doc
         self._docs[ns_docid] = doc
 
-    def add_sentence(self, sentence_index, span):
+    def add_sentence(self, sentence_index, span, text=None):
         sent_id = self.get_id('sent', sentence_index)
 
         if sent_id in self.current_sentences:
             return sent_id
 
         docid = self.current_doc.id
-        self.num_sents += 1
+        self.current_doc.num_sentences += 1
         sent = Sentence(sent_id, docid, docid, span[0], span[1] - span[0], "")
         self.current_sentences[sent_id] = sent
+
+        if text:
+            sent.text = text
 
         return sent_id
 
     def set_sentence_text(self, sent_id, text):
         self.current_sentences[sent_id].text = text
 
+    def validate_span(self, sent_id, span, text):
+        sent = self.current_sentences[sent_id]
+        sent_text = sent.text
+
+        begin = span[0] - sent.span.begin
+        end = span[1] - sent.span.begin
+        span_text = sent_text[begin: end]
+
+        if not span_text == text:
+            logging.warning(
+                "Span text: [{}] not matching given text [{}]"
+                ", at span [{}] at sent [{}]".format(
+                    span_text, text, span, sent_id)
+            )
+            return False
+
+        return True
+
     def get_sentence_by_span(self, span):
         for sent_id, sentence in self.current_sentences.items():
             sent_begin = sentence.span.begin
             sent_end = sentence.span.length + sent_begin
             if span[0] >= sent_begin and span[1] <= sent_end:
-                return sent_id, sentence
+                return sent_id
 
-    def add_entity_mention(self, sent_id, span, text, ontology, entity_type):
-        # Annotation on the same span will be reused.
+    def get_entity_mention(self, span):
         span = tuple(span)
         if span in self._span_map['entity']:
             entity_id = self._span_map['entity'][span]
             entity = self.current_entities[entity_id]
-        else:
-            entity_id = self.get_id('ent', self.entity_index)
-            self.entity_index += 1
-            sentence_start = self.current_sentences[sent_id].span.begin
-            entity = EntityMention(entity_id, sent_id, sent_id,
-                                   span[0] - sentence_start, span[1] - span[0],
-                                   text)
-            self.current_entities[entity_id] = entity
+            return entity
+        return None
 
-        entity.add_type(ontology, entity_type)
+    def add_entity_mention(self, span, text, ontology, entity_type,
+                           sent_id=None):
+        span = tuple(span)
+
+        # Annotation on the same span will be reused.
+        entity_mention = self.get_entity_mention(span)
+
+        if entity_mention:
+            entity_id = entity_mention.id
+        else:
+            if not sent_id:
+                sent_id = self.get_sentence_by_span(span)
+                if not sent_id:
+                    # No suitable sentence to cover it.
+                    return
+            valid = self.validate_span(sent_id, span, text)
+
+            if valid:
+                sentence_start = self.current_sentences[sent_id].span.begin
+                entity_id = self.get_id('ent', self.entity_index)
+                self._span_map['entity'][span] = entity_id
+
+                self.entity_index += 1
+
+                entity_mention = EntityMention(entity_id, sent_id, sent_id,
+                                               span[0] - sentence_start,
+                                               span[1] - span[0], text)
+                self.current_entities[entity_id] = entity_mention
+            else:
+                return
+
+        entity_mention.add_type(ontology, entity_type)
         return entity_id
 
-    def add_event_mention(self, sent_id, trigger_span, text, ontology,
-                          evm_type):
+    def add_event_mention(self, span, text, ontology,
+                          evm_type, sent_id=None):
         # Annotation on the same span will be reused.
-        trigger_span = tuple(trigger_span)
-        if trigger_span in self._span_map['event_id']:
-            event_id = self._span_map[trigger_span][1]
+        span = tuple(span)
+        if span in self._span_map['event']:
+            event_id = self._span_map[span][1]
             event = self.current_events[event_id]
         else:
-            event_id = self.get_id('evm', self.event_index)
-            self.event_index += 1
-            self._span_map[trigger_span] = ('event_mention', event_id)
-            sent = self.current_sentences[sent_id]
+            if not sent_id:
+                sent_id = self.get_sentence_by_span(span)
+                if not sent_id:
+                    # No suitable sentence to cover it.
+                    return
 
-            relative_begin = trigger_span[0] - sent.span.begin
-            length = trigger_span[1] - trigger_span[0]
+            valid = self.validate_span(sent_id, span, text)
 
-            event = EventMention(event_id, sent_id, sent_id,
-                                 relative_begin, length,
-                                 text)
-            event.add_trigger(relative_begin, length)
-            self.current_events[event_id] = event
+            if valid:
+                event_id = self.get_id('evm', self.event_index)
+                self._span_map['event'][span] = event_id
+
+                self.event_index += 1
+                self._span_map[span] = ('event_mention', event_id)
+                sent = self.current_sentences[sent_id]
+
+                relative_begin = span[0] - sent.span.begin
+                length = span[1] - span[0]
+
+                event = EventMention(event_id, sent_id, sent_id,
+                                     relative_begin, length,
+                                     text)
+                event.add_trigger(relative_begin, length)
+                self.current_events[event_id] = event
+            else:
+                return
 
         interp = event.add_type(ontology, evm_type)
         return event_id, interp
@@ -389,8 +460,6 @@ class CSR:
         self.header['meta']['document_id'] = self.current_doc.id
         rep.update(self.header)
         rep['frames'] = []
-
-        self.current_doc.num_sentences = self.num_sents
 
         for frames in self.__frame_collection:
             for fid, frame in frames.items():
