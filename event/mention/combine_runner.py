@@ -24,18 +24,19 @@ def add_edl_entities(edl_file, csr):
             for entity in entity_sent['namedMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
                 csr.add_entity_mention(mention_span, entity['mention'],
-                                       'aida', entity['ner'])
+                                       'aida', entity['ner'], component='EDL')
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
+                ner = 'NOM' if entity['ner'] == 'null' else entity['ner']
                 csr.add_entity_mention(mention_span, entity['headword'],
-                                       'aida', entity['ner'])
+                                       'aida', ner, component='EDL')
 
 
 def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
     evm_id, interp = csr.add_event_mention(mention_span,
                                            text, 'tac', kbp_type,
-                                           sent_id=sent_id)
+                                           sent_id=sent_id, component='tac')
 
     if len(args) > 0:
         pb_name = args[0]
@@ -46,7 +47,8 @@ def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
             arg_span, arg_text, pb_role, fn_role = arg.split(',')
             arg_span = [int(a) for a in arg_span.split('-')]
 
-            ent_id = csr.add_entity_mention(arg_span, arg_text, 'aida', 'null')
+            ent_id = csr.add_entity_mention(arg_span, arg_text, 'aida',
+                                            'GeneralEntity', component='tac')
             if ent_id:
                 if not fn_role == 'N/A':
                     csr.add_arg(interp, evm_id, ent_id, 'framenet', fn_role)
@@ -100,20 +102,40 @@ def add_tac_events(kbp_file, csr):
                 csr.add_relation('tac', csr_rel_args, rel_type)
 
 
-def read_source(source_folder, csr, language):
+def read_source(source_folder, output_dir, language):
     for source_text_path in glob.glob(source_folder + '/*.txt'):
-        sent_path = source_text_path.replace('.txt', '.sent')
-
-        with open(source_text_path) as text_in, open(sent_path) as sent_in:
+        with open(source_text_path) as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
+            print("Processing " + docid)
+
+            csr = CSR('Frames_hector_combined', 1,
+                      os.path.join(output_dir, docid + '.csr.json'), 'data')
+
             csr.add_doc(docid, 'report', language)
             text = text_in.read()
             sent_index = 0
-            for span_str in sent_in:
-                span = [int(s) for s in span_str.split(' ')]
-                csr.add_sentence(sent_index, span, text=text[span[0]: span[1]])
-                sent_index += 1
-            yield docid
+
+            sent_path = source_text_path.replace('.txt', '.sent')
+            if os.path.exists(sent_path):
+                with open(sent_path) as sent_in:
+                    for span_str in sent_in:
+                        span = [int(s) for s in span_str.split(' ')]
+                        csr.add_sentence(sent_index, span,
+                                         text=text[span[0]: span[1]])
+                        sent_index += 1
+            else:
+                begin = 0
+                sent_index = 0
+
+                sent_texts = text.split('\n')
+                sent_lengths = [len(t) for t in sent_texts]
+                for sent_text, l in zip(sent_texts, sent_lengths):
+                    if sent_text.strip():
+                        csr.add_sentence(sent_index, (begin, begin + l),
+                                         text=sent_text)
+                    begin += (l + 1)
+                    sent_index += 1
+            yield csr, docid
 
 
 def find_by_id(folder, docid):
@@ -140,14 +162,8 @@ def main(config):
     assert config.test_folder is not None
     assert config.output is not None
 
-    csr = CSR('Frames_hector_combined', 1, config.output, 'data')
-    for docid in read_source(config.source_folder, csr, config.language):
-        conll_file = find_by_id(config.test_folder, docid)
-        logging.info("Predicting with CoNLLU: {}".format(conll_file))
-        test_reader = ConllUReader([conll_file], config, token_vocab,
-                                   train_reader.tag_vocab, config.language)
-        detector.predict(test_reader, csr)
-
+    for csr, docid in read_source(config.source_folder, config.output,
+                                  config.language):
         edl_file = find_by_id(config.edl_json, docid)
         logging.info("Predicting with EDL: {}".format(edl_file))
         add_edl_entities(edl_file, csr)
@@ -155,6 +171,12 @@ def main(config):
         tbf_file = find_by_id(config.event_tbf, docid)
         logging.info("Predicting with TBF: {}".format(tbf_file))
         add_tac_events(tbf_file, csr)
+
+        conll_file = find_by_id(config.test_folder, docid)
+        logging.info("Predicting with CoNLLU: {}".format(conll_file))
+        test_reader = ConllUReader([conll_file], config, token_vocab,
+                                   train_reader.tag_vocab, config.language)
+        detector.predict(test_reader, csr)
 
         csr.write()
 

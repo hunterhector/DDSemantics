@@ -107,19 +107,15 @@ class DetectionRunner:
                         extent_span[1] = a_span[1]
 
                 event_info = csr.add_event_mention(span, token, 'aida',
-                                                   event_type)
+                                                   event_type, component='aida')
 
                 if event_info:
                     event_id, interp = event_info
                     for role, (index, entity_type) in args.items():
                         a_token, a_span = l_word_meta[index]
-
-                        entity_id = csr.get_entity_mention(a_span)
-
-                        if not entity_id:
-                            entity_id = csr.add_entity_mention(
-                                a_span, a_token, 'aida', entity_type
-                            )
+                        entity_id = csr.add_entity_mention(
+                            a_span, a_token, 'aida', entity_type
+                        )
 
                         if entity_id:
                             csr.add_arg(interp, event_id, entity_id, 'aida',

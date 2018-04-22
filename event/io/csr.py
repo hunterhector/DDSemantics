@@ -5,11 +5,7 @@ import logging
 
 
 def rep(t):
-    if t == 'WEA':
-        return 'Weapon'
-    elif t == 'VEH':
-        return 'Vehicle'
-    elif t == 'null':
+    if t == 'null':
         return 'GeneralEntity'
     else:
         return t.lower().title()
@@ -25,10 +21,11 @@ class Frame(Jsonable):
     Represent top level frame collection.
     """
 
-    def __init__(self, fid, frame_type, parent):
+    def __init__(self, fid, frame_type, parent, component=None):
         self.type = frame_type
         self.id = fid
         self.parent = parent
+        self.component = component
 
     def json_rep(self):
         rep = {
@@ -38,6 +35,9 @@ class Frame(Jsonable):
 
         if self.parent:
             rep['parent_scope'] = self.parent
+
+        if self.component:
+            rep['component'] = self.component
 
         return rep
 
@@ -111,8 +111,8 @@ class Interp(Jsonable):
 
 
 class InterpFrame(Frame):
-    def __init__(self, fid, frame_type, parent, interp_type):
-        super().__init__(fid, frame_type, parent)
+    def __init__(self, fid, frame_type, parent, interp_type, component=None):
+        super().__init__(fid, frame_type, parent, component)
         self.interp_type = interp_type
         self.interps = []
 
@@ -147,8 +147,8 @@ class Span:
 
 class SpanInterpFrame(InterpFrame):
     def __init__(self, fid, frame_type, parent, interp_type, reference, begin,
-                 length, text):
-        super().__init__(fid, frame_type, parent, interp_type)
+                 length, text, component=None):
+        super().__init__(fid, frame_type, parent, interp_type, component)
         self.span = Span(reference, begin, length)
         self.text = text
 
@@ -170,15 +170,16 @@ class SpanInterpFrame(InterpFrame):
 
 class Sentence(SpanInterpFrame):
     def __init__(self, fid, parent, reference, begin, length,
-                 text):
+                 text, component=None):
         super().__init__(fid, 'sentence', parent, 'sentence_interp', reference,
-                         begin, length, text)
+                         begin, length, text, component=component)
 
 
 class EntityMention(SpanInterpFrame):
-    def __init__(self, fid, parent, reference, begin, length, text):
+    def __init__(self, fid, parent, reference, begin, length, text,
+                 component=None):
         super().__init__(fid, 'entity_mention', parent, 'entity_mention_interp',
-                         reference, begin, length, text)
+                         reference, begin, length, text, component)
 
     def add_type(self, ontology, entity_type, score=1):
         type_interp = Interp(self.interp_type)
@@ -205,9 +206,10 @@ class Argument(Jsonable):
 
 
 class EventMention(SpanInterpFrame):
-    def __init__(self, fid, parent, reference, begin, length, text):
+    def __init__(self, fid, parent, reference, begin, length, text,
+                 component=None):
         super().__init__(fid, 'event_mention', parent, 'event_mention_interp',
-                         reference, begin, length, text)
+                         reference, begin, length, text, component=component)
         self.trigger = None
         self.args = []
 
@@ -228,9 +230,10 @@ class EventMention(SpanInterpFrame):
 
 
 class RelationMention(InterpFrame):
-    def __init__(self, fid, ontology, relation_type, arguments, score=1):
+    def __init__(self, fid, ontology, relation_type, arguments, score=1,
+                 component=None):
         super().__init__(fid, 'relation_mention', None,
-                         'relation_mention_interp')
+                         'relation_mention_interp', component=component)
         self.relation_type = relation_type
         self.arguments = arguments
         rel_interp = Interp(self.interp_type)
@@ -310,7 +313,7 @@ class CSR:
         self.current_doc = doc
         self._docs[ns_docid] = doc
 
-    def add_sentence(self, sentence_index, span, text=None):
+    def add_sentence(self, sentence_index, span, text=None, component=None):
         sent_id = self.get_id('sent', sentence_index)
 
         if sent_id in self.current_sentences:
@@ -318,11 +321,11 @@ class CSR:
 
         docid = self.current_doc.id
         self.current_doc.num_sentences += 1
-        sent = Sentence(sent_id, docid, docid, span[0], span[1] - span[0], "")
+        sent_text = text if text else ""
+        sent = Sentence(sent_id, docid, docid, span[0], span[1] - span[0],
+                        text=sent_text,
+                        component=component)
         self.current_sentences[sent_id] = sent
-
-        if text:
-            sent.text = text
 
         return sent_id
 
@@ -363,7 +366,7 @@ class CSR:
         return None
 
     def add_entity_mention(self, span, text, ontology, entity_type,
-                           sent_id=None):
+                           sent_id=None, component=None):
         span = tuple(span)
 
         # Annotation on the same span will be reused.
@@ -388,7 +391,8 @@ class CSR:
 
                 entity_mention = EntityMention(entity_id, sent_id, sent_id,
                                                span[0] - sentence_start,
-                                               span[1] - span[0], text)
+                                               span[1] - span[0], text,
+                                               component=component)
                 self.current_entities[entity_id] = entity_mention
             else:
                 return
@@ -397,7 +401,7 @@ class CSR:
         return entity_id
 
     def add_event_mention(self, span, text, ontology,
-                          evm_type, sent_id=None):
+                          evm_type, sent_id=None, component=None):
         # Annotation on the same span will be reused.
         span = tuple(span)
         if span in self._span_map['event']:
@@ -425,7 +429,7 @@ class CSR:
 
                 event = EventMention(event_id, sent_id, sent_id,
                                      relative_begin, length,
-                                     text)
+                                     text, component=component)
                 event.add_trigger(relative_begin, length)
                 self.current_events[event_id] = event
             else:
@@ -448,12 +452,13 @@ class CSR:
         ent = self.current_entities[ent_id]
         evm.add_arg(interp, ontology, arg_role, ent)
 
-    def add_relation(self, ontology, arguments, relation_type):
+    def add_relation(self, ontology, arguments, relation_type, component=None):
         relation_id = self.get_id('relm', self.relation_index)
         self.relation_index += 1
 
         self.relations[relation_id] = RelationMention(relation_id, ontology,
-                                                      relation_type, arguments)
+                                                      relation_type, arguments,
+                                                      component=component)
 
     def get_json_rep(self):
         rep = {}
