@@ -1,6 +1,6 @@
 import json
 import os
-from collections import defaultdict
+from collections import defaultdict, Counter
 import logging
 
 
@@ -191,18 +191,20 @@ class EntityMention(SpanInterpFrame):
         self.interps.append(type_interp)
 
 
-class Argument(Jsonable):
-    def __init__(self, arg_role, entity_mention):
+class Argument(Frame):
+    def __init__(self, arg_role, entity_mention, fid, component=None):
+        super().__init__(fid, 'argument', None, component=component)
         self.entity_mention = entity_mention
         self.arg_role = arg_role
 
     def json_rep(self):
-        return {
-            '@type': 'argument',
-            'type': self.arg_role,
-            'text': self.entity_mention.text,
-            'arg': self.entity_mention.id,
-        }
+        rep = super().json_rep()
+
+        rep['type'] = self.arg_role
+        rep['text'] = self.entity_mention.text
+        rep['arg'] = self.entity_mention.id
+
+        return rep
 
 
 class EventMention(SpanInterpFrame):
@@ -223,8 +225,10 @@ class EventMention(SpanInterpFrame):
         self.interps.append(interp)
         return interp
 
-    def add_arg(self, interp, ontology, arg_role, entity_mention, score=1):
-        arg = Argument(ontology + ':' + arg_role, entity_mention)
+    def add_arg(self, interp, ontology, arg_role, entity_mention, arg_id,
+                score=1, component=None):
+        arg = Argument(ontology + ':' + arg_role, entity_mention, arg_id,
+                       component=component)
         interp.add_fields('args', arg_role, arg, multi_value=True, score=score)
         return interp
 
@@ -287,9 +291,7 @@ class CSR:
 
         self.run_id = run_id
 
-        self.entity_index = 0
-        self.event_index = 0
-        self.relation_index = 0
+        self.__index_store = Counter()
 
         self.ns_prefix = namespace
         self.media_type = media_type
@@ -298,10 +300,6 @@ class CSR:
         self._span_map.clear()
         for frames in self.__frame_collection:
             frames.clear()
-        # self.num_sents = 0
-        self.entity_index = 0
-        self.event_index = 0
-        self.relation_index = 0
 
     def add_doc(self, doc_name, doc_type, language):
         ns_docid = self.ns_prefix + ":" + doc_name + "-" + self.media_type
@@ -313,8 +311,8 @@ class CSR:
         self.current_doc = doc
         self._docs[ns_docid] = doc
 
-    def add_sentence(self, sentence_index, span, text=None, component=None):
-        sent_id = self.get_id('sent', sentence_index)
+    def add_sentence(self, span, text=None, component=None):
+        sent_id = self.get_id('sent')
 
         if sent_id in self.current_sentences:
             return sent_id
@@ -384,10 +382,8 @@ class CSR:
 
             if valid:
                 sentence_start = self.current_sentences[sent_id].span.begin
-                entity_id = self.get_id('ent', self.entity_index)
+                entity_id = self.get_id('ent')
                 self._span_map['entity'][span] = entity_id
-
-                self.entity_index += 1
 
                 entity_mention = EntityMention(entity_id, sent_id, sent_id,
                                                span[0] - sentence_start,
@@ -417,10 +413,9 @@ class CSR:
             valid = self.validate_span(sent_id, span, text)
 
             if valid:
-                event_id = self.get_id('evm', self.event_index)
+                event_id = self.get_id('evm')
                 self._span_map['event'][span] = event_id
 
-                self.event_index += 1
                 self._span_map[span] = ('event_mention', event_id)
                 sent = self.current_sentences[sent_id]
 
@@ -438,7 +433,11 @@ class CSR:
         interp = event.add_type(ontology, evm_type)
         return event_id, interp
 
-    def get_id(self, prefix, index):
+    def get_id(self, prefix, index=None):
+        if not index:
+            index = self.__index_store[prefix]
+            self.__index_store[prefix] += 1
+
         return '%s:%s-%s-text-cmu-r%s-%d' % (
             self.ns_prefix,
             prefix,
@@ -447,15 +446,16 @@ class CSR:
             index,
         )
 
-    def add_arg(self, interp, evm_id, ent_id, ontology, arg_role):
+    def add_event_arg(self, interp, evm_id, ent_id, ontology, arg_role,
+                      component=None):
         evm = self.current_events[evm_id]
         ent = self.current_entities[ent_id]
-        evm.add_arg(interp, ontology, arg_role, ent)
+        arg_id = self.get_id('arg')
+        evm.add_arg(interp, ontology, arg_role, ent, arg_id,
+                    component=component)
 
     def add_relation(self, ontology, arguments, relation_type, component=None):
-        relation_id = self.get_id('relm', self.relation_index)
-        self.relation_index += 1
-
+        relation_id = self.get_id('relm')
         self.relations[relation_id] = RelationMention(relation_id, ontology,
                                                       relation_type, arguments,
                                                       component=component)

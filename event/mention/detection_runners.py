@@ -118,8 +118,8 @@ class DetectionRunner:
                         )
 
                         if entity_id:
-                            csr.add_arg(interp, event_id, entity_id, 'aida',
-                                        role)
+                            csr.add_event_arg(interp, event_id, entity_id,
+                                              'aida', role, 'Implicit')
 
 
 def main(config):

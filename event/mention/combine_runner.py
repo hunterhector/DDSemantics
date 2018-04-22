@@ -51,10 +51,12 @@ def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
                                             'GeneralEntity', component='tac')
             if ent_id:
                 if not fn_role == 'N/A':
-                    csr.add_arg(interp, evm_id, ent_id, 'framenet', fn_role)
+                    csr.add_event_arg(interp, evm_id, ent_id, 'framenet',
+                                      fn_role, 'Semafor')
 
                 if not pb_role == 'N/A':
-                    csr.add_arg(interp, evm_id, ent_id, 'propbank', pb_role)
+                    csr.add_event_arg(interp, evm_id, ent_id, 'propbank',
+                                      pb_role, 'Fanse')
     return evm_id
 
 
@@ -120,8 +122,7 @@ def read_source(source_folder, output_dir, language):
                 with open(sent_path) as sent_in:
                     for span_str in sent_in:
                         span = [int(s) for s in span_str.split(' ')]
-                        csr.add_sentence(sent_index, span,
-                                         text=text[span[0]: span[1]])
+                        csr.add_sentence(span, text=text[span[0]: span[1]])
                         sent_index += 1
             else:
                 begin = 0
@@ -131,8 +132,7 @@ def read_source(source_folder, output_dir, language):
                 sent_lengths = [len(t) for t in sent_texts]
                 for sent_text, l in zip(sent_texts, sent_lengths):
                     if sent_text.strip():
-                        csr.add_sentence(sent_index, (begin, begin + l),
-                                         text=sent_text)
+                        csr.add_sentence((begin, begin + l), text=sent_text)
                     begin += (l + 1)
                     sent_index += 1
             yield csr, docid
