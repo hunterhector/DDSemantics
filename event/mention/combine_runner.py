@@ -60,6 +60,71 @@ def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
     return evm_id
 
 
+def load_salience(salience_folder):
+    raw_data_path = os.path.join(salience_folder, 'data.json')
+    salience_event_path = os.path.join(salience_folder, 'output_event.json')
+    salience_entity_path = os.path.join(salience_folder, 'output_entity.json')
+
+    events = defaultdict(list)
+    entities = defaultdict(list)
+
+    content_field = 'bodyText'
+
+    with open(raw_data_path) as raw_data:
+        for line in raw_data:
+            raw_data = json.loads(line)
+            docno = raw_data['docno']
+            for spot in raw_data['spot'][content_field]:
+                score = spot['score']
+                wiki_name = spot['wiki_name']
+                mid = spot['id']
+                span = tuple(spot['span'])
+                head_span = tuple(spot['head_span'])
+
+                entities[docno].append((mid, wiki_name, span, head_span, score))
+
+            for spot in raw_data['event'][content_field]:
+                span = tuple(spot['span'])
+                head_span = tuple(spot['head_span'])
+                surface = spot['surface']
+
+                events[docno].append((surface, span, head_span))
+
+    scored_events = {}
+    with open(salience_event_path) as event_output:
+        for line in event_output:
+            output = json.loads(line)
+            docno = output['docno']
+
+            scored_events[docno] = {}
+
+            if docno in events:
+                event_list = events[docno]
+                for (hid, score), (surface, span, head_span) in zip(
+                        output[content_field]['predict'], event_list):
+                    scored_events[docno][head_span] = (span, surface, score)
+
+    scored_entities = {}
+    with open(salience_entity_path) as entity_output:
+        for line in entity_output:
+            output = json.loads(line)
+            docno = output['docno']
+
+            scored_entities[docno] = {}
+
+            if docno in events:
+                ent_list = entities[docno]
+                for (hid, score), (
+                        mid, wiki_name, span, head_span, link_score
+                ) in zip(output[content_field]['predict'], ent_list):
+                    if link_score > 0.2:
+                        scored_entities[docno][head_span] = (
+                            span, mid, wiki_name, score
+                        )
+
+    return scored_entities, scored_events
+
+
 def add_tac_events(kbp_file, csr):
     if not kbp_file:
         return
@@ -162,6 +227,13 @@ def main(config):
     assert config.test_folder is not None
     assert config.output is not None
 
+    scored_entities, scored_events = load_salience(config.salience_data)
+
+    print(scored_events)
+    print(scored_entities)
+
+    input("Wait")
+
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
         edl_file = find_by_id(config.edl_json, docid)
@@ -188,6 +260,7 @@ if __name__ == '__main__':
     parser.add_argument('--source_folder', type=str)
     parser.add_argument('--event_tbf', type=str)
     parser.add_argument('--edl_json', type=str)
+    parser.add_argument('--salience_data', type=str)
 
     arguments = parser.parse_args()
 
