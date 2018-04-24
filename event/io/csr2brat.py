@@ -2,6 +2,7 @@ import json
 from collections import defaultdict
 import os
 import sys
+from event.io.csr import Constants
 
 
 def get_span(frame):
@@ -10,8 +11,24 @@ def get_span(frame):
     return begin, end
 
 
-def get_type(frame):
-    return frame['interp']['type']
+def get_type(frame, default_value):
+    t = frame.get('interp', {}).get('type', default_value)
+
+    if t is not None:
+        if isinstance(t, str):
+            return t
+        else:
+            t = frame.get('interp', {}).get('type', {}).get('value',
+                                                            default_value)
+            return t
+
+
+def get_arg_entity(arg_frame):
+    if 'arg' in arg_frame:
+        return arg_frame['arg'], arg_frame['type']
+    else:
+        return arg_frame.get('value', {}).get('arg', None), \
+               arg_frame.get('value', {}).get('type', None)
 
 
 def construct_text(doc_sentences):
@@ -77,21 +94,27 @@ class CrsConverter:
                     parent = frame['parent_scope']
                     fid = frame['@id']
                     event_mentions[parent][fid] = (
-                        get_span(frame), get_type(frame), frame['text'])
-
+                        get_span(frame),
+                        get_type(frame, Constants.GENERAL_EVENT_TYPE),
+                        frame['text']
+                    )
                     if 'args' in frame['interp']:
                         for arg in frame['interp']['args']:
-                            arg_entity = arg['arg']
-                            arg_type = arg['type']
+                            arg_entity, arg_type = get_arg_entity(arg)
                             event_args[fid].append((arg_entity, arg_type))
 
                 elif frame_type == 'entity_mention':
                     parent = frame['parent_scope']
                     fid = frame['@id']
                     entity_mentions[parent][fid] = (
-                        get_span(frame), get_type(frame), frame['text'])
+                        get_span(frame),
+                        get_type(frame, Constants.GENERAL_ENTITY_TYPE),
+                        frame['text']
+                    )
                 elif frame_type == 'relation_mention':
-                    relations.append((get_type(frame), frame['interp']['args']))
+                    relations.append((get_type(frame,
+                                               Constants.GENERAL_REL_TYPE),
+                                      frame['interp']['args']))
 
             self.data = doc_sentences, event_mentions, event_args, \
                         entity_mentions, relations

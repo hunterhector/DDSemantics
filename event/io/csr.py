@@ -4,9 +4,15 @@ from collections import defaultdict, Counter
 import logging
 
 
-def rep(t):
+class Constants:
+    GENERAL_ENTITY_TYPE = 'aida:General_Entity'
+    GENERAL_EVENT_TYPE = 'aida:General_Event'
+    GENERAL_REL_TYPE = 'aida:General_Rel'
+
+
+def fix_entity_type(t):
     if t == 'null':
-        return 'GeneralEntity'
+        return Constants.GENERAL_ENTITY_TYPE
     else:
         return t.lower().title()
 
@@ -67,44 +73,69 @@ class Document(Frame):
 class Interp(Jsonable):
     def __init__(self, interp_type):
         self.interp_type = interp_type
-        self.fields = defaultdict(lambda: defaultdict(list))
-        self.multi_field = set()
+        self.fields = defaultdict(lambda: defaultdict(dict))
+        self.multi_value_fields = set()
 
-    def add_fields(self, name, key, content, multi_value=False, score=1):
-        self.fields[name][key].append((content, score))
+    def add_fields(self, name, key_name, key, content,
+                   component=None, score=None, multi_value=False):
+        # If the key is the same, then the two interps are consider the same.
+        self.fields[name][key_name][key] = {
+            'content': content, 'component': component, 'score': score
+        }
         if multi_value:
-            self.multi_field.add(name)
+            self.multi_value_fields.add(name)
 
     def json_rep(self):
         rep = {
             '@type': self.interp_type,
         }
-        for field_name, content in self.fields.items():
+        for field_name, field_info in self.fields.items():
             field_data = []
-            for key, values in content.items():
-                if len(values) > 1:
-                    field = {'@type': 'xor', 'args': []}
-                    for v, score in values:
-                        v_str = v.json_rep() if isinstance(v,
-                                                           Jsonable) else str(v)
-                        field['args'].append(
-                            {
-                                '@type': 'facet',
-                                'value': v_str,
-                                'score': score,
-                            }
-                        )
-                else:
-                    v, score = [v for v in values][0]
-                    v_str = v.json_rep() if isinstance(v, Jsonable) else str(v)
 
-                    # Facet repr is too verbose.
-                    # field = {'@type': 'facet', 'value': v_str, 'score': score}
-                    field = v_str
+            for key_name, keyed_content in field_info.items():
+                if len(keyed_content) > 1:
+                    # Multiple interpretation found.
+                    field = {'@type': 'xor', 'args': []}
+
+                    for key, value in keyed_content.items():
+                        v = value['content']
+                        score = value['score']
+                        component = value['component']
+                        v_str = v.json_rep() if \
+                            isinstance(v, Jsonable) else str(v)
+                        r = {
+                            '@type': 'facet',
+                            'value': v_str,
+                        }
+                        if score:
+                            r['score'] = score
+                        if component:
+                            r['component'] = component
+
+                        field['args'].append(r)
+                else:
+                    # Single interpretation.
+                    for key, value in keyed_content.items():
+                        v = value['content']
+                        score = value['score']
+                        component = value['component']
+                        v_str = v.json_rep() if \
+                            isinstance(v, Jsonable) else str(v)
+
+                        # Facet repr is too verbose.
+                        if component or score:
+                            field = {'@type': 'facet', 'value': v_str}
+                            if score:
+                                field['score'] = score
+                            if component:
+                                field['component'] = component
+                        else:
+                            field = v_str
+
                 field_data.append(field)
 
-            if field_name not in self.multi_field:
-                field_data = field_data[0] if len(field_data) else ""
+            if field_name not in self.multi_value_fields:
+                field_data = field_data[0]
 
             rep[field_name] = field_data
         return rep
@@ -114,14 +145,15 @@ class InterpFrame(Frame):
     def __init__(self, fid, frame_type, parent, interp_type, component=None):
         super().__init__(fid, frame_type, parent, component)
         self.interp_type = interp_type
-        self.interps = []
+        # self.interps = []
+        self.interp = Interp(interp_type)
 
     def json_rep(self):
         rep = super().json_rep()
-        if self.interps:
-            rep['interp'] = {}
-            for interp in self.interps:
-                rep['interp'].update(interp.json_rep())
+        if self.interp:
+            rep['interp'] = self.interp.json_rep()
+            # for interp in self.interps:
+            #     rep['interp'].update(interp.json_rep())
         return rep
 
 
@@ -181,14 +213,21 @@ class EntityMention(SpanInterpFrame):
         super().__init__(fid, 'entity_mention', parent, 'entity_mention_interp',
                          reference, begin, length, text, component)
 
-    def add_type(self, ontology, entity_type, score=1):
-        type_interp = Interp(self.interp_type)
+    def add_type(self, ontology, entity_type, score=None, component=None):
+        # type_interp = Interp(self.interp_type)
+        entity_type = fix_entity_type(entity_type)
+        onto_type = ontology + ":" + entity_type
+        self.interp.add_fields('type', 'type', onto_type, onto_type,
+                               score=score, component=component)
+        # input("Added entity type for {}, {}".format(self.id, self.text))
 
-        entity_type = rep(entity_type)
+    def add_linking(self, mid, wiki, score, component=None):
+        self.interp.add_fields('db_reference', 'db_reference', mid,
+                               {'freebase': mid, 'wikipedia': wiki, },
+                               score=score, component=component)
 
-        type_interp.add_fields('type', 'type', ontology + ":" + entity_type,
-                               score=score)
-        self.interps.append(type_interp)
+    def add_salience(self, salience_score):
+        self.interp.add_fields('salience', 'score', 'score', salience_score)
 
 
 class Argument(Frame):
@@ -218,19 +257,21 @@ class EventMention(SpanInterpFrame):
     def add_trigger(self, begin, length):
         self.trigger = Span(self.span.reference, begin, length)
 
-    def add_type(self, ontology, event_type, score=1):
-        interp = Interp(self.interp_type)
-        interp.add_fields('type', 'type', ontology + ":" + event_type,
-                          score=score)
-        self.interps.append(interp)
-        return interp
+    def add_type(self, ontology, event_type, score=None, component=None):
+        # interp = Interp(self.interp_type)
+        onto_type = ontology + ":" + event_type
+        self.interp.add_fields('type', 'type', onto_type, onto_type,
+                               score=score, component=component)
 
     def add_arg(self, interp, ontology, arg_role, entity_mention, arg_id,
-                score=1, component=None):
+                score=None, component=None):
         arg = Argument(ontology + ':' + arg_role, entity_mention, arg_id,
                        component=component)
-        interp.add_fields('args', arg_role, arg, multi_value=True, score=score)
-        return interp
+        interp.add_fields('args', arg_role, entity_mention.id, arg,
+                          score=score, component=component, multi_value=True)
+
+    def add_salience(self, salience_score):
+        self.interp.add_fields('salience', 'score', 'score', salience_score)
 
 
 class RelationMention(InterpFrame):
@@ -240,12 +281,13 @@ class RelationMention(InterpFrame):
                          'relation_mention_interp', component=component)
         self.relation_type = relation_type
         self.arguments = arguments
-        rel_interp = Interp(self.interp_type)
-        rel_interp.add_fields('type', 'type', ontology + ":" + relation_type,
-                              score=score)
-        rel_interp.add_fields('args', relation_type, arguments,
-                              multi_value=False, score=score)
-        self.interps.append(rel_interp)
+
+        onto_type = ontology + ":" + relation_type
+        self.interp.add_fields('type', 'type', onto_type, onto_type,
+                               score=score)
+        self.interp.add_fields('args', 'args', relation_type, arguments,
+                               score=score)
+        # self.interp.append(rel_interp)
 
 
 class CSR:
@@ -272,22 +314,9 @@ class CSR:
         self._docs = {}
 
         self.current_doc = None
-        self.current_sentences = {}
-        self.current_entities = {}
-        self.current_events = {}
-        self.args = defaultdict(dict)
-        self.relations = {}
 
-        self._span_map = defaultdict(dict)
-
-        self.__frame_collection = [
-            self._docs,
-            self.current_sentences,
-            self.current_entities,
-            self.current_events,
-            self.args,
-            self.relations,
-        ]
+        self._span_frame_map = defaultdict(dict)
+        self._frame_map = defaultdict(dict)
 
         self.run_id = run_id
 
@@ -296,10 +325,14 @@ class CSR:
         self.ns_prefix = namespace
         self.media_type = media_type
 
+        self.__entity_key = 'entity'
+        self.__event_key = 'event'
+        self.__sent_key = 'sentence'
+        self.__rel_key = 'relation'
+
     def clear(self):
-        self._span_map.clear()
-        for frames in self.__frame_collection:
-            frames.clear()
+        self._span_frame_map.clear()
+        self._frame_map.clear()
 
     def add_doc(self, doc_name, doc_type, language):
         ns_docid = self.ns_prefix + ":" + doc_name + "-" + self.media_type
@@ -314,7 +347,7 @@ class CSR:
     def add_sentence(self, span, text=None, component=None):
         sent_id = self.get_id('sent')
 
-        if sent_id in self.current_sentences:
+        if sent_id in self._frame_map[self.__sent_key]:
             return sent_id
 
         docid = self.current_doc.id
@@ -323,15 +356,15 @@ class CSR:
         sent = Sentence(sent_id, docid, docid, span[0], span[1] - span[0],
                         text=sent_text,
                         component=component)
-        self.current_sentences[sent_id] = sent
+        self._frame_map[self.__sent_key][sent_id] = sent
 
         return sent_id
 
     def set_sentence_text(self, sent_id, text):
-        self.current_sentences[sent_id].text = text
+        self._frame_map[self.__sent_key][sent_id].text = text
 
     def validate_span(self, sent_id, span, text):
-        sent = self.current_sentences[sent_id]
+        sent = self._frame_map[self.__sent_key][sent_id]
         sent_text = sent.text
 
         begin = span[0] - sent.span.begin
@@ -349,30 +382,29 @@ class CSR:
         return True
 
     def get_sentence_by_span(self, span):
-        for sent_id, sentence in self.current_sentences.items():
+        for sent_id, sentence in self._frame_map[self.__sent_key].items():
             sent_begin = sentence.span.begin
             sent_end = sentence.span.length + sent_begin
             if span[0] >= sent_begin and span[1] <= sent_end:
                 return sent_id
 
-    def get_entity_mention(self, span):
+    def get_by_span(self, object_type, span):
         span = tuple(span)
-        if span in self._span_map['entity']:
-            entity_id = self._span_map['entity'][span]
-            entity = self.current_entities[entity_id]
-            return entity
+        if span in self._span_frame_map[object_type]:
+            eid = self._span_frame_map[object_type][span]
+            e = self._frame_map[object_type][eid]
+            return e
         return None
 
-    def add_entity_mention(self, span, text, ontology, entity_type,
+    def add_entity_mention(self, head_span, span, text, ontology, entity_type,
                            sent_id=None, component=None):
+        head_span = tuple(head_span)
         span = tuple(span)
 
         # Annotation on the same span will be reused.
-        entity_mention = self.get_entity_mention(span)
+        entity_mention = self.get_by_span(self.__entity_key, head_span)
 
-        if entity_mention:
-            entity_id = entity_mention.id
-        else:
+        if not entity_mention:
             if not sent_id:
                 sent_id = self.get_sentence_by_span(span)
                 if not sent_id:
@@ -381,28 +413,33 @@ class CSR:
             valid = self.validate_span(sent_id, span, text)
 
             if valid:
-                sentence_start = self.current_sentences[sent_id].span.begin
+                sentence_start = self._frame_map[self.__sent_key][
+                    sent_id].span.begin
                 entity_id = self.get_id('ent')
-                self._span_map['entity'][span] = entity_id
+                self._span_frame_map[self.__entity_key][span] = entity_id
 
                 entity_mention = EntityMention(entity_id, sent_id, sent_id,
                                                span[0] - sentence_start,
                                                span[1] - span[0], text,
                                                component=component)
-                self.current_entities[entity_id] = entity_mention
+                self._frame_map[self.__entity_key][entity_id] = entity_mention
             else:
                 return
 
-        entity_mention.add_type(ontology, entity_type)
-        return entity_id
+        if entity_type:
+            entity_mention.add_type(ontology, entity_type, component=component)
+        return entity_mention
 
-    def add_event_mention(self, span, text, ontology,
+    def add_event_mention(self, head_span, span, text, ontology,
                           evm_type, sent_id=None, component=None):
         # Annotation on the same span will be reused.
+        head_span = tuple(head_span)
         span = tuple(span)
-        if span in self._span_map['event']:
-            event_id = self._span_map[span][1]
-            event = self.current_events[event_id]
+
+        evm = self.get_by_span(self.__event_key, head_span)
+
+        if evm:
+            event_id = evm.id
         else:
             if not sent_id:
                 sent_id = self.get_sentence_by_span(span)
@@ -414,24 +451,23 @@ class CSR:
 
             if valid:
                 event_id = self.get_id('evm')
-                self._span_map['event'][span] = event_id
-
-                self._span_map[span] = ('event_mention', event_id)
-                sent = self.current_sentences[sent_id]
+                self._span_frame_map[self.__event_key][span] = event_id
+                sent = self._frame_map[self.__sent_key][sent_id]
 
                 relative_begin = span[0] - sent.span.begin
                 length = span[1] - span[0]
 
-                event = EventMention(event_id, sent_id, sent_id,
-                                     relative_begin, length,
-                                     text, component=component)
-                event.add_trigger(relative_begin, length)
-                self.current_events[event_id] = event
+                evm = EventMention(event_id, sent_id, sent_id,
+                                   relative_begin, length,
+                                   text, component=component)
+                evm.add_trigger(relative_begin, length)
+                self._frame_map[self.__event_key][event_id] = evm
             else:
                 return
 
-        interp = event.add_type(ontology, evm_type)
-        return event_id, interp
+        if evm_type:
+            evm.add_type(ontology, evm_type, component=component)
+        return evm
 
     def get_id(self, prefix, index=None):
         if not index:
@@ -448,26 +484,25 @@ class CSR:
 
     def add_event_arg(self, interp, evm_id, ent_id, ontology, arg_role,
                       component=None):
-        evm = self.current_events[evm_id]
-        ent = self.current_entities[ent_id]
+        evm = self._frame_map[self.__event_key][evm_id]
+        ent = self._frame_map[self.__entity_key][ent_id]
         arg_id = self.get_id('arg')
         evm.add_arg(interp, ontology, arg_role, ent, arg_id,
                     component=component)
 
     def add_relation(self, ontology, arguments, relation_type, component=None):
         relation_id = self.get_id('relm')
-        self.relations[relation_id] = RelationMention(relation_id, ontology,
-                                                      relation_type, arguments,
-                                                      component=component)
+        rel = RelationMention(relation_id, ontology, relation_type, arguments,
+                              component=component)
+        self._frame_map[self.__rel_key][relation_id] = rel
 
     def get_json_rep(self):
         rep = {}
         self.header['meta']['document_id'] = self.current_doc.id
         rep.update(self.header)
-        rep['frames'] = []
-
-        for frames in self.__frame_collection:
-            for fid, frame in frames.items():
+        rep['frames'] = [self.current_doc.json_rep()]
+        for frame_type, frame_info in self._frame_map.items():
+            for fid, frame in frame_info.items():
                 rep['frames'].append(frame.json_rep())
 
         return rep

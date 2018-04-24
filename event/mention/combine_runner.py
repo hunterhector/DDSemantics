@@ -23,20 +23,24 @@ def add_edl_entities(edl_file, csr):
 
             for entity in entity_sent['namedMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
-                csr.add_entity_mention(mention_span, entity['mention'],
-                                       'aida', entity['ner'], component='EDL')
+                head_span = [int(s) for s in entity['head_span'].split('-')]
+                csr.add_entity_mention(head_span, mention_span,
+                                       entity['mention'], 'aida', entity['ner'],
+                                       component='EDL')
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
+                head_span = [int(s) for s in entity['head_span'].split('-')]
                 ner = 'NOM' if entity['ner'] == 'null' else entity['ner']
-                csr.add_entity_mention(mention_span, entity['headword'],
-                                       'aida', ner, component='EDL')
+                csr.add_entity_mention(head_span, mention_span,
+                                       entity['headword'], 'aida', ner,
+                                       component='EDL')
 
 
 def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
-    evm_id, interp = csr.add_event_mention(mention_span,
-                                           text, 'tac', kbp_type,
-                                           sent_id=sent_id, component='tac')
+    evm = csr.add_event_mention(mention_span, mention_span,
+                                text, 'tac', kbp_type,
+                                sent_id=sent_id, component='tac')
 
     if len(args) > 0:
         pb_name = args[0]
@@ -47,17 +51,17 @@ def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
             arg_span, arg_text, pb_role, fn_role = arg.split(',')
             arg_span = [int(a) for a in arg_span.split('-')]
 
-            ent_id = csr.add_entity_mention(arg_span, arg_text, 'aida',
-                                            'GeneralEntity', component='tac')
-            if ent_id:
+            ent = csr.add_entity_mention(arg_span, arg_span, arg_text,
+                                         'aida', None, component='tac')
+            if ent.id:
                 if not fn_role == 'N/A':
-                    csr.add_event_arg(interp, evm_id, ent_id, 'framenet',
+                    csr.add_event_arg(evm.interp, evm.id, ent.id, 'framenet',
                                       fn_role, 'Semafor')
 
                 if not pb_role == 'N/A':
-                    csr.add_event_arg(interp, evm_id, ent_id, 'propbank',
+                    csr.add_event_arg(evm.interp, evm.id, ent.id, 'propbank',
                                       pb_role, 'Fanse')
-    return evm_id
+    return evm
 
 
 def load_salience(salience_folder):
@@ -75,20 +79,23 @@ def load_salience(salience_folder):
             raw_data = json.loads(line)
             docno = raw_data['docno']
             for spot in raw_data['spot'][content_field]:
-                score = spot['score']
-                wiki_name = spot['wiki_name']
-                mid = spot['id']
-                span = tuple(spot['span'])
-                head_span = tuple(spot['head_span'])
-
-                entities[docno].append((mid, wiki_name, span, head_span, score))
+                entities[docno].append({
+                    'mid': spot['id'],
+                    'wiki': spot['wiki_name'],
+                    'span': tuple(spot['span']),
+                    'head_span': tuple(spot['head_span']),
+                    'score': spot['score'],
+                    'text': spot['surface']
+                })
 
             for spot in raw_data['event'][content_field]:
-                span = tuple(spot['span'])
-                head_span = tuple(spot['head_span'])
-                surface = spot['surface']
-
-                events[docno].append((surface, span, head_span))
+                events[docno].append(
+                    {
+                        'text': spot['surface'],
+                        'span': tuple(spot['span']),
+                        'head_span': tuple(spot['head_span']),
+                    }
+                )
 
     scored_events = {}
     with open(salience_event_path) as event_output:
@@ -100,9 +107,13 @@ def load_salience(salience_folder):
 
             if docno in events:
                 event_list = events[docno]
-                for (hid, score), (surface, span, head_span) in zip(
+                for (hid, score), event_info in zip(
                         output[content_field]['predict'], event_list):
-                    scored_events[docno][head_span] = (span, surface, score)
+                    scored_events[docno][event_info['head_span']] = {
+                        'span': event_info['span'],
+                        'salience': score,
+                        'text': event_info['text']
+                    }
 
     scored_entities = {}
     with open(salience_entity_path) as entity_output:
@@ -114,13 +125,20 @@ def load_salience(salience_folder):
 
             if docno in events:
                 ent_list = entities[docno]
-                for (hid, score), (
-                        mid, wiki_name, span, head_span, link_score
-                ) in zip(output[content_field]['predict'], ent_list):
-                    if link_score > 0.2:
-                        scored_entities[docno][head_span] = (
-                            span, mid, wiki_name, score
-                        )
+                for (hid, score), (entity_info) in zip(
+                        output[content_field]['predict'], ent_list):
+
+                    link_score = entity_info['score']
+
+                    if link_score > 0.15:
+                        scored_entities[docno][entity_info['head_span']] = {
+                            'span': entity_info['span'],
+                            'mid': entity_info['mid'],
+                            'wiki': entity_info['wiki'],
+                            'salience': score,
+                            'link_score': entity_info['score'],
+                            'text': entity_info['text'],
+                        }
 
     return scored_entities, scored_events
 
@@ -159,9 +177,9 @@ def add_tac_events(kbp_file, csr):
 
                 sent_id = csr.get_sentence_by_span(mention_span)
                 if sent_id:
-                    csr_e_id = add_tac_event(csr, sent_id, mention_span, text,
-                                             kbp_type, parts[7:])
-                    evms[kbp_eid] = csr_e_id
+                    csr_evm = add_tac_event(csr, sent_id, mention_span, text,
+                                            kbp_type, parts[7:])
+                    evms[kbp_eid] = csr_evm.id
 
         for rel_type, relations in relations.items():
             for rel_args in relations:
@@ -203,6 +221,27 @@ def read_source(source_folder, output_dir, language):
             yield csr, docid
 
 
+def add_entity_salience(csr, entity_salience_info):
+    for span, data in entity_salience_info.items():
+        entity = csr.get_by_span('entity', span)
+        if not entity:
+            entity = csr.add_entity_mention(span, data['span'], data['text'],
+                                            'aida', None,
+                                            component='tagme')
+        entity.add_salience(data['salience'])
+        entity.add_linking(data['mid'], data['wiki'], data['link_score'],
+                           component='tagme')
+
+
+def add_event_salience(csr, event_salience_info):
+    for span, data in event_salience_info.items():
+        event = csr.get_by_span('event', span)
+        if not event:
+            event = csr.add_event_mention(span, data['span'], data['text'],
+                                          'aida', None, component='tagme')
+            event.add_salience(data['salience'])
+
+
 def find_by_id(folder, docid):
     for filename in os.listdir(folder):
         if filename.startswith(docid):
@@ -229,11 +268,6 @@ def main(config):
 
     scored_entities, scored_events = load_salience(config.salience_data)
 
-    print(scored_events)
-    print(scored_entities)
-
-    input("Wait")
-
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
         edl_file = find_by_id(config.edl_json, docid)
@@ -244,12 +278,14 @@ def main(config):
         logging.info("Predicting with TBF: {}".format(tbf_file))
         add_tac_events(tbf_file, csr)
 
+        add_entity_salience(csr, scored_entities[docid])
+        add_event_salience(csr, scored_events[docid])
+
         conll_file = find_by_id(config.test_folder, docid)
         logging.info("Predicting with CoNLLU: {}".format(conll_file))
         test_reader = ConllUReader([conll_file], config, token_vocab,
                                    train_reader.tag_vocab, config.language)
         detector.predict(test_reader, csr)
-
         csr.write()
 
 
