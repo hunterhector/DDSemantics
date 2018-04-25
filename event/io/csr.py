@@ -275,7 +275,7 @@ class EventMention(SpanInterpFrame):
 
 
 class RelationMention(InterpFrame):
-    def __init__(self, fid, ontology, relation_type, arguments, score=1,
+    def __init__(self, fid, ontology, relation_type, arguments, score=None,
                  component=None):
         super().__init__(fid, 'relation_mention', None,
                          'relation_mention_interp', component=component)

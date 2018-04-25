@@ -68,10 +68,21 @@ def add_rich_events(rich_event_file, csr):
     with open(rich_event_file) as fin:
         rich_event_info = json.load(fin)
 
-        ents = {}
-        for ent in rich_event_info['entityMentions']:
-            ents[ent['id']] = ent
+        rich_entities = {}
+        ent_by_id = {}
+        for rich_ent in rich_event_info['entityMentions']:
+            eid = rich_ent['id']
+            rich_entities[eid] = rich_ent
+            span = rich_ent['span']
+            sent_id = csr.get_sentence_by_span(span)
 
+            ent = csr.add_entity_mention(rich_ent['headWord']['span'], span,
+                                         rich_ent['text'], 'conll',
+                                         rich_ent.get('type', None),
+                                         sent_id, component='stanford')
+            ent_by_id[eid] = ent
+
+        evm_by_id = {}
         for mention in rich_event_info['eventMentions']:
             head_span = mention['headWord']['span']
             arguments = mention['arguments']
@@ -84,10 +95,13 @@ def add_rich_events(rich_event_file, csr):
                                         mention['type'], sent_id=sent_id,
                                         component='tac')
 
+            eid = mention['id']
+            evm_by_id[eid] = evm
+
             for argument in arguments:
                 entity_id = argument['entityId']
                 roles = argument['roles']
-                arg_ent = ents[entity_id]
+                arg_ent = rich_entities[entity_id]
 
                 arg_span = arg_ent['span']
                 arg_head_span = arg_ent['headWord']['span']
@@ -98,17 +112,24 @@ def add_rich_events(rich_event_file, csr):
                                              arg_ent['text'], 'aida', ent_type,
                                              component='tac')
                 if ent.id:
-
                     for role in roles:
                         onto_name, role_name = role.split(':')
                         if onto_name == 'fn':
-
                             csr.add_event_arg(evm.interp, evm.id, ent.id,
                                               'framenet', role_name, 'Semafor')
 
                         elif onto_name == 'pb':
                             csr.add_event_arg(evm.interp, evm.id, ent.id,
                                               'propbank', role_name, 'Fanse')
+
+        for relation in rich_event_info['relations']:
+            if relation['relationType'] == 'event_coreference':
+                args = [evm_by_id[i].id for i in relation['arguments']]
+                csr.add_relation('tac', args, 'event_coreference', 'hector')
+
+            if relation['relationType'] == 'entity_coreference':
+                args = [ent_by_id[i].id for i in relation['arguments']]
+                csr.add_relation('tac', args, 'entity_coreference', 'CoreNLP')
 
 
 def add_tbf_events(kbp_file, csr):
@@ -286,7 +307,7 @@ def add_event_salience(csr, event_salience_info):
         if not event:
             event = csr.add_event_mention(span, data['span'], data['text'],
                                           'aida', None, component='tagme')
-            event.add_salience(data['salience'])
+        event.add_salience(data['salience'])
 
 
 def find_by_id(folder, docid):
