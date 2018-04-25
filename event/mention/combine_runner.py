@@ -37,7 +37,7 @@ def add_edl_entities(edl_file, csr):
                                        component='EDL')
 
 
-def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
+def add_tbf_event(csr, sent_id, mention_span, text, kbp_type, args):
     evm = csr.add_event_mention(mention_span, mention_span,
                                 text, 'tac', kbp_type,
                                 sent_id=sent_id, component='tac')
@@ -62,6 +62,97 @@ def add_tac_event(csr, sent_id, mention_span, text, kbp_type, args):
                     csr.add_event_arg(evm.interp, evm.id, ent.id, 'propbank',
                                       pb_role, 'Fanse')
     return evm
+
+
+def add_rich_events(rich_event_file, csr):
+    with open(rich_event_file) as fin:
+        rich_event_info = json.load(fin)
+
+        ents = {}
+        for ent in rich_event_info['entityMentions']:
+            ents[ent['id']] = ent
+
+        for mention in rich_event_info['eventMentions']:
+            head_span = mention['headWord']['span']
+            arguments = mention['arguments']
+            span = mention['span']
+            text = mention.get('text', "")
+
+            sent_id = csr.get_sentence_by_span(span)
+
+            evm = csr.add_event_mention(head_span, span, text, 'tac',
+                                        mention['type'], sent_id=sent_id,
+                                        component='tac')
+
+            for argument in arguments:
+                entity_id = argument['entityId']
+                roles = argument['roles']
+                arg_ent = ents[entity_id]
+
+                arg_span = arg_ent['span']
+                arg_head_span = arg_ent['headWord']['span']
+
+                ent_type = arg_ent.get('type', None)
+
+                ent = csr.add_entity_mention(arg_head_span, arg_span,
+                                             arg_ent['text'], 'aida', ent_type,
+                                             component='tac')
+                if ent.id:
+
+                    for role in roles:
+                        onto_name, role_name = role.split(':')
+                        if onto_name == 'fn':
+
+                            csr.add_event_arg(evm.interp, evm.id, ent.id,
+                                              'framenet', role_name, 'Semafor')
+
+                        elif onto_name == 'pb':
+                            csr.add_event_arg(evm.interp, evm.id, ent.id,
+                                              'propbank', role_name, 'Fanse')
+
+
+def add_tbf_events(kbp_file, csr):
+    if not kbp_file:
+        return
+
+    with open(kbp_file) as kbp:
+        relations = defaultdict(list)
+        evms = {}
+
+        for line in kbp:
+            line = line.strip()
+            if line.startswith("#"):
+                if line.startswith("#BeginOfDocument"):
+                    docid = line.split()[1]
+                    # Take the non-extension docid.
+                    docid = docid.split('.')[0]
+                    # csr.add_doc(docid)
+                    relations.clear()
+                    evms.clear()
+            elif line.startswith("@"):
+                rel_type, rid, rel_args = line.split('\t')
+                rel_type = rel_type[1:]
+                rel_args = rel_args.split(',')
+                relations[rel_type].append(rel_args)
+            else:
+                parts = line.split('\t')
+                if len(parts) < 7:
+                    continue
+
+                kbp_eid = parts[2]
+                mention_span, text, kbp_type, realis = parts[3:7]
+                mention_span = [int(p) for p in mention_span.split(',')]
+
+                sent_id = csr.get_sentence_by_span(mention_span)
+                if sent_id:
+                    csr_evm = add_tbf_event(csr, sent_id, mention_span, text,
+                                            kbp_type, parts[7:])
+                    evms[kbp_eid] = csr_evm.id
+
+        for rel_type, relations in relations.items():
+            for rel_args in relations:
+                csr_rel_args = [evms[r] for r in rel_args]
+                csr.add_relation('tac', csr_rel_args, rel_type)
 
 
 def load_salience(salience_folder):
@@ -141,50 +232,6 @@ def load_salience(salience_folder):
                         }
 
     return scored_entities, scored_events
-
-
-def add_tac_events(kbp_file, csr):
-    if not kbp_file:
-        return
-
-    with open(kbp_file) as kbp:
-        relations = defaultdict(list)
-        evms = {}
-
-        for line in kbp:
-            line = line.strip()
-            if line.startswith("#"):
-                if line.startswith("BeginOfDocument"):
-                    docid = line.split()[1]
-                    # Take the non-extension docid.
-                    docid = docid.split('.')[0]
-                    csr.add_doc(docid)
-                    relations.clear()
-                    evms.clear()
-            elif line.startswith("@"):
-                rel_type, rid, rel_args = line.split('\t')
-                rel_type = rel_type[1:]
-                rel_args = rel_args.split(',')
-                relations[rel_type].append(rel_args)
-            else:
-                parts = line.split('\t')
-                if len(parts) < 7:
-                    continue
-
-                kbp_eid = parts[2]
-                mention_span, text, kbp_type, realis = parts[3:7]
-                mention_span = [int(p) for p in mention_span.split(',')]
-
-                sent_id = csr.get_sentence_by_span(mention_span)
-                if sent_id:
-                    csr_evm = add_tac_event(csr, sent_id, mention_span, text,
-                                            kbp_type, parts[7:])
-                    evms[kbp_eid] = csr_evm.id
-
-        for rel_type, relations in relations.items():
-            for rel_args in relations:
-                csr_rel_args = [evms[r] for r in rel_args]
-                csr.add_relation('tac', csr_rel_args, rel_type)
 
 
 def read_source(source_folder, output_dir, language):
@@ -274,9 +321,13 @@ def main(config):
         logging.info("Predicting with EDL: {}".format(edl_file))
         add_edl_entities(edl_file, csr)
 
-        tbf_file = find_by_id(config.event_tbf, docid)
-        logging.info("Predicting with TBF: {}".format(tbf_file))
-        add_tac_events(tbf_file, csr)
+        rich_event_file = find_by_id(config.rich_event, docid)
+        logging.info(
+            "Adding events with rich output: {}".format(rich_event_file))
+        add_rich_events(rich_event_file, csr)
+        # tbf_file = find_by_id(config.event_tbf, docid)
+        # logging.info("Predicting with TBF: {}".format(tbf_file))
+        # add_tbf_events(tbf_file, csr)
 
         add_entity_salience(csr, scored_entities[docid])
         add_event_salience(csr, scored_events[docid])
@@ -295,6 +346,7 @@ if __name__ == '__main__':
     parser = util.basic_parser()
     parser.add_argument('--source_folder', type=str)
     parser.add_argument('--event_tbf', type=str)
+    parser.add_argument('--rich_event', type=str)
     parser.add_argument('--edl_json', type=str)
     parser.add_argument('--salience_data', type=str)
 
