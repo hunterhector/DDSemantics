@@ -51,20 +51,44 @@ def add_tbf_event(csr, sent_id, mention_span, text, kbp_type, args):
             arg_span, arg_text, pb_role, fn_role = arg.split(',')
             arg_span = [int(a) for a in arg_span.split('-')]
 
-            ent = csr.add_entity_mention(arg_span, arg_span, arg_text,
-                                         'aida', None, component='tac')
-            if ent.id:
-                if not fn_role == 'N/A':
-                    csr.add_event_arg(evm.interp, evm.id, ent.id, 'framenet',
-                                      fn_role, 'Semafor')
+            if not fn_role == 'N/A':
+                csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
+                                          'framenet', fn_role,
+                                          component='Semafor')
 
-                if not pb_role == 'N/A':
-                    csr.add_event_arg(evm.interp, evm.id, ent.id, 'propbank',
-                                      pb_role, 'Fanse')
+            if not pb_role == 'N/A':
+                csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
+                                          'propbank', pb_role,
+                                          component='Fanse')
+
     return evm
 
 
-def add_rich_events(rich_event_file, csr):
+def recover_via_token(tokens, token_ids):
+    if not token_ids:
+        return None
+
+    first_token = tokens[token_ids[0]]
+    last_token = tokens[token_ids[-1]]
+
+    text = ""
+    last_end = -1
+    for tid in token_ids:
+        token_span, token_text = tokens[tid]
+
+        if not last_end == -1 and token_span[0] - last_end > 0:
+            gap = token_span[0] - last_end
+        else:
+            gap = 0
+        last_end = token_span[1]
+
+        text += ' ' * gap
+        text += token_text
+
+    return (first_token[0][0], last_token[0][1]), text
+
+
+def add_rich_events(rich_event_file, csr, provided_tokens=None):
     with open(rich_event_file) as fin:
         rich_event_info = json.load(fin)
 
@@ -73,21 +97,39 @@ def add_rich_events(rich_event_file, csr):
         for rich_ent in rich_event_info['entityMentions']:
             eid = rich_ent['id']
             rich_entities[eid] = rich_ent
-            span = rich_ent['span']
+
+            if provided_tokens:
+                span, text = recover_via_token(
+                    provided_tokens, rich_ent['tokens'])
+                head_span, head_text = recover_via_token(
+                    provided_tokens, rich_ent['headWord']['tokens'])
+            else:
+                span, text = rich_ent['span']
+                head_span, text = rich_ent['headWord']['span']
+
             sent_id = csr.get_sentence_by_span(span)
 
-            ent = csr.add_entity_mention(rich_ent['headWord']['span'], span,
-                                         rich_ent['text'], 'conll',
+            ent = csr.add_entity_mention(head_span, span, text, 'conll',
                                          rich_ent.get('type', None),
-                                         sent_id, component='stanford')
-            ent_by_id[eid] = ent
+                                         sent_id, component='corenlp')
+            if ent:
+                ent_by_id[eid] = ent
+            else:
+                print("Entity mention {} rejected.".format(text))
 
         evm_by_id = {}
         for mention in rich_event_info['eventMentions']:
-            head_span = mention['headWord']['span']
             arguments = mention['arguments']
-            span = mention['span']
-            text = mention.get('text', "")
+            # text = mention.get('text', "")
+
+            if provided_tokens:
+                span, text = recover_via_token(provided_tokens,
+                                               mention['tokens'])
+                head_span, head_text = recover_via_token(
+                    provided_tokens, mention['headWord']['tokens'])
+            else:
+                span, text = mention['span']
+                head_span, head_text = mention['headWord']['span']
 
             sent_id = csr.get_sentence_by_span(span)
 
@@ -95,32 +137,41 @@ def add_rich_events(rich_event_file, csr):
                                         mention['type'], sent_id=sent_id,
                                         component='tac')
 
-            eid = mention['id']
-            evm_by_id[eid] = evm
+            if evm:
+                eid = mention['id']
+                evm_by_id[eid] = evm
 
-            for argument in arguments:
-                entity_id = argument['entityId']
-                roles = argument['roles']
-                arg_ent = rich_entities[entity_id]
+                for argument in arguments:
+                    entity_id = argument['entityId']
+                    roles = argument['roles']
+                    arg_ent = rich_entities[entity_id]
 
-                arg_span = arg_ent['span']
-                arg_head_span = arg_ent['headWord']['span']
+                    if provided_tokens:
+                        arg_span, arg_text = recover_via_token(
+                            provided_tokens, arg_ent['tokens'])
+                        arg_head_span, _ = recover_via_token(
+                            provided_tokens, arg_ent['headWord']['tokens'])
+                    else:
+                        arg_span, arg_text = arg_ent['span']
+                        arg_head_span, _ = arg_ent['headWord']['span']
 
-                ent_type = arg_ent.get('type', None)
-
-                ent = csr.add_entity_mention(arg_head_span, arg_span,
-                                             arg_ent['text'], 'aida', ent_type,
-                                             component='tac')
-                if ent.id:
                     for role in roles:
                         onto_name, role_name = role.split(':')
-                        if onto_name == 'fn':
-                            csr.add_event_arg(evm.interp, evm.id, ent.id,
-                                              'framenet', role_name, 'Semafor')
 
+                        onto = None
+                        component = None
+                        if onto_name == 'fn':
+                            onto = "framenet"
+                            component = 'Semafor'
                         elif onto_name == 'pb':
-                            csr.add_event_arg(evm.interp, evm.id, ent.id,
-                                              'propbank', role_name, 'Fanse')
+                            onto = "propbank"
+                            component = 'propbank'
+
+                        if onto and component:
+                            csr.add_event_arg_by_span(
+                                evm, arg_head_span, arg_span, arg_text, onto,
+                                role_name, component=component
+                            )
 
         for relation in rich_event_info['relations']:
             if relation['relationType'] == 'event_coreference':
@@ -129,7 +180,7 @@ def add_rich_events(rich_event_file, csr):
 
             if relation['relationType'] == 'entity_coreference':
                 args = [ent_by_id[i].id for i in relation['arguments']]
-                csr.add_relation('tac', args, 'entity_coreference', 'CoreNLP')
+                csr.add_relation('tac', args, 'entity_coreference', 'corenlp')
 
 
 def add_tbf_events(kbp_file, csr):
@@ -291,7 +342,7 @@ def read_source(source_folder, output_dir, language):
 
 def add_entity_salience(csr, entity_salience_info):
     for span, data in entity_salience_info.items():
-        entity = csr.get_by_span('entity', span)
+        entity = csr.get_by_span(csr.entity_key, span)
         if not entity:
             entity = csr.add_entity_mention(span, data['span'], data['text'],
                                             'aida', None,
@@ -303,7 +354,7 @@ def add_entity_salience(csr, entity_salience_info):
 
 def add_event_salience(csr, event_salience_info):
     for span, data in event_salience_info.items():
-        event = csr.get_by_span('event', span)
+        event = csr.get_by_span(csr.event_key, span)
         if not event:
             event = csr.add_event_mention(span, data['span'], data['text'],
                                           'aida', None, component='tagme')
@@ -314,6 +365,22 @@ def find_by_id(folder, docid):
     for filename in os.listdir(folder):
         if filename.startswith(docid):
             return os.path.join(folder, filename)
+
+
+def token_to_span(conll_file):
+    tokens = []
+    with open(conll_file) as fin:
+        for line in fin:
+            line = line.strip()
+            if line.startswith("#"):
+                continue
+            elif line == "":
+                continue
+            else:
+                parts = line.split('\t')
+                span = tuple([int(s) for s in parts[-1].split(',')])
+                tokens.append((span, parts[1]))
+    return tokens
 
 
 def main(config):
@@ -334,26 +401,34 @@ def main(config):
     assert config.test_folder is not None
     assert config.output is not None
 
-    scored_entities, scored_events = load_salience(config.salience_data)
+    if config.salience_data:
+        scored_entities, scored_events = load_salience(config.salience_data)
+
+    if not os.path.exists(config.output):
+        os.makedirs(config.output)
 
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
-        edl_file = find_by_id(config.edl_json, docid)
-        logging.info("Predicting with EDL: {}".format(edl_file))
-        add_edl_entities(edl_file, csr)
-
-        rich_event_file = find_by_id(config.rich_event, docid)
-        logging.info(
-            "Adding events with rich output: {}".format(rich_event_file))
-        add_rich_events(rich_event_file, csr)
-        # tbf_file = find_by_id(config.event_tbf, docid)
-        # logging.info("Predicting with TBF: {}".format(tbf_file))
-        # add_tbf_events(tbf_file, csr)
-
-        add_entity_salience(csr, scored_entities[docid])
-        add_event_salience(csr, scored_events[docid])
+        if config.edl_json:
+            edl_file = find_by_id(config.edl_json, docid)
+            logging.info("Predicting with EDL: {}".format(edl_file))
+            add_edl_entities(edl_file, csr)
 
         conll_file = find_by_id(config.test_folder, docid)
+        tokens = None
+        if config.rich_event_token:
+            tokens = token_to_span(conll_file)
+
+        if config.rich_event:
+            rich_event_file = find_by_id(config.rich_event, docid)
+            logging.info(
+                "Adding events with rich output: {}".format(rich_event_file))
+            add_rich_events(rich_event_file, csr, tokens)
+
+        if config.salience_data:
+            add_entity_salience(csr, scored_entities[docid])
+            add_event_salience(csr, scored_events[docid])
+
         logging.info("Predicting with CoNLLU: {}".format(conll_file))
         test_reader = ConllUReader([conll_file], config, token_vocab,
                                    train_reader.tag_vocab, config.language)
@@ -370,6 +445,7 @@ if __name__ == '__main__':
     parser.add_argument('--rich_event', type=str)
     parser.add_argument('--edl_json', type=str)
     parser.add_argument('--salience_data', type=str)
+    parser.add_argument('--rich_event_token', default=False, type=bool)
 
     arguments = parser.parse_args()
 

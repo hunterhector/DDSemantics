@@ -112,14 +112,14 @@ class DetectionRunner:
                 if evm:
                     for role, (index, entity_type) in args.items():
                         a_token, a_span = l_word_meta[index]
-                        ent = csr.add_entity_mention(
-                            a_span, a_span, a_token, 'aida', entity_type,
-                            component='arg_finder'
-                        )
 
-                        if ent:
-                            csr.add_event_arg(evm.interp, evm.id, ent.id,
-                                              'aida', role, 'Implicit')
+                        csr.add_entity_mention(a_span, a_span, a_token, 'aida',
+                                               entity_type=entity_type,
+                                               component='implicit')
+
+                        csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
+                                                  'aida', role,
+                                                  component='Implicit')
 
 
 def main(config):
