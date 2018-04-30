@@ -1,13 +1,22 @@
 import logging
 import os
 import operator
-from collections import Counter
+from collections import Counter, defaultdict
+import json
+import gzip
+
+
+def open_func(data_in):
+    if data_in.endswith('.gz'):
+        return gzip.open
+    else:
+        return open
 
 
 class ArgFrameCollector:
     def __init__(self):
-        self.args_fe_map = {}
-        self.fe_args_map = {}
+        self.args_fe_map = defaultdict(Counter)
+        self.fe_args_map = defaultdict(Counter)
         self.fe_count = Counter()
         self.arg_count = Counter()
         self.len_arg_fields = 5
@@ -20,94 +29,65 @@ class ArgFrameCollector:
 
         num_format_errors = 0
 
-        with open(data_in) as data:
+        with open_func(data_in)(data_in, 'rt') as data:
             for line in data:
-                line = line.strip()
-                if line.startswith("#"):
-                    doc_name = line.rstrip("#")
-                    continue
-                elif line == "":
-                    continue
+                doc_info = json.loads(line)
+                doc_name = doc_info['docid']
 
                 count += 1
 
-                fields = line.split("\t")
+                for event in doc_info['events']:
+                    predicate = event['predicate']
+                    frame_name = event.get('frame', None)
 
-                if len(fields) < 3:
-                    num_format_errors += 1
-                    continue
+                    for argument in event['arguments']:
+                        syn_role = argument['dep']
+                        fe = argument['feName'].replace(' ', '_')
 
-                predicate, context, frame = fields[:3]
+                        prop_entry = (predicate, syn_role)
+                        fe_entry = (frame_name, fe)
 
-                arg_fields = fields[3:-1]
-                for arg in [arg_fields[x:x + self.len_arg_fields] for x in
-                            range(0, len(arg_fields), self.len_arg_fields)]:
-                    if len(arg) < self.len_arg_fields:
-                        num_format_errors += 1
-                        continue
+                        if not syn_role == "NA":
+                            self.arg_count[prop_entry] += 1
 
-                    prop, fe = arg[:2]
+                        if not fe == "NA":
+                            self.fe_count[fe_entry] += 1
 
-                    prop_entry = (predicate, prop)
-                    fe_entry = (frame, fe)
+                        if frame_name:
+                            self.args_fe_map[prop_entry][fe_entry] += 1
+                            self.fe_args_map[fe_entry][prop_entry] += 1
 
-                    if not prop == "NA":
-                        self.arg_count[prop_entry] += 1
-
-                    if not fe == "NA":
-                        self.fe_count[fe_entry] += 1
-
-                    # if prop == "NA":
-                    #     if fe_entry not in self.fe_args_map:
-                    #         self.fe_args_map[fe_entry] = {}
-                    #     continue
-                    #
-                    # if fe == "NA":
-                    #     if prop_entry not in self.args_fe_map:
-                    #         self.args_fe_map[prop_entry] = {}
-                    #     continue
-
-                    from_prop = {}
-                    if prop_entry in self.args_fe_map:
-                        from_prop = self.args_fe_map[prop_entry]
-                    else:
-                        self.args_fe_map[prop_entry] = from_prop
-
-                    try:
-                        from_prop[fe_entry] += 1
-                    except KeyError:
-                        from_prop[fe_entry] = 1
-
-                    from_frame = {}
-
-                    if fe_entry in self.fe_args_map:
-                        from_frame = self.fe_args_map[fe_entry]
-                    else:
-                        self.fe_args_map[fe_entry] = from_frame
-
-                    try:
-                        from_frame[prop_entry] += 1
-                    except KeyError:
-                        from_frame[prop_entry] = 1
-
-                    if count % batch == 0:
-                        logging.info("%d lines processed, %d errors." % (
-                            count, num_format_errors))
+                if count % batch == 0:
+                    logging.info("%d lines processed, %d errors." % (
+                        count, num_format_errors))
 
     def write(self, out_dir):
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
         with open(os.path.join(out_dir, 'args_frames.tsv'), 'w') as out:
-            for key, val in self.args_fe_map.items():
+            for key, count in self.arg_count.items():
+                roles = ""
+                if key in self.args_fe_map:
+                    roles = ' '.join(
+                        ['{},{}:{}'.format(p[0], p[1], c) for p, c in
+                         self.args_fe_map[key].most_common()]
+                    )
                 out.write("%s %s\t%s\n" % (
-                    ' '.join(key), self.arg_count[key], self.sorted_counts(val)
+                    ' '.join(key), count, roles
                 ))
 
         with open(os.path.join(out_dir, 'frames_args.tsv'), 'w') as out:
-            for key, val in self.fe_args_map.items():
+            for key, count in self.fe_count.items():
+                roles = ""
+                if key in self.fe_args_map:
+                    roles = ' '.join(
+                        ['{},{}:{}'.format(p[0], p[1], c) for p, c in
+                         self.fe_args_map[key].most_common()]
+                    )
+
                 out.write("%s %s\t%s\n" % (
-                    ' '.join(key), self.fe_count[key], self.sorted_counts(val)
+                    ' '.join(key), count, roles
                 ))
 
     @staticmethod
