@@ -67,7 +67,13 @@ class FrameMapper:
                     continue
 
                 fe_info, arg_info = parts
-                frame_name, fe_name, fe_count = fe_info.split()
+
+                info_parts = fe_info.split()
+                if not len(info_parts) == 3:
+                    continue
+
+                frame_name, fe_name, fe_count = info_parts
+
                 fe = (frame_name, fe_name)
 
                 seen_predicates = set()
@@ -75,16 +81,18 @@ class FrameMapper:
 
                 args = Counter()
                 for arg_count in arg_info.split(' '):
-                    arg, count = arg_count.split(":")
-                    raw_predicate, role = arg.split(',')
-                    pred_info = raw_predicate.split("_")
-                    pred = pred_info[0]
-                    if pred == 'not' and len(pred_info) > 1:
-                        pred = pred_info[1]
+                    parts = arg_count.split(":")
+                    if len(parts) == 2:
+                        arg, count = parts
+                        raw_predicate, role = arg.split(',')
+                        pred_info = raw_predicate.split("_")
+                        pred = pred_info[0]
+                        if pred == 'not' and len(pred_info) > 1:
+                            pred = pred_info[1]
 
-                    if not role == 'NA':
-                        args[(pred, role)] += int(count)
-                    seen_predicates.add(pred)
+                        if not role == 'NA':
+                            args[(pred, role)] += int(count)
+                        seen_predicates.add(pred)
 
                 sorted_args = [(pred, role, count) for ((pred, role), count) in
                                sorted(args.items(), key=operator.itemgetter(1),
