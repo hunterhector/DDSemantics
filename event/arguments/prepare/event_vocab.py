@@ -4,6 +4,7 @@ import gzip
 import json
 import pickle
 from gensim.models.word2vec import Word2Vec
+from json.decoder import JSONDecodeError
 
 
 def get_word(word, key, lookups, oovs):
@@ -16,13 +17,30 @@ def get_word(word, key, lookups, oovs):
         return oovs[key]
 
 
+def make_predicate(text):
+    return text.lower() + "-pred"
+
+
+def make_arg(text, role):
+    if not role == 'NA':
+        return text + "-" + role
+    return None
+
+
+def make_fe(frame, fe):
+    return frame + ',' + fe
+
+
 def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
     doc_count = 0
     event_count = 0
 
     with gzip.open(doc) as data, open(output_path, 'w') as out:
         for line in data:
-            doc_info = json.loads(line)
+            try:
+                doc_info = json.loads(line)
+            except JSONDecodeError:
+                continue
 
             sentence = []
 
@@ -30,10 +48,10 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                 event_count += 1
 
                 pred = get_word(event['predicate'], 'predicate', lookups, oovs)
-                frame_name = event.get('frame', None)
+                frame_name = event.get('frame')
                 frame = get_word(frame_name, 'frame', lookups, oovs)
 
-                sentence.append(pred.lower() + "-pred")
+                sentence.append(make_predicate(pred))
 
                 if include_frame:
                     sentence.append(frame)
@@ -44,11 +62,12 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
 
                     arg_text = get_word(text, 'argument', lookups, oovs)
 
-                    if not syn_role == 'NA':
+                    arg_role = make_arg(arg_text, syn_role)
+                    if arg_role is not None:
                         sentence.append(arg_text + "-" + syn_role)
 
-                    if include_frame and frame_name:
-                        fe_name = get_word(frame_name + ',' + arg['feName'],
+                    if include_frame and not frame_name == 'NA':
+                        fe_name = get_word(make_fe(frame_name, arg['feName']),
                                            'fe', lookups, oovs)
                         sentence.append(fe_name)
 
@@ -59,7 +78,9 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
             if event_count % 1000 == 0:
                 print('\rCreated sentences for {} documents, '
                       '{} events.'.format(doc_count, event_count), end='')
-    print('\n')
+
+    print('\rCreated sentences for {} documents, '
+          '{} events.\n'.format(doc_count, event_count), end='')
 
 
 def filter_by_count(counter, min_count):
@@ -120,8 +141,6 @@ def get_vocab_count(data_path):
     doc_count = 0
     event_count = 0
 
-    limits = [8000000, 40000000, 100000000]
-
     with gzip.open(data_path) as data:
         for line in data:
             doc_info = json.loads(line)
@@ -141,7 +160,8 @@ def get_vocab_count(data_path):
 
                     if not fe_name == 'NA':
                         vocab_counters['fe'][
-                            event['frame'] + ',' + fe_name] += 1
+                            make_fe(event['frame'], fe_name)
+                        ] += 1
 
                     if syn_role.startswith('prep'):
                         vocab_counters['preposition'][syn_role] += 1
@@ -150,9 +170,6 @@ def get_vocab_count(data_path):
             if doc_count % 1000 == 0:
                 print('\rCounted vocab for {} events in '
                       '{} docs.'.format(event_count, doc_count), end='')
-
-            if event_count >= limits[0]:
-                yield event_count, vocab_counters
 
     print('\n')
 

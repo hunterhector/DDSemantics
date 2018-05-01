@@ -4,6 +4,7 @@ import operator
 from collections import Counter, defaultdict
 import json
 import gzip
+from json.decoder import JSONDecodeError
 
 
 def open_func(data_in):
@@ -23,22 +24,27 @@ class ArgFrameCollector:
 
     def read_dataset(self, data_in):
         batch = 10000
-        count = 0
+        doc_count = 0
+        event_count = 0
 
         logging.info("Reading: " + data_in)
 
-        num_format_errors = 0
-
         with open_func(data_in)(data_in, 'rt') as data:
             for line in data:
-                doc_info = json.loads(line)
+                try:
+                    doc_info = json.loads(line)
+                except JSONDecodeError:
+                    continue
+
                 doc_name = doc_info['docid']
 
-                count += 1
+                doc_count += 1
 
                 for event in doc_info['events']:
                     predicate = event['predicate']
-                    frame_name = event.get('frame', None)
+                    frame_name = event.get('frame')
+
+                    event_count += 1
 
                     for argument in event['arguments']:
                         syn_role = argument['dep']
@@ -53,13 +59,16 @@ class ArgFrameCollector:
                         if not fe == "NA":
                             self.fe_count[fe_entry] += 1
 
-                        if frame_name:
+                        if not frame_name == "NA":
                             self.args_fe_map[prop_entry][fe_entry] += 1
                             self.fe_args_map[fe_entry][prop_entry] += 1
 
-                if count % batch == 0:
-                    logging.info("%d lines processed, %d errors." % (
-                        count, num_format_errors))
+                if doc_count % batch == 0:
+                    print("\rProcessed %d documents (%d events)." % (
+                        doc_count, event_count), end='')
+
+        print("\rProcessed %d documents (%d events).\n" % (
+            doc_count, event_count), end='')
 
     def write(self, out_dir):
         if not os.path.exists(out_dir):
