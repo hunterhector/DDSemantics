@@ -32,7 +32,9 @@ def hash_data(data_path, event_vocab, fe_vocab, word_vocab):
 
                 args = event['arguments']
                 for arg in args:
+                    # TODO Use the frame mapping to give a try.
                     if not arg['dep'] == 'NA':
+                        # We have to ignore this dependency.
                         aid = event_vocab[
                             make_arg(arg['represent'], arg['dep'])
                         ]
