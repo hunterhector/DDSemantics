@@ -58,6 +58,8 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
 
                 for arg in event['arguments']:
                     syn_role = arg['dep']
+                    fe = arg['feName']
+
                     text = arg['representText']
 
                     arg_text = get_word(text, 'argument', lookups, oovs)
@@ -66,8 +68,8 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                     if arg_role is not None:
                         sentence.append(arg_text + "-" + syn_role)
 
-                    if include_frame and not frame_name == 'NA':
-                        fe_name = get_word(make_fe(frame_name, arg['feName']),
+                    if include_frame and not fe == 'NA':
+                        fe_name = get_word(make_fe(frame_name, fe),
                                            'fe', lookups, oovs)
                         sentence.append(fe_name)
 
@@ -176,7 +178,7 @@ def get_vocab_count(data_path):
     return vocab_counters
 
 
-def train_event_vectors(sentence_file, vector_out_base):
+def train_event_vectors(sentence_file, vector_out_base, window_size):
     class Sentences():
         def __init__(self, sent_file):
             self.sent_file = sent_file
@@ -186,18 +188,45 @@ def train_event_vectors(sentence_file, vector_out_base):
                 for line in doc:
                     yield line.split()
 
-    model = Word2Vec(Sentences(sentence_file), workers=10)
+    model = Word2Vec(Sentences(sentence_file), workers=10, size=300,
+                     window=window_size, sample=1e-4, negative=10)
     model.save(vector_out_base + '.pickle')
     model.wv.save_word2vec_format(vector_out_base + '.vectors',
-                                  fvocab=vector_out_base + '.vocab')
+                                  fvocab=vector_out_base + '.voc')
+
+
+def load_vocab(vocab_dir):
+    lookups = {}
+    oov_words = {}
+
+    for f in os.listdir(vocab_dir):
+        if '_' in f and f.endswith('.vocab'):
+            vocab_type = f.split('_')[0]
+        elif f == 'frame.vocab':
+            vocab_type = 'frame'
+        else:
+            continue
+
+        lookups[vocab_type] = {}
+        oov_words[vocab_type] = 'unk_' + vocab_type
+
+        with open(os.path.join(vocab_dir, f)) as vocab_file:
+            index = 0
+            for line in vocab_file:
+                word, count = line.strip().split('\t')
+                lookups[vocab_type][word] = index
+                index += 1
+
+        print("Loaded {} types for {}".format(len(lookups[vocab_type]),
+                                              vocab_type))
+    return lookups, oov_words
 
 
 def main(argv):
     event_data = argv[1]
     vocab_dir = argv[2]
     data_out = argv[3]
-
-    rebuild = len(argv) > 4
+    embedding_dir = argv[4]
 
     if not os.path.exists(data_out):
         os.makedirs(data_out)
@@ -205,11 +234,9 @@ def main(argv):
     event_sentence_out = os.path.join(data_out, 'event_sentences.txt')
     frame_sentence_out = os.path.join(data_out, 'event_frame_sentences.txt')
 
-    # Count vocabulary first.
-    if rebuild:
-        if not os.path.exists(vocab_dir):
-            os.makedirs(vocab_dir)
-        print("Loading vocabulary counts.")
+    if not os.path.exists(vocab_dir):
+        os.makedirs(vocab_dir)
+        print("Counting vocabulary.")
         vocab_counters = get_vocab_count(event_data)
         for key, counter in vocab_counters.items():
             raw_vocab_path = os.path.join(vocab_dir, key + '.vocab')
@@ -224,18 +251,31 @@ def main(argv):
         with open(os.path.join(vocab_dir, 'lookups.pickle'), 'wb') as out:
             pickle.dump(lookups, out)
         print("Done filtering.")
+    else:
+        print("Will not overwrite vocabulary, using existing.")
+        lookups, oovs = load_vocab(vocab_dir)
+        print("Done loading.")
 
+    if not os.path.exists(event_sentence_out):
         print("Creating event sentences without frames.")
         create_sentences(event_data, event_sentence_out, lookups, oovs)
 
+    if not os.path.exists(frame_sentence_out):
         print("Creating event sentences with frames.")
         create_sentences(event_data, frame_sentence_out, lookups, oovs,
                          include_frame=True)
 
-    train_event_vectors(event_sentence_out,
-                        os.path.join(vocab_dir, 'event_embeddings'))
-    train_event_vectors(frame_sentence_out,
-                        os.path.join(vocab_dir, 'event_frame_embeddings'))
+    event_emb_out = os.path.join(embedding_dir, 'event_embeddings')
+    if not os.path.exists(event_emb_out):
+        print("Training embedding for event sentences.")
+        train_event_vectors(event_sentence_out, event_emb_out, window_size=10)
+
+    event_frame_emb_out = os.path.join(embedding_dir, 'event_frame_embeddings')
+    if not os.path.exists(event_frame_emb_out):
+        print("Training embedding for frame event sentences.")
+        # Use a larger window for longer frame sentences.
+        train_event_vectors(frame_sentence_out, event_frame_emb_out,
+                            window_size=15)
 
 
 if __name__ == '__main__':
