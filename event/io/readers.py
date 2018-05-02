@@ -229,7 +229,7 @@ class EventAsArgCloze:
                 event = {
                     'predicate': event_info['predicate'],
                     'predicate_context': event_info['context'],
-                    'frame': event_info['frame'],
+                    'frame': event_info.get('frame', 'NA'),
                     'arguments': [],
                 }
 

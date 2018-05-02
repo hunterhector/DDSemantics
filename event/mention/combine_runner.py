@@ -439,7 +439,7 @@ def main(config):
 if __name__ == '__main__':
     from event import util
 
-    parser = util.basic_parser()
+    parser = util.evm_args()
     parser.add_argument('--source_folder', type=str)
     parser.add_argument('--event_tbf', type=str)
     parser.add_argument('--rich_event', type=str)

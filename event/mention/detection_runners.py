@@ -151,7 +151,7 @@ def main(config):
 if __name__ == '__main__':
     from event import util
 
-    parser = util.basic_parser()
+    parser = util.evm_args()
 
     arguments = parser.parse_args()
 

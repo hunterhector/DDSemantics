@@ -265,6 +265,8 @@ def main(argv):
         create_sentences(event_data, frame_sentence_out, lookups, oovs,
                          include_frame=True)
 
+    if not os.path.exists(embedding_dir):
+        os.makedirs(embedding_dir)
     event_emb_out = os.path.join(embedding_dir, 'event_embeddings')
     if not os.path.exists(event_emb_out):
         print("Training embedding for event sentences.")

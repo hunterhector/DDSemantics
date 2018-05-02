@@ -28,7 +28,7 @@ def tokens_to_sent(tokens, sent_start):
     return sent
 
 
-def basic_parser():
+def evm_args():
     parser = OptionPerLineParser(description='Event Mention Detector.',
                                  fromfile_prefix_chars='@')
 
