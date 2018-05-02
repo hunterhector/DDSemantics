@@ -67,7 +67,7 @@ def count_vocab(input_data, vocab_dir):
     print('\nTotally {} words and {} documents.'.format(word_count, doc_count))
 
     with open(os.path.join(vocab_dir, 'word_counts.vocab'), 'w') as out:
-        for word, count in counter:
+        for word, count in counter.items():
             out.write('{}\t{}\n'.format(word, count))
 
 
