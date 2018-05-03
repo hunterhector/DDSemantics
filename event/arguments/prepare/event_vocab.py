@@ -147,6 +147,12 @@ def get_vocab_count(data_path):
         for line in data:
             doc_info = json.loads(line)
 
+            represent_by_id = {}
+            for entity in doc_info['entities']:
+                eid = entity['entityId']
+                represent = entity['representEntityHead']
+                represent_by_id[eid] = represent
+
             for event in doc_info['events']:
                 event_count += 1
 
@@ -156,7 +162,11 @@ def get_vocab_count(data_path):
                 for arg in event['arguments']:
                     fe_name = arg['feName']
                     syn_role = arg['dep']
-                    arg_text = arg['representText']
+                    eid = arg['entityId']
+                    if eid in represent_by_id:
+                        arg_text = represent_by_id[eid]
+                    else:
+                        arg_text = arg['text']
 
                     vocab_counters['argument'][arg_text] += 1
 
