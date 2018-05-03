@@ -3,6 +3,7 @@ import operator
 import sys
 import logging
 from collections import Counter, defaultdict
+from event.arguments import util
 
 
 class FrameMapper:
@@ -25,11 +26,12 @@ class FrameMapper:
 
     def _write_mapping(self, out_file, mappings, counts):
         with open(out_file, 'w') as out:
-            for fe, args in mappings.items():
-                args_str = ["%s,%s:%d" % (arg[0], arg[1], arg[2]) for arg in
-                            args]
-                out.write('%s %s %d\t%s\n' % (
-                    fe[0], fe[1], counts[fe], ' '.join(args_str)))
+            for fe, args_count in mappings.items():
+                if len(args_count) > 0:
+                    args_str = ["%s,%s:%d" % (arg[0], arg[1], count) for
+                                arg, count in args_count.items()]
+                    out.write('%s %s %d\t%s\n' % (
+                        fe[0], fe[1], counts[fe], ' '.join(args_str)))
 
     def write_frame_mapping(self, frame_mapping_out, arg_mapping_out):
         self._write_mapping(frame_mapping_out, self.fe_mappings, self.fe_counts)
@@ -55,9 +57,9 @@ class FrameMapper:
                 frame_args[fe] = args
         return frame_args, args_frames
 
-    def _load_mapping(self, path):
-        not_found = {}
-        mappings = {}
+    def _load_mapping(self, path, dep_source=False, dep_target=False):
+        not_found = defaultdict(set)
+        mappings = defaultdict(Counter)
         counts = Counter()
         with open(path) as map_file:
             for line in map_file:
@@ -66,75 +68,76 @@ class FrameMapper:
                 if len(parts) < 2:
                     continue
 
-                fe_info, arg_info = parts
+                from_role_info, to_role_info = parts
 
-                info_parts = fe_info.split()
+                info_parts = from_role_info.split()
                 if not len(info_parts) == 3:
                     continue
 
-                frame_name, fe_name, fe_count = info_parts
+                from_frame_name, from_arg_name, from_count = info_parts
 
-                fe = (frame_name, fe_name)
+                if dep_source:
+                    from_frame_name = util.remove_neg(from_frame_name)
+
+                from_arg = (from_frame_name, from_arg_name)
 
                 seen_predicates = set()
-                counts[fe] += int(fe_count)
+                counts[from_arg] += int(from_count)
 
                 args = Counter()
-                for arg_count in arg_info.split(' '):
+                for arg_count in to_role_info.split(' '):
                     parts = arg_count.split(":")
                     if len(parts) == 2:
                         arg, count = parts
-                        raw_predicate, role = arg.split(',')
-                        pred_info = raw_predicate.split("_")
-                        pred = pred_info[0]
-                        if pred == 'not' and len(pred_info) > 1:
-                            pred = pred_info[1]
+                        predicate, role = arg.split(',')
+
+                        if dep_target:
+                            predicate = util.remove_neg(predicate)
 
                         if not role == 'NA':
-                            args[(pred, role)] += int(count)
-                        seen_predicates.add(pred)
+                            args[(predicate, role)] += int(count)
+                        seen_predicates.add(predicate)
 
-                sorted_args = [(pred, role, count) for ((pred, role), count) in
-                               sorted(args.items(), key=operator.itemgetter(1),
-                                      reverse=True)]
+                mappings[from_arg] += args
 
-                if len(sorted_args) == 0:
-                    not_found[fe] = seen_predicates
+                if len(args) == 0:
+                    not_found[from_arg] |= seen_predicates
 
-                mappings[fe] = sorted_args
+        for key, seen_pred in not_found.items():
+            if key in mappings:
+                for (mapped_pred, mapped_arg), count in mappings[key].items():
+                    if mapped_pred in seen_pred:
+                        seen_pred.remove(mapped_pred)
+                        # print('{} is mapped to {}:{} for {} times, but '
+                        #       'treated unseen, now removed'
+                        #       .format(key, mapped_pred, mapped_arg, count))
 
         return not_found, mappings, counts
 
     def load_raw_mapping(self, fe_mapping_file, arg_mapping_file):
-        not_found_fes, self.fe_mappings, self.fe_counts = self._load_mapping(
-            fe_mapping_file)
+        print("Loading from " + arg_mapping_file)
         not_found_args, self.arg_mappings, self.arg_counts = self._load_mapping(
-            arg_mapping_file)
+            arg_mapping_file, dep_source=True)
+
+        print("Loading from " + fe_mapping_file)
+        not_found_fes, self.fe_mappings, self.fe_counts = self._load_mapping(
+            fe_mapping_file, dep_target=True)
 
         filled_maps = self.fill_blank(not_found_fes)
 
         for (frame_name, fe_name), args in filled_maps.items():
             self.fe_mappings[frame_name, fe_name] = args
 
-            print("Filling frame with ", frame_name, fe_name, args)
-
-            for predicate, arg, _ in args:
-                arg_tup = predicate, arg
-                if arg_tup in self.arg_mappings:
-                    self.arg_mappings[(predicate, arg)].append(
-                        (frame_name, fe_name, 0)
-                    )
-                else:
-                    self.arg_mappings[arg_tup] = [
-                        (frame_name, fe_name, 0)
-                    ]
+            for (predicate, arg) in args.keys():
+                self.arg_mappings[(predicate, arg)][(frame_name, fe_name)] = 0
 
     def use_parent_syntax(self, fe, target_pred):
         if fe in self.h_ferel:
             super_fe = self.h_ferel[fe]
             if super_fe in self.fe_mappings:
                 arg_roles = Counter()
-                for predicate, arg, count in self.fe_mappings[super_fe]:
+                for (predicate, arg), count in self.fe_mappings[
+                    super_fe].items():
                     arg_roles[arg] += 1
                     if target_pred == predicate:
                         return arg
@@ -156,14 +159,14 @@ class FrameMapper:
         filled_maps = {}
 
         for (frame_name, fe_name), predicates in not_found_fes.items():
-            args = []
+            args = Counter()
             found_mapping = False
             for predicate in predicates:
                 arg = self.use_parent_syntax(
                     (frame_name, fe_name), predicate
                 )
                 if arg:
-                    args.append((predicate, arg, 0))
+                    args[predicate, arg] = 0
                     found_mapping = True
 
             if not found_mapping:

@@ -44,6 +44,12 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
 
             sentence = []
 
+            represent_by_id = {}
+            for entity in doc_info['entities']:
+                eid = entity['entityId']
+                represent = entity['representEntityHead']
+                represent_by_id[eid] = represent
+
             for event in doc_info['events']:
                 event_count += 1
 
@@ -60,7 +66,8 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                     syn_role = arg['dep']
                     fe = arg['feName']
 
-                    text = arg['representText']
+                    eid = arg['entityId']
+                    text = represent_by_id.get(eid, arg['text'])
 
                     arg_text = get_word(text, 'argument', lookups, oovs)
 
@@ -163,10 +170,7 @@ def get_vocab_count(data_path):
                     fe_name = arg['feName']
                     syn_role = arg['dep']
                     eid = arg['entityId']
-                    if eid in represent_by_id:
-                        arg_text = represent_by_id[eid]
-                    else:
-                        arg_text = arg['text']
+                    arg_text = represent_by_id.get(eid, arg['text'])
 
                     vocab_counters['argument'][arg_text] += 1
 
@@ -232,20 +236,17 @@ def load_vocab(vocab_dir):
     return lookups, oov_words
 
 
-def main(argv):
-    event_data = argv[1]
-    vocab_dir = argv[2]
-    data_out = argv[3]
-    embedding_dir = argv[4]
+def main(event_data, vocab_dir, sent_out, embedding_dir):
+    if not os.path.exists(sent_out):
+        os.makedirs(sent_out)
 
-    if not os.path.exists(data_out):
-        os.makedirs(data_out)
-
-    event_sentence_out = os.path.join(data_out, 'event_sentences.txt')
-    frame_sentence_out = os.path.join(data_out, 'event_frame_sentences.txt')
+    event_sentence_out = os.path.join(sent_out, 'event_sentences.txt')
+    frame_sentence_out = os.path.join(sent_out, 'event_frame_sentences.txt')
 
     if not os.path.exists(vocab_dir):
         os.makedirs(vocab_dir)
+
+    if not os.path.exists(os.path.join(vocab_dir, 'predicate.vocab')):
         print("Counting vocabulary.")
         vocab_counters = get_vocab_count(event_data)
         for key, counter in vocab_counters.items():
@@ -277,13 +278,14 @@ def main(argv):
 
     if not os.path.exists(embedding_dir):
         os.makedirs(embedding_dir)
+
     event_emb_out = os.path.join(embedding_dir, 'event_embeddings')
-    if not os.path.exists(event_emb_out):
+    if not os.path.exists(event_emb_out + '.vectors'):
         print("Training embedding for event sentences.")
         train_event_vectors(event_sentence_out, event_emb_out, window_size=10)
 
     event_frame_emb_out = os.path.join(embedding_dir, 'event_frame_embeddings')
-    if not os.path.exists(event_frame_emb_out):
+    if not os.path.exists(event_frame_emb_out + '.vectors'):
         print("Training embedding for frame event sentences.")
         # Use a larger window for longer frame sentences.
         train_event_vectors(frame_sentence_out, event_frame_emb_out,
@@ -291,6 +293,14 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    import sys
+    from event.util import OptionPerLineParser
 
-    main(sys.argv)
+    parser = OptionPerLineParser(description='Event Vocabulary.',
+                                 fromfile_prefix_chars='@')
+    parser.add_argument('--vocab_dir', type=str, help='Vocabulary direcotry.')
+    parser.add_argument('--embedding_dir', type=str, help='Event Embedding.')
+    parser.add_argument('--input_data', type=str, help='Input data.')
+    parser.add_argument('--sent_out', type=str, help='Sentence output file.')
+
+    args = parser.parse_args()
+    main(args.input_data, args.vocab_dir, args.sent_out, args.embedding_dir)

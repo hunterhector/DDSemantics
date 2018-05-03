@@ -216,6 +216,15 @@ class EventAsArgCloze:
 
         self.len_arg_fields = 4
 
+    def get_context(self, sentence, start, end, window_size=5):
+        right_tokens = sentence[end:].strip().split()
+        right_win = min(window_size, len(right_tokens))
+
+        left_tokens = sentence[:start].strip().split()
+        left_win = min(window_size, len(left_tokens))
+
+        return left_tokens, right_tokens
+
     def read_events(self, data_in):
         for line in data_in:
             doc = json.loads(line)
@@ -226,9 +235,18 @@ class EventAsArgCloze:
             eid_count = Counter()
 
             for event_info in doc['events']:
+                sent = doc['sentences'][event_info['sentenceId']]
+
+                raw_context = self.get_context(
+                    sent,
+                    event_info['predicateStart'],
+                    event_info['predicateEnd'],
+                )
+
                 event = {
                     'predicate': event_info['predicate'],
-                    'predicate_context': event_info['context'],
+                    'predicate_context': raw_context,
+                    # 'predicate_context': event_info['context'],
                     'frame': event_info.get('frame', 'NA'),
                     'arguments': [],
                 }
@@ -236,10 +254,19 @@ class EventAsArgCloze:
                 events.append(event)
 
                 for arg_info in event_info['arguments']:
+                    if 'argStart' in arg_info:
+                        arg_context = self.get_context(
+                            sent, arg_info['argStart'], arg_info['argEnd']
+                        )
+                    else:
+                        left, right = arg_info['context'].split('___')
+                        arg_context = left.split(), right.split()
+
                     arg = {
                         'dep': arg_info['dep'],
                         'fe': arg_info['feName'],
                         'represent': arg_info['representText'],
+                        'arg_context': arg_context,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
                     }

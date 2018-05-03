@@ -3,6 +3,7 @@ import json
 from collections import Counter
 import os
 from gensim.models.word2vec import Word2Vec
+from event.arguments import consts
 
 
 def main(input_data, vocab_dir, embedding_dir):
@@ -11,21 +12,26 @@ def main(input_data, vocab_dir, embedding_dir):
 
 
 def embed(input_data, vocab_dir, embedding_dir, min_count=50):
+    if not os.path.exists(embedding_dir):
+        os.makedirs(embedding_dir)
+
     raw_vocab = Counter()
     with open(os.path.join(vocab_dir, 'word_counts.vocab')) as counts:
         for line in counts:
             word, count = line.split('\t')
             raw_vocab[word] = int(count)
 
+    print("Filtering.")
+    filter_out = os.path.join(vocab_dir, 'word_counts_min_%d.vocab' % min_count)
     kept_words = set()
-    with open(os.path.join(vocab_dir, 'word_counts_min_%d.vocab' % min_count),
-              'w') as out:
+
+    with open(filter_out, 'w') as out:
         for word, count in raw_vocab.most_common():
             if count >= min_count:
                 kept_words.add(word)
                 out.write('{}\t{}\n'.format(word, count))
 
-    class Data():
+    class Data:
         def __init__(self, in_file):
             self.in_file = in_file
 
@@ -34,19 +40,26 @@ def embed(input_data, vocab_dir, embedding_dir, min_count=50):
                 for line in doc:
                     for sent in json.loads(line)['sentences']:
                         words = sent.split()
-                        yield [w if w in kept_words else 'UNK_word' for w in
-                               words]
+                        yield [w if w in kept_words else consts.unk_word for w
+                               in words]
 
+    print("Start training embeddings.")
     emb_out_base = os.path.join(embedding_dir, 'word_embeddings')
     model = Word2Vec(Data(input_data), workers=10, size=300)
     model.save(emb_out_base + '.pickle')
     model.wv.save_word2vec_format(emb_out_base + '.vectors',
                                   fvocab=emb_out_base + '.voc')
+    print("Done.")
 
 
 def count_vocab(input_data, vocab_dir):
     if not os.path.exists(vocab_dir):
         os.makedirs(vocab_dir)
+
+    out_file = os.path.join(vocab_dir, 'word_counts.vocab')
+    if os.path.exists(out_file):
+        print("Not counting, vocab file exists.")
+        return
 
     counter = Counter()
     doc_count = 0
