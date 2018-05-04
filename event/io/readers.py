@@ -207,7 +207,93 @@ class ConllUReader:
         return self.tag_vocab.vocab_size()
 
 
-class EventAsArgCloze:
+class HashedClozeReader:
+    def __init__(self):
+        pass
+
+    def read_cloze(self, data_in):
+        with open(data_in) as input_data:
+            for line in input_data:
+                doc_info = json.loads(line)
+                features_by_eid = {}
+                for eid, content in doc_info['entities']:
+                    features_by_eid[eid] = content['features']
+
+                # Organize all the arguments by the event index.
+                event_args = defaultdict(dict)
+                for index, event in enumerate(doc_info['events']):
+                    for slot, arg in event['args'].items():
+                        event_args[index][slot] = arg['entity_id']
+
+                for index, event in enumerate(doc_info['events']):
+                    for slot, arg in event['args'].items():
+                        if arg['resolvable']:
+                            correct = arg['eid']
+                            cross_instance = self.cross_cloze(event_args, index,
+                                                              slot, correct)
+                            inside_instance = self.inside_cloze(event_args,
+                                                                index, slot,
+                                                                correct)
+
+                            yield correct, cross_instance, inside_instance
+
+    def cross_cloze(self, event_args, current_index, current_pos, correct_id):
+        """
+        A negative cloze instance that use arguments from other events.
+        :param event_args:
+        :param current_index:
+        :param current_pos:
+        :param correct_id:
+        :return:
+        """
+        candidates = []
+
+        for event_index, args in event_args.items():
+            if not current_index == event_index:
+                for pos, entity_id in args.items():
+                    if not correct_id == entity_id:
+                        candidates.append((event_index, pos))
+        wrong_id = random.choice(candidates)
+
+        neg_instance = {}
+        neg_instance.update(event_args[current_index])
+        neg_instance[current_pos] = wrong_id
+        return neg_instance
+
+    def inside_cloze(self, event_args, current_index, current_pos, correct_id):
+        """
+        A negative cloze instance that use arguments within the event.
+        :param event_args:
+        :param current_index:
+        :param current_pos:
+        :param correct_id:
+        :return:
+        """
+        current_event = event_args[current_index]
+
+        neg_instance = {}
+        neg_instance.update(current_event)
+
+        slots = []
+        for slot in current_event.keys:
+            if not slot == current_pos:
+                slots.append(slot)
+
+        # Select another slot.
+        wrong_slot = random.choice(slots)
+
+        # Swap the two slots.
+        neg_instance[wrong_slot] = correct_id
+        neg_instance[current_pos] = current_event[wrong_slot]
+
+        return neg_instance
+
+    def compute_distance(self):
+
+        pass
+
+
+class EventReader:
     def __init__(self):
         self.target_roles = ['arg0', 'arg1', 'prep']
         self.entity_info_fields = ['syntactic_role', 'mention_text',
@@ -307,37 +393,6 @@ class EventAsArgCloze:
                         arg['resolvable'] = True
 
             yield docid, events, entities
-
-    # def create_clozes(self, data_in):
-    #     for docid, doc_events, eid_count in self.read_events(data_in):
-    #         clozed_args = []
-    #         for index, event in enumerate(doc_events):
-    #             args = event['arguments']
-    #             for arg in args:
-    #                 if arg['resolvable']:
-    #                     clozed_args.append((index, arg['dep']))
-    #         yield doc_events, clozed_args, eid_count
-    #
-    # def read_clozes(self, data_in):
-    #     for doc_events, clozed_args, eid_count in self.create_clozes(data_in):
-    #         for recoverable_arg in clozed_args:
-    #             event_index, cloze_role = recoverable_arg
-    #             candidate_event = doc_events[event_index]
-    #
-    #             answer = self._entity_info(
-    #                 candidate_event['arguments'][cloze_role]
-    #             )
-    #             wrong = self.sample_wrong(eid_count, answer)
-    #
-    #             # Yield one pairwise cloze task:
-    #             # [all events] [events in question] [role in question]
-    #             # [correct mention] [wrong mention]
-    #             yield doc_events, event_index, cloze_role, answer, wrong
-    #
-    # def sample_wrong(self, all_entities, answer):
-    #     wrong_entities = [ent for ent in all_entities if
-    #                       not self._same_entity(ent, answer)]
-    #     return random.choice(wrong_entities)
 
     def _same_entity(self, ent1, ent2):
         return any([ent1[f] == ent2[f] for f in self.entity_equal_fields])

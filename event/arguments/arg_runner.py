@@ -10,7 +10,7 @@ import torch
 import logging
 import sys
 
-from event.io.readers import EventAsArgCloze
+from event.io.readers import EventReader
 from event.arguments.loss import cross_entropy
 
 
@@ -24,7 +24,7 @@ class ArgRunner(Configurable):
         self.nb_epochs = self.para.nb_epochs
         self.criterion = cross_entropy
 
-        self.reader = EventAsArgCloze()
+        self.reader = EventReader()
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)

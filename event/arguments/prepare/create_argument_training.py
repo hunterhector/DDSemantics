@@ -1,4 +1,4 @@
-from event.io.readers import EventAsArgCloze
+from event.io.readers import EventReader
 import gzip
 from event.arguments.prepare.event_vocab import (
     make_predicate,
@@ -234,6 +234,7 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
         pred = make_predicate(
             get_word(event['predicate'], 'predicate', lookups, oovs)
         )
+
         pid = event_vocab[pred]
 
         frame_name = event.get('frame', 'NA')
@@ -265,7 +266,7 @@ def hash_data(cmd_args):
     frame_args, frame_counts = load_frame_map(cmd_args.frame_arg_map)
     dep_frames, dep_counts = load_frame_map(cmd_args.dep_frame_map)
 
-    reader = EventAsArgCloze()
+    reader = EventReader()
 
     event_vocab = load_emb_vocab(cmd_args.event_vocab)
     word_vocab = load_emb_vocab(cmd_args.word_vocab)
