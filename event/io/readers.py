@@ -219,11 +219,16 @@ class EventAsArgCloze:
     def get_context(self, sentence, start, end, window_size=5):
         right_tokens = sentence[end:].strip().split()
         right_win = min(window_size, len(right_tokens))
+        right_context = right_tokens[:right_win]
 
         left_tokens = sentence[:start].strip().split()
+        left_tokens.reverse()
         left_win = min(window_size, len(left_tokens))
 
-        return left_tokens, right_tokens
+        left_context = left_tokens[:left_win]
+        left_context.reverse()
+
+        return left_context, right_context
 
     def read_events(self, data_in):
         for line in data_in:
@@ -233,6 +238,18 @@ class EventAsArgCloze:
             events = []
 
             eid_count = Counter()
+
+            entity_heads = {}
+
+            entities = {}
+
+            if 'entities' in doc:
+                for ent in doc['entities']:
+                    entity_heads[ent['entityId']] = ent['representEntityHead']
+
+                    entities[ent['entityId']] = {
+                        'features': ent['entityFeatures'],
+                    }
 
             for event_info in doc['events']:
                 sent = doc['sentences'][event_info['sentenceId']]
@@ -249,6 +266,8 @@ class EventAsArgCloze:
                     # 'predicate_context': event_info['context'],
                     'frame': event_info.get('frame', 'NA'),
                     'arguments': [],
+                    'predicate_start': event_info['predicateStart'],
+                    'predicate_end': event_info['predicateEnd'],
                 }
 
                 events.append(event)
@@ -262,13 +281,21 @@ class EventAsArgCloze:
                         left, right = arg_info['context'].split('___')
                         arg_context = left.split(), right.split()
 
+                    if entity_heads:
+                        represent = entity_heads[arg_info['entityId']]
+                    else:
+                        represent = arg_info['representText']
+
                     arg = {
                         'dep': arg_info['dep'],
                         'fe': arg_info['feName'],
-                        'represent': arg_info['representText'],
                         'arg_context': arg_context,
+                        'represent': represent,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
+                        'arg_start': arg_info['argStart'],
+                        'arg_end': arg_info['argEnd'],
+                        'sentence_id': event_info['sentenceId']
                     }
 
                     eid_count[arg_info['entityId']] += 1
@@ -279,38 +306,38 @@ class EventAsArgCloze:
                     if eid_count[arg['entity_id']] > 1:
                         arg['resolvable'] = True
 
-            yield docid, events, eid_count
+            yield docid, events, entities
 
-    def create_clozes(self, data_in):
-        for docid, doc_events, eid_count in self.read_events(data_in):
-            clozed_args = []
-            for index, event in enumerate(doc_events):
-                args = event['arguments']
-                for arg in args:
-                    if arg['resolvable']:
-                        clozed_args.append((index, arg['dep']))
-            yield doc_events, clozed_args, eid_count
-
-    def read_clozes(self, data_in):
-        for doc_events, clozed_args, eid_count in self.create_clozes(data_in):
-            for recoverable_arg in clozed_args:
-                event_index, cloze_role = recoverable_arg
-                candidate_event = doc_events[event_index]
-
-                answer = self._entity_info(
-                    candidate_event['arguments'][cloze_role]
-                )
-                wrong = self.sample_wrong(eid_count, answer)
-
-                # Yield one pairwise cloze task:
-                # [all events] [events in question] [role in question]
-                # [correct mention] [wrong mention]
-                yield doc_events, event_index, cloze_role, answer, wrong
-
-    def sample_wrong(self, all_entities, answer):
-        wrong_entities = [ent for ent in all_entities if
-                          not self._same_entity(ent, answer)]
-        return random.choice(wrong_entities)
+    # def create_clozes(self, data_in):
+    #     for docid, doc_events, eid_count in self.read_events(data_in):
+    #         clozed_args = []
+    #         for index, event in enumerate(doc_events):
+    #             args = event['arguments']
+    #             for arg in args:
+    #                 if arg['resolvable']:
+    #                     clozed_args.append((index, arg['dep']))
+    #         yield doc_events, clozed_args, eid_count
+    #
+    # def read_clozes(self, data_in):
+    #     for doc_events, clozed_args, eid_count in self.create_clozes(data_in):
+    #         for recoverable_arg in clozed_args:
+    #             event_index, cloze_role = recoverable_arg
+    #             candidate_event = doc_events[event_index]
+    #
+    #             answer = self._entity_info(
+    #                 candidate_event['arguments'][cloze_role]
+    #             )
+    #             wrong = self.sample_wrong(eid_count, answer)
+    #
+    #             # Yield one pairwise cloze task:
+    #             # [all events] [events in question] [role in question]
+    #             # [correct mention] [wrong mention]
+    #             yield doc_events, event_index, cloze_role, answer, wrong
+    #
+    # def sample_wrong(self, all_entities, answer):
+    #     wrong_entities = [ent for ent in all_entities if
+    #                       not self._same_entity(ent, answer)]
+    #     return random.choice(wrong_entities)
 
     def _same_entity(self, ent1, ent2):
         return any([ent1[f] == ent2[f] for f in self.entity_equal_fields])
