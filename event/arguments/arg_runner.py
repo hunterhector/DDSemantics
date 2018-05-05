@@ -10,7 +10,7 @@ import torch
 import logging
 import sys
 
-from event.io.readers import EventReader
+from event.io.readers import HashedClozeReader
 from event.arguments.loss import cross_entropy
 
 
@@ -24,7 +24,7 @@ class ArgRunner(Configurable):
         self.nb_epochs = self.para.nb_epochs
         self.criterion = cross_entropy
 
-        self.reader = EventReader()
+        self.reader = HashedClozeReader()
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
@@ -35,6 +35,7 @@ class ArgRunner(Configurable):
         for epoch in range(self.nb_epochs):
             with open(train_in) as train_data:
                 for cloze_task in self.reader.read_clozes(train_data):
+                    correct, cross_instance, inside_instance = cloze_task
                     doc_events, event_index, cloze_role, answer, wrong = cloze_task
 
                     print(event_index, cloze_role, answer, wrong)

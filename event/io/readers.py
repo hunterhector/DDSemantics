@@ -211,7 +211,7 @@ class HashedClozeReader:
     def __init__(self):
         pass
 
-    def read_cloze(self, data_in):
+    def read_clozes(self, data_in):
         with open(data_in) as input_data:
             for line in input_data:
                 doc_info = json.loads(line)
@@ -234,8 +234,11 @@ class HashedClozeReader:
                             inside_instance = self.inside_cloze(event_args,
                                                                 index, slot,
                                                                 correct)
-
                             yield correct, cross_instance, inside_instance
+
+    def compute_distance(self):
+
+        pass
 
     def cross_cloze(self, event_args, current_index, current_pos, correct_id):
         """
@@ -287,10 +290,6 @@ class HashedClozeReader:
         neg_instance[current_pos] = current_event[wrong_slot]
 
         return neg_instance
-
-    def compute_distance(self):
-
-        pass
 
 
 class EventReader:
