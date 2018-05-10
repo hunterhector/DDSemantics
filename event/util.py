@@ -2,6 +2,7 @@ import argparse
 import logging
 import sys
 import os
+import gzip
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -9,6 +10,13 @@ class OptionPerLineParser(argparse.ArgumentParser):
         if arg_line.startswith("#"):
             return []
         return arg_line.split()
+
+
+def smart_open(path):
+    if path.endswith('.gz'):
+        return gzip.open(path)
+    else:
+        return open(path)
 
 
 def ensure_dir(p):

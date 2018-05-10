@@ -7,6 +7,7 @@ import pickle
 import random
 import json
 from collections import Counter
+import sys
 
 
 class Vocab:
@@ -212,35 +213,122 @@ class HashedClozeReader:
         pass
 
     def read_clozes(self, data_in):
-        with open(data_in) as input_data:
-            for line in input_data:
-                doc_info = json.loads(line)
-                features_by_eid = {}
-                for eid, content in doc_info['entities']:
-                    features_by_eid[eid] = content['features']
+        for line in data_in:
+            doc_info = json.loads(line)
+            features_by_eid = {}
+            for eid, content in doc_info['entities'].items():
+                features_by_eid[eid] = content['features']
 
-                # Organize all the arguments by the event index.
-                event_args = defaultdict(dict)
-                for index, event in enumerate(doc_info['events']):
-                    for slot, arg in event['args'].items():
-                        event_args[index][slot] = arg['entity_id']
+            # Organize all the arguments.
+            event_args = defaultdict(dict)
+            entity_mentions = defaultdict(list)
+            arg_entities = set()
+            for index, event in enumerate(doc_info['events']):
+                for slot, arg in event['args'].items():
+                    # Argument for nth event, at slot position 'slot'.
+                    eid = arg['entity_id']
+                    event_args[index][slot] = eid
+                    # The sentence position of the entities.
+                    entity_mentions[eid].append(
+                        ((index, slot), arg['sentence_id'])
+                    )
 
-                for index, event in enumerate(doc_info['events']):
-                    for slot, arg in event['args'].items():
-                        if arg['resolvable']:
-                            correct = arg['eid']
-                            cross_instance = self.cross_cloze(event_args, index,
-                                                              slot, correct)
-                            inside_instance = self.inside_cloze(event_args,
-                                                                index, slot,
-                                                                correct)
-                            yield correct, cross_instance, inside_instance
+                    if eid > 0:
+                        arg_entities.add(eid)
 
-    def compute_distance(self):
+            for index, event in enumerate(doc_info['events']):
+                for slot, arg in event['args'].items():
+                    if arg['resolvable']:
+                        correct_id = arg['entity_id']
+                        current_sent = arg['sentence_id']
+                        correct_instance = event_args[index]
 
-        pass
+                        cross_instances, cross_filler_id = self.cross_cloze(
+                            event_args, arg_entities, index, slot, correct_id)
 
-    def cross_cloze(self, event_args, current_index, current_pos, correct_id):
+                        inside_instance, inside_filler_id = self.inside_cloze(
+                            event_args, index, slot, correct_id)
+
+                        print("Here is one cloze test.")
+
+                        print("Original instance:")
+                        print(correct_instance)
+
+                        print("Cross event instance:")
+                        print(cross_instances)
+
+                        print("Filler is ", cross_filler_id)
+
+                        print("Inside event instance:")
+                        print(inside_instance)
+
+                        print("Filler is ", inside_filler_id)
+
+                        origin_distances = self.compute_distance(
+                            entity_mentions, correct_id, current_sent,
+                            (index, slot)
+                        )
+                        origin_features = self.combine_features(
+                            doc_info['entities'], correct_id, origin_distances
+                        )
+
+                        cross_cloze_distances = self.compute_distance(
+                            entity_mentions, cross_filler_id, current_sent,
+                            (index, slot)
+                        )
+                        cross_features = self.combine_features(
+                            doc_info['entities'], cross_filler_id,
+                            cross_cloze_distances
+                        )
+
+                        inside_features = self.combine_features(
+                            doc_info['entities'], inside_filler_id,
+                            origin_distances
+                        )
+
+                        sys.stdin.readline()
+
+                        yield cross_instances, inside_instance
+
+    def combine_features(self, entities, eid, distances):
+        features = entities[str(eid)]['features']
+        features.extend(distances)
+        return features
+
+    def compute_distance(self, entity_sents, target_entity, sentence_id,
+                         ignore_mention):
+        """
+        Compute the distance of the entity's  other mentions to the sentence.
+        :param entity_sents:
+        :param target_entity:
+        :param sentence_id:
+        :param ignore_mention:
+        :return:
+        """
+        max_dist = 0
+        min_dist = float('inf')
+        total_dist = 0
+        total_pair = 0
+
+        print("Computing distance for ", target_entity, sentence_id)
+
+        for mention, sid in entity_sents[target_entity]:
+            if mention == ignore_mention:
+                continue
+            distance = abs(sid - sentence_id)
+            if distance < min_dist:
+                min_dist = distance
+            if distance > max_dist:
+                max_dist = distance
+            total_dist += distance
+            total_pair += 1.0
+
+        print(max_dist, min_dist, total_dist / total_pair)
+
+        return max_dist, min_dist, total_dist / total_pair
+
+    def cross_cloze(self, event_args, arg_entities, current_index, current_pos,
+                    correct_id):
         """
         A negative cloze instance that use arguments from other events.
         :param event_args:
@@ -251,17 +339,17 @@ class HashedClozeReader:
         """
         candidates = []
 
-        for event_index, args in event_args.items():
-            if not current_index == event_index:
-                for pos, entity_id in args.items():
-                    if not correct_id == entity_id:
-                        candidates.append((event_index, pos))
+        for ent in arg_entities:
+            if not correct_id == ent:
+                candidates.append(ent)
+
         wrong_id = random.choice(candidates)
 
         neg_instance = {}
         neg_instance.update(event_args[current_index])
         neg_instance[current_pos] = wrong_id
-        return neg_instance
+
+        return neg_instance, wrong_id
 
     def inside_cloze(self, event_args, current_index, current_pos, correct_id):
         """
@@ -278,18 +366,22 @@ class HashedClozeReader:
         neg_instance.update(current_event)
 
         slots = []
-        for slot in current_event.keys:
+        for slot, eid in current_event.items():
+            # Exclude correct slot.
             if not slot == current_pos:
                 slots.append(slot)
 
         # Select another slot.
         wrong_slot = random.choice(slots)
+        wrong_id = current_event[wrong_slot]
 
-        # Swap the two slots.
+        # Swap the two slots, this may create:
+        # 1. instance with frames swapped
+        # 2. instance with a frame moved to another empty slot
         neg_instance[wrong_slot] = correct_id
-        neg_instance[current_pos] = current_event[wrong_slot]
+        neg_instance[current_pos] = wrong_id
 
-        return neg_instance
+        return neg_instance, correct_id
 
 
 class EventReader:

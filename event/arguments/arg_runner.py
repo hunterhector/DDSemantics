@@ -13,6 +13,7 @@ import sys
 from event.io.readers import HashedClozeReader
 from event.arguments.loss import cross_entropy
 
+from event.util import smart_open
 
 class ArgRunner(Configurable):
 
@@ -33,10 +34,9 @@ class ArgRunner(Configurable):
         optimizer = torch.optim.Adam(self.model.parameters())
 
         for epoch in range(self.nb_epochs):
-            with open(train_in) as train_data:
+            with smart_open(train_in) as train_data:
                 for cloze_task in self.reader.read_clozes(train_data):
                     correct, cross_instance, inside_instance = cloze_task
-                    doc_events, event_index, cloze_role, answer, wrong = cloze_task
 
                     print(event_index, cloze_role, answer, wrong)
 
