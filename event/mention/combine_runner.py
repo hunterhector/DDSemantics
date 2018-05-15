@@ -104,8 +104,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 head_span, head_text = recover_via_token(
                     provided_tokens, rich_ent['headWord']['tokens'])
             else:
-                span, text = rich_ent['span']
-                head_span, text = rich_ent['headWord']['span']
+                span = rich_ent['span']
+                text = rich_ent['text']
+                head_span = rich_ent['headWord']['span']
 
             sent_id = csr.get_sentence_by_span(span)
 
@@ -128,8 +129,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 head_span, head_text = recover_via_token(
                     provided_tokens, mention['headWord']['tokens'])
             else:
-                span, text = mention['span']
-                head_span, head_text = mention['headWord']['span']
+                span = mention['span']
+                text = mention['text']
+                head_span = mention['headWord']['span']
 
             sent_id = csr.get_sentence_by_span(span)
 
@@ -152,8 +154,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                         arg_head_span, _ = recover_via_token(
                             provided_tokens, arg_ent['headWord']['tokens'])
                     else:
-                        arg_span, arg_text = arg_ent['span']
-                        arg_head_span, _ = arg_ent['headWord']['span']
+                        arg_span = arg_ent['span']
+                        arg_head_span = arg_ent['headWord']['span']
+                        arg_text = arg_ent['text']
 
                     for role in roles:
                         onto_name, role_name = role.split(':')
@@ -176,11 +179,11 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
         for relation in rich_event_info['relations']:
             if relation['relationType'] == 'event_coreference':
                 args = [evm_by_id[i].id for i in relation['arguments']]
-                csr.add_relation('tac', args, 'event_coreference', 'hector')
+                csr.add_relation('aida', args, 'event_coreference', 'hector')
 
             if relation['relationType'] == 'entity_coreference':
                 args = [ent_by_id[i].id for i in relation['arguments']]
-                csr.add_relation('tac', args, 'entity_coreference', 'corenlp')
+                csr.add_relation('aida', args, 'entity_coreference', 'corenlp')
 
 
 def add_tbf_events(kbp_file, csr):
@@ -345,8 +348,7 @@ def add_entity_salience(csr, entity_salience_info):
         entity = csr.get_by_span(csr.entity_key, span)
         if not entity:
             entity = csr.add_entity_mention(span, data['span'], data['text'],
-                                            'aida', None,
-                                            component='tagme')
+                                            'aida', None, component='tagme')
         entity.add_salience(data['salience'])
         entity.add_linking(data['mid'], data['wiki'], data['link_score'],
                            component='tagme')
@@ -447,11 +449,11 @@ if __name__ == '__main__':
     parser.add_argument('--salience_data', type=str)
     parser.add_argument('--rich_event_token', default=False, type=bool)
 
-    arguments = parser.parse_args()
+    program_args = parser.parse_args()
 
     util.set_basic_log()
 
     logging.info("Starting with the following config:")
-    logging.info(arguments)
+    logging.info(program_args)
 
-    main(arguments)
+    main(program_args)

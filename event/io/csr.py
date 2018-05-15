@@ -10,8 +10,23 @@ class Constants:
     GENERAL_REL_TYPE = 'aida:General_Rel'
 
 
+entity_type_mapping = {
+    "Fac": "Facility",
+    "Gpe": "GPE",
+    "Loc": "Location",
+    "Nom": "Nominal",
+    "Org": "Organization",
+    "Per": "Person",
+    "Veh": "Vehicle",
+    "Wea": "Weapon",
+}
+
+
 def fix_entity_type(t):
-    return t.lower().title()
+    t = t.lower().title()
+    if t in entity_type_mapping:
+        return entity_type_mapping[t]
+    return t
 
 
 class Jsonable:
@@ -38,8 +53,8 @@ class Frame(Jsonable):
         if self.id:
             rep['@id'] = self.id
 
-        if self.parent:
-            rep['parent_scope'] = self.parent
+        # if self.parent:
+        #     rep['parent_scope'] = self.parent
 
         if self.component:
             rep['component'] = self.component
@@ -84,6 +99,9 @@ class Interp(Jsonable):
         if multi_value:
             self.multi_value_fields.add(name)
 
+    def is_empty(self):
+        return len(self.fields) == 0
+
     def json_rep(self):
         rep = {
             '@type': self.interp_type,
@@ -122,7 +140,7 @@ class Interp(Jsonable):
                             isinstance(v, Jsonable) else str(v)
 
                         # Facet repr is too verbose.
-                        if component or score:
+                        if score:
                             field = {'@type': 'facet', 'value': v_str}
                             if score:
                                 field['score'] = score
@@ -135,7 +153,6 @@ class Interp(Jsonable):
 
             if field_name not in self.multi_value_fields:
                 field_data = field_data[0]
-
             rep[field_name] = field_data
         return rep
 
@@ -148,7 +165,7 @@ class InterpFrame(Frame):
 
     def json_rep(self):
         rep = super().json_rep()
-        if self.interp:
+        if self.interp and not self.interp.is_empty():
             rep['interp'] = self.interp.json_rep()
             # for interp in self.interps:
             #     rep['interp'].update(interp.json_rep())
@@ -164,10 +181,11 @@ class RelFrame(Frame):
         self.members.append(arg)
 
     def json_rep(self):
-        rep = super().json_rep()
-        rep['args'] = []
+        # rep = super().json_rep()
+        # print(rep)
+        rep = []
         for arg in self.members:
-            rep['args'].append(
+            rep.append(
                 {
                     '@type': 'argument',
                     'type': 'aida:member',
@@ -212,13 +230,13 @@ class SpanInterpFrame(InterpFrame):
     def json_rep(self):
         rep = super().json_rep()
         info = {
-            'text': self.text,
-            'parent_scope': self.parent,
-            'extent': {
+            'provenance': {
                 '@type': 'text_span',
                 'reference': self.span.reference,
                 'start': self.span.begin,
                 'length': self.span.length,
+                'text': self.text,
+                'parent_scope': self.parent,
             }
         }
         rep.update(info)
@@ -235,8 +253,9 @@ class Sentence(SpanInterpFrame):
 class EntityMention(SpanInterpFrame):
     def __init__(self, fid, parent, reference, begin, length, text,
                  component=None):
-        super().__init__(fid, 'entity_mention', parent, 'entity_mention_interp',
-                         reference, begin, length, text, component)
+        super().__init__(fid, 'entity_evidence', parent,
+                         'entity_evidence_interp', reference, begin, length,
+                         text, component)
 
     def add_type(self, ontology, entity_type, score=None, component=None):
         # type_interp = Interp(self.interp_type)
@@ -255,6 +274,9 @@ class EntityMention(SpanInterpFrame):
         # input("Added entity type for {}, {}".format(self.id, self.text))
 
     def add_linking(self, mid, wiki, score, component=None):
+        if mid.startswith('/'):
+            mid = mid.strip('/')
+
         fb_xref = ValueFrame('freebase:' + mid, 'db_reference')
         self.interp.add_fields('xref', 'freebase', mid, fb_xref, score=score,
                                component=component, multi_value=True)
@@ -287,7 +309,7 @@ class Argument(Frame):
 class EventMention(SpanInterpFrame):
     def __init__(self, fid, parent, reference, begin, length, text,
                  component=None):
-        super().__init__(fid, 'event_mention', parent, 'event_mention_interp',
+        super().__init__(fid, 'event_evidence', parent, 'event_evidence_interp',
                          reference, begin, length, text, component=component)
         self.trigger = None
         self.args = []
@@ -321,8 +343,8 @@ class EventMention(SpanInterpFrame):
 class RelationMention(InterpFrame):
     def __init__(self, fid, ontology, relation_type, arguments, score=None,
                  component=None):
-        super().__init__(fid, 'relation_mention', None,
-                         'relation_mention_interp', component=component)
+        super().__init__(fid, 'relation_evidence', None,
+                         'relation_evidence_interp', component=component)
         self.relation_type = relation_type
         self.arguments = arguments
         onto_type = ontology + ":" + relation_type
@@ -486,6 +508,8 @@ class CSR:
 
         if entity_type:
             entity_mention.add_type(ontology, entity_type, component=component)
+        else:
+            entity_mention.add_type(ontology, 'other', component=component)
         return entity_mention
 
     def add_event_mention(self, head_span, span, text, ontology,
@@ -582,7 +606,6 @@ class CSR:
             mode = 'a' if os.path.exists(self.out_path) else 'w'
         else:
             mode = 'w'
-
 
         logging.info("Writing data to [%s]" % self.out_path)
 
