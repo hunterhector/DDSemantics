@@ -15,6 +15,7 @@ from event.arguments.loss import cross_entropy
 
 from event.util import smart_open
 
+
 class ArgRunner(Configurable):
 
     def __init__(self, **kwargs):
@@ -36,14 +37,18 @@ class ArgRunner(Configurable):
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
                 for cloze_task in self.reader.read_clozes(train_data):
-                    correct, cross_instance, inside_instance = cloze_task
+                    correct_info, cross_info, inside_info = cloze_task
 
-                    print(event_index, cloze_role, answer, wrong)
+                    print(correct_info)
+                    print(cross_info)
+                    print(inside_info)
 
-                    output = self.model(self.process_data(line))
-                    loss = self.criterion(output, label)
-                    loss.backward()
-                    optimizer.step()
+                    input("Wait here.")
+
+                    # output = self.model(self.process_data(line))
+                    # loss = self.criterion(output, label)
+                    # loss.backward()
+                    # optimizer.step()
 
     def process_data(self, line):
         print(line)
