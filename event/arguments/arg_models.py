@@ -15,13 +15,16 @@ class ArgCompatibleModel(nn.Module):
         self.event_embedding = nn.Embedding(
             para.event_arg_vocab_size,
             para.event_embedding_dim,
+            padding_idx=0
         )
 
         self.word_embedding = nn.Embedding(
             para.word_vocab_size,
             para.word_embedding_dim,
+            padding_idx=0
         )
 
+        # shift by 1?
         if resources.word_embedding is not None:
             word_embed = torch.from_numpy(resources.word_embedding)
             self.embedding.weight = nn.Parameter(word_embed)
@@ -34,10 +37,8 @@ class ArgCompatibleModel(nn.Module):
 class EventPairCompositionModel(ArgCompatibleModel):
     def __init__(self, para, resources):
         super(EventPairCompositionModel, self).__init__(para, resources)
-        self.event_embed = nn.Embedding(para.event_arg_vocab_size,
-                                        para.event_embedding_dim, padding_idx=0)
 
-        event_hidden_size = (para.num_args + 1) * para.event_embedding_dim
+        event_hidden_size = self._event_arg_size() * para.event_embedding_dim
 
         self.arg_compositions_layers = self._config_mlp(
             event_hidden_size,
@@ -52,6 +53,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         pair_event_dim = para.event_composition_layer_sizes[-1]
         self.coh = nn.Linear(pair_event_dim, 1)
+
+    def _event_arg_size(self):
+        raise NotImplementedError
 
     def _config_mlp(self, input_hidden_size, output_sizes):
         layers = []

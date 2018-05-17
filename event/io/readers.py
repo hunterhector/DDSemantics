@@ -219,6 +219,8 @@ class HashedClozeReader:
             for eid, content in doc_info['entities'].items():
                 features_by_eid[eid] = content['features']
 
+            # TODO: create context event, all of them.
+
             # Organize all the arguments.
             event_data = []
             event_args = defaultdict(dict)

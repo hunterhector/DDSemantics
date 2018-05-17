@@ -29,9 +29,6 @@ class ArgRunner(Configurable):
         self.batch_size = self.para.batch_size
         self.reader = HashedClozeReader()
 
-        self.event_embeddings = self.para.event_embeddings
-        self.word_embeddings = self.para.word_embeddings
-
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
         self.model.train()
@@ -46,26 +43,16 @@ class ArgRunner(Configurable):
                     batch_data.append(cloze_task)
 
                     if len(batch_data) == self.batch_size:
+                        # TODO:Think about how to pass the context event,
+                        # as batch
                         l_predicate, l_correct, l_cross, l_inside = zip(
                             *batch_data)
 
                         input("Wait here.")
 
-                        correct_repr = self.event_repr(
-                            l_predicate, l_correct
-                        )
-
-                        cross_repr = self.event_repr(
-                            l_predicate, l_cross
-                        )
-
-                        inside_repr = self.event_repr(
-                            l_predicate, l_inside
-                        )
-
-                        correct_coh = self.model(correct_repr)
-                        cross_coh = self.model(cross_repr)
-                        inside_coh = self.model(inside_repr)
+                        correct_coh = self.model(l_predicate, l_correct)
+                        cross_coh = self.model(l_predicate, l_cross)
+                        inside_coh = self.model(l_predicate, l_inside)
 
                         optimizer.zero_grad()
                         correct_loss = self.criterion(1, correct_coh)
