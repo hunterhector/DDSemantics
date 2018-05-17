@@ -220,6 +220,7 @@ class HashedClozeReader:
                 features_by_eid[eid] = content['features']
 
             # Organize all the arguments.
+            event_data = []
             event_args = defaultdict(dict)
             entity_mentions = defaultdict(list)
             arg_entities = set()
@@ -231,6 +232,13 @@ class HashedClozeReader:
                     # The sentence position of the entities.
                     entity_mentions[eid].append(
                         ((evm_index, slot), arg['sentence_id'])
+                    )
+                    event_data.append(
+                        {
+                            'predicate': event['predicate'],
+                            'context': event['context'],
+                            'frame': event['frame'],
+                        }
                     )
 
                     if eid > 0:
@@ -265,7 +273,8 @@ class HashedClozeReader:
                             entity_mentions, inside_instance, current_sent,
                         )
 
-                        yield gold_info, cross_info, inside_info
+                        yield (event_data[evm_index], gold_info,
+                               cross_info, inside_info)
 
     def get_instance_info(self, doc_info, filler_id, evm_index,
                           entity_mentions, instance, sent):
@@ -279,9 +288,12 @@ class HashedClozeReader:
         )
 
         for (slot, eid), dist in zip(instance.items(), origin_distances):
-            fe = doc_info['events'][evm_index]['args'][slot]['fe']
+            arg = doc_info['events'][evm_index]['args'][slot]
+            fe = arg['fe']
+            context = arg['context']
             full_info['slots'][slot] = {
                 'fe': fe,
+                'context': context,
                 'distance': dist,
             }
         return full_info

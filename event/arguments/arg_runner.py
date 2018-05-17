@@ -26,7 +26,11 @@ class ArgRunner(Configurable):
         self.nb_epochs = self.para.nb_epochs
         self.criterion = cross_entropy
 
+        self.batch_size = self.para.batch_size
         self.reader = HashedClozeReader()
+
+        self.event_embeddings = self.para.event_embeddings
+        self.word_embeddings = self.para.word_embeddings
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
@@ -35,23 +39,48 @@ class ArgRunner(Configurable):
         optimizer = torch.optim.Adam(self.model.parameters())
 
         for epoch in range(self.nb_epochs):
+            instance_count = 0
+            batch_data = []
             with smart_open(train_in) as train_data:
                 for cloze_task in self.reader.read_clozes(train_data):
-                    correct_info, cross_info, inside_info = cloze_task
+                    batch_data.append(cloze_task)
 
-                    print(correct_info)
-                    print(cross_info)
-                    print(inside_info)
+                    if len(batch_data) == self.batch_size:
+                        l_predicate, l_correct, l_cross, l_inside = zip(
+                            *batch_data)
 
-                    input("Wait here.")
+                        input("Wait here.")
 
-                    # output = self.model(self.process_data(line))
-                    # loss = self.criterion(output, label)
-                    # loss.backward()
-                    # optimizer.step()
+                        correct_repr = self.event_repr(
+                            l_predicate, l_correct
+                        )
 
-    def process_data(self, line):
-        print(line)
+                        cross_repr = self.event_repr(
+                            l_predicate, l_cross
+                        )
+
+                        inside_repr = self.event_repr(
+                            l_predicate, l_inside
+                        )
+
+                        correct_coh = self.model(correct_repr)
+                        cross_coh = self.model(cross_repr)
+                        inside_coh = self.model(inside_repr)
+
+                        optimizer.zero_grad()
+                        correct_loss = self.criterion(1, correct_coh)
+                        cross_loss = self.criterion(0, cross_coh)
+                        inside_loss = self.criterion(0, inside_coh)
+
+                        full_loss = correct_loss + cross_loss + inside_loss
+
+                        full_loss.backward()
+                        optimizer.step()
+
+                        instance_count += 1
+
+    def event_repr(self, l_predicate, l_args):
+
         pass
 
 

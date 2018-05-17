@@ -4,7 +4,6 @@ import sys
 import os
 import gzip
 
-
 class OptionPerLineParser(argparse.ArgumentParser):
     def convert_arg_line_to_args(self, arg_line):
         if arg_line.startswith("#"):
@@ -34,6 +33,7 @@ def tokens_to_sent(tokens, sent_start):
             sent += padding
         sent += token
     return sent
+
 
 
 def evm_args():

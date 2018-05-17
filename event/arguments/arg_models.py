@@ -4,13 +4,36 @@ import torch
 
 
 class ArgCompatibleModel(nn.Module):
-    def __init__(self):
+    def __init__(self, para, resources):
         super(ArgCompatibleModel, self).__init__()
+        self.event_embedding = None
+        self.word_embedding = None
+
+        self.__load_embeddings(para, resources)
+
+    def __load_embeddings(self, para, resources):
+        self.event_embedding = nn.Embedding(
+            para.event_arg_vocab_size,
+            para.event_embedding_dim,
+        )
+
+        self.word_embedding = nn.Embedding(
+            para.word_vocab_size,
+            para.word_embedding_dim,
+        )
+
+        if resources.word_embedding is not None:
+            word_embed = torch.from_numpy(resources.word_embedding)
+            self.embedding.weight = nn.Parameter(word_embed)
+
+        if resources.event_embedding is not None:
+            event_emb = torch.from_numpy(resources.event_embedding)
+            self.event_embedding.weight = nn.Parameter(event_emb)
 
 
 class EventPairCompositionModel(ArgCompatibleModel):
-    def __init__(self, para):
-        super(EventPairCompositionModel, self).__init__()
+    def __init__(self, para, resources):
+        super(EventPairCompositionModel, self).__init__(para, resources)
         self.event_embed = nn.Embedding(para.event_arg_vocab_size,
                                         para.event_embedding_dim, padding_idx=0)
 

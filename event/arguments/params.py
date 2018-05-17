@@ -2,6 +2,7 @@ from traitlets.config import Configurable
 from traitlets import (
     Int,
     List,
+    Unicode,
 )
 
 
@@ -10,6 +11,10 @@ class ModelPara(Configurable):
         help='Vocabulary size of events and argument words').tag(config=True)
     event_embedding_dim = Int(
         help='Dimension of event specific embedding', default_value=300
+    ).tag(config=True)
+    word_vocab_size = Int(help='Vocabulary size of words').tag(config=True)
+    word_embedding_dim = Int(
+        help='Dimension of word embedding', default_value=300
     ).tag(config=True)
     arg_composition_layer_sizes = List(
         Int, default_value=[600, 300],
@@ -22,3 +27,5 @@ class ModelPara(Configurable):
 
     nb_epochs = Int(help='Number of epochs').tag(config=True)
     num_args = Int(help='Number of args per event').tag(config=True)
+
+    batch_size = Int(help='Batch size').tag(config=True)
