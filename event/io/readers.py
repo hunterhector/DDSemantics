@@ -209,8 +209,14 @@ class ConllUReader:
 
 
 class HashedClozeReader:
-    def __init__(self):
-        pass
+    def __init__(self, multi_context=False, max_context=200):
+        """
+        Reading the hashed dataset into cloze tasks.
+        :param multi_context: Whether to use multiple events as context.
+        :param max_context: Number of context events to keep per document.
+        """
+        self.multi_context = multi_context
+        self.max_context = max_context
 
     def read_clozes(self, data_in):
         for line in data_in:
@@ -219,39 +225,43 @@ class HashedClozeReader:
             for eid, content in doc_info['entities'].items():
                 features_by_eid[eid] = content['features']
 
-            # TODO: create context event, all of them.
-
             # Organize all the arguments.
             event_data = []
             event_args = defaultdict(dict)
             entity_mentions = defaultdict(list)
             arg_entities = set()
             for evm_index, event in enumerate(doc_info['events']):
+                if evm_index == self.max_context:
+                    break
+
                 for slot, arg in event['args'].items():
                     # Argument for nth event, at slot position 'slot'.
                     eid = arg['entity_id']
                     event_args[evm_index][slot] = eid
-                    # The sentence position of the entities.
+                    # From eid to entity information.
                     entity_mentions[eid].append(
                         ((evm_index, slot), arg['sentence_id'])
-                    )
-                    event_data.append(
-                        {
-                            'predicate': event['predicate'],
-                            'context': event['context'],
-                            'frame': event['frame'],
-                        }
                     )
 
                     if eid > 0:
                         arg_entities.add((evm_index, eid))
 
+                event_data.append(
+                    self.get_event_info(doc_info, evm_index,
+                                        event_args[evm_index]))
+
+            arg_entities = list(arg_entities)
+
             for evm_index, event in enumerate(doc_info['events']):
+                if evm_index == self.max_context:
+                    break
+
                 for slot, arg in event['args'].items():
                     if arg['resolvable']:
                         correct_id = arg['entity_id']
                         current_sent = arg['sentence_id']
-                        correct_instance = event_args[evm_index]
+
+                        gold_info = event_data[evm_index]
 
                         cross_instance, cross_filler_id = self.cross_cloze(
                             event_args, arg_entities, evm_index, slot,
@@ -260,62 +270,102 @@ class HashedClozeReader:
                         inside_instance, inside_filler_id = self.inside_cloze(
                             event_args, evm_index, slot, correct_id)
 
-                        gold_info = self.get_instance_info(
-                            doc_info, correct_id, evm_index,
-                            entity_mentions, correct_instance, current_sent,
+                        cross_info = self.get_event_info(doc_info, evm_index,
+                                                         cross_instance)
+
+                        inside_info = self.get_event_info(doc_info, evm_index,
+                                                          inside_instance)
+
+                        cross_features = doc_info['entities'][
+                            str(cross_filler_id)]['features']
+                        inside_features = doc_info['entities'][
+                            str(inside_filler_id)]['features']
+
+                        origin_distances = self.compute_distances(
+                            evm_index, entity_mentions, gold_info, current_sent,
                         )
 
-                        cross_info = self.get_instance_info(
-                            doc_info, cross_filler_id, evm_index,
-                            entity_mentions, cross_instance, current_sent,
+                        cross_distances = self.compute_distances(
+                            evm_index, entity_mentions, cross_info,
+                            current_sent,
                         )
 
-                        inside_info = self.get_instance_info(
-                            doc_info, inside_filler_id, evm_index,
-                            entity_mentions, inside_instance, current_sent,
+                        inside_distances = self.compute_distances(
+                            evm_index, entity_mentions, inside_info,
+                            current_sent,
                         )
 
-                        yield (event_data[evm_index], gold_info,
-                               cross_info, inside_info)
+                        if not self.multi_context:
+                            l_context = [
+                                self.sample_ignore_index(event_data, evm_index)
+                            ]
+                        else:
+                            l_context = [e for (i, e) in enumerate(event_data)
+                                         if not i == evm_index]
 
-    def get_instance_info(self, doc_info, filler_id, evm_index,
-                          entity_mentions, instance, sent):
+                        yield {
+                            'context': l_context,
+                            'gold': gold_info,
+                            'gold_distances': origin_distances,
+                            'cross': cross_info,
+                            'cross_distance': cross_distances,
+                            'cross_features': cross_features,
+                            'inside': inside_info,
+                            'inside_distance': inside_distances,
+                            'inside_features': inside_features,
+                        }
+
+    def sample_ignore_item(self, data, ignored_item):
+        if len(data) <= 1:
+            raise ValueError("Sampling from a list of size %d" % len(data))
+        while True:
+            sampled_item = random.choice(data)
+            if not sampled_item == ignored_item:
+                break
+        return sampled_item
+
+    def sample_ignore_index(self, data, ignored_index):
+        if len(data) <= 1:
+            raise ValueError("Sampling from a list of size %d" % len(data))
+        while True:
+            sampled_index = random.choice(range(len(data)))
+            if not sampled_index == ignored_index:
+                break
+        return data[sampled_index]
+
+    def get_event_info(self, doc_info, evm_index, arguments):
+        event = doc_info['events'][evm_index]
         full_info = {
-            'features': doc_info['entities'][str(filler_id)]['features'],
+            'predicate': event['predicate'],
+            'frame': event['frame'],
             'slots': {},
         }
 
-        origin_distances = self.compute_distances(
-            evm_index, entity_mentions, instance, sent,
-        )
-
-        for (slot, eid), dist in zip(instance.items(), origin_distances):
-            arg = doc_info['events'][evm_index]['args'][slot]
+        for slot, eid in arguments.items():
+            arg = event['args'][slot]
             fe = arg['fe']
             context = arg['context']
             full_info['slots'][slot] = {
+                'eid': arg['entity_id'],
                 'fe': fe,
                 'context': context,
-                'distance': dist,
             }
         return full_info
 
-    def compute_distances(self, current_evm_id, entity_sents, instance,
+    def compute_distances(self, current_evm_id, entity_sents, event,
                           sentence_id):
         """
         Compute the distance signature of the instance's other mentions to the
         sentence.
         :param current_evm_id:
         :param entity_sents:
-        :param instance:
+        :param event:
         :param sentence_id:
         :return:
         """
-        # print("Computing distance for ", instance, 'sentence ', sentence_id)
-
         distances = []
 
-        for current_slot, entity_id in instance.items():
+        for current_slot, (entity_id, _, _) in event['slots']:
             if entity_id == -1:
                 # This is an empty slot.
                 distances.append((-1, -1, -1))
@@ -361,18 +411,11 @@ class HashedClozeReader:
         :param correct_id:
         :return:
         """
-        candidates = []
-
-        for evm, ent in arg_entities:
-            if not correct_id == ent and not current_evm == evm:
-                candidates.append(ent)
-
-        wrong_id = random.choice(candidates)
-
+        wrong_id = self.sample_ignore_item(arg_entities,
+                                           (current_evm, correct_id))
         neg_instance = {}
         neg_instance.update(event_args[current_evm])
         neg_instance[current_pos] = wrong_id
-
         return neg_instance, wrong_id
 
     def inside_cloze(self, event_args, current_index, current_pos, correct_id):
@@ -389,14 +432,8 @@ class HashedClozeReader:
         neg_instance = {}
         neg_instance.update(current_event)
 
-        slots = []
-        for slot, eid in current_event.items():
-            # Exclude correct slot.
-            if not slot == current_pos:
-                slots.append(slot)
-
-        # Select another slot.
-        wrong_slot = random.choice(slots)
+        wrong_slot = self.sample_ignore_item(
+            list(current_event.keys()), current_pos)
         wrong_id = current_event[wrong_slot]
 
         # Swap the two slots, this may create:

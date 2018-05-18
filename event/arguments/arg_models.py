@@ -1,36 +1,42 @@
 from torch import nn
 from torch.nn import functional as F
 import torch
+import numpy as np
 
 
 class ArgCompatibleModel(nn.Module):
     def __init__(self, para, resources):
         super(ArgCompatibleModel, self).__init__()
+        self.para = para
         self.event_embedding = None
         self.word_embedding = None
 
-        self.__load_embeddings(para, resources)
+        self.__load_embeddings(resources)
 
-    def __load_embeddings(self, para, resources):
+    def __load_embeddings(self, resources):
         self.event_embedding = nn.Embedding(
-            para.event_arg_vocab_size,
-            para.event_embedding_dim,
+            self.para.event_arg_vocab_size,
+            self.para.event_embedding_dim,
             padding_idx=0
         )
 
         self.word_embedding = nn.Embedding(
-            para.word_vocab_size,
-            para.word_embedding_dim,
+            self.para.word_vocab_size,
+            self.para.word_embedding_dim,
             padding_idx=0
         )
 
-        # shift by 1?
-        if resources.word_embedding is not None:
-            word_embed = torch.from_numpy(resources.word_embedding)
-            self.embedding.weight = nn.Parameter(word_embed)
+        # TODO: maybe shift by one to allow padding.
+        if resources.word_embedding_path is not None:
+            word_embed = torch.from_numpy(
+                np.load(resources.word_embedding_path)
+            )
+            self.word_embedding.weight = nn.Parameter(word_embed)
 
-        if resources.event_embedding is not None:
-            event_emb = torch.from_numpy(resources.event_embedding)
+        if resources.event_embedding_path is not None:
+            event_emb = torch.from_numpy(
+                np.load(resources.event_embedding_path)
+            )
             self.event_embedding.weight = nn.Parameter(event_emb)
 
 
@@ -38,26 +44,31 @@ class EventPairCompositionModel(ArgCompatibleModel):
     def __init__(self, para, resources):
         super(EventPairCompositionModel, self).__init__(para, resources)
 
-        event_hidden_size = self._event_arg_size() * para.event_embedding_dim
-
         self.arg_compositions_layers = self._config_mlp(
-            event_hidden_size,
+            self._raw_event_embedding_size(),
             para.arg_composition_layer_sizes
         )
 
         composed_event_dim = para.arg_composition_layer_sizes[-1]
         self.event_composition_layers = self._config_mlp(
-            composed_event_dim * 2,
+            composed_event_dim * 2 + para.num_extracted_features,
             para.event_composition_layer_sizes
         )
 
         pair_event_dim = para.event_composition_layer_sizes[-1]
         self.coh = nn.Linear(pair_event_dim, 1)
 
-    def _event_arg_size(self):
-        raise NotImplementedError
+    def _raw_event_embedding_size(self):
+        # Default size is 1 predicate + 3 arguments.
+        return 4 * self.para.event_embedding_dim
 
     def _config_mlp(self, input_hidden_size, output_sizes):
+        """
+        Set up some MLP layers.
+        :param input_hidden_size: The input feature size.
+        :param output_sizes: A list of output feature size, for each layer.
+        :return:
+        """
         layers = []
         input_size = input_hidden_size
         for output_size in output_sizes:
@@ -79,8 +90,17 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         event_pair = self._mlp(
             self.event_composition_layers,
-            torch.cat([first_event_emd, second_event_emd])
+            torch.cat([first_event_emd, second_event_emd, features])
         )
 
         score = self.coh(event_pair).squeeze(-1)
         return score
+
+
+class FrameAwareEventPairCompositionModel(EventPairCompositionModel):
+    def __init__(self, para, resources):
+        super().__init__(para, resources)
+
+    def _raw_event_embedding_size(self):
+        # The frame embeddings double the size.
+        return 4 * self.para.event_embedding_dim * 2

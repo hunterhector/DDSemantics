@@ -14,6 +14,7 @@ from event.io.readers import HashedClozeReader
 from event.arguments.loss import cross_entropy
 
 from event.util import smart_open
+from event.arguments.resources import Resources
 
 
 class ArgRunner(Configurable):
@@ -21,7 +22,8 @@ class ArgRunner(Configurable):
     def __init__(self, **kwargs):
         super(ArgRunner, self).__init__(**kwargs)
         self.para = ModelPara(**kwargs)
-        self.model = EventPairCompositionModel(self.para)
+        self.resources = Resources(**kwargs)
+        self.model = EventPairCompositionModel(self.para, self.resources)
 
         self.nb_epochs = self.para.nb_epochs
         self.criterion = cross_entropy
@@ -43,7 +45,6 @@ class ArgRunner(Configurable):
                     batch_data.append(cloze_task)
 
                     if len(batch_data) == self.batch_size:
-                        # TODO:Think about how to pass the context event,
                         # as batch
                         l_predicate, l_correct, l_cross, l_inside = zip(
                             *batch_data)
