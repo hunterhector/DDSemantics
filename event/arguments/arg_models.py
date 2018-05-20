@@ -82,9 +82,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
             data = F.relu(layer(data))
         return data
 
-    def forward(self, batch):
-        first_event, second_event, features = batch
-
+    def forward(self, batch_context, batch_event_data):
+        # torch.cat([batch_context, batch_event_data])
         first_event_emd = self._mlp(self.arg_compositions_layers, first_event)
         second_event_emd = self._mlp(self.arg_compositions_layers, second_event)
 

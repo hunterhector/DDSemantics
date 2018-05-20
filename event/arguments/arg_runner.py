@@ -16,6 +16,8 @@ from event.arguments.loss import cross_entropy
 from event.util import smart_open
 from event.arguments.resources import Resources
 
+import pprint
+
 
 class ArgRunner(Configurable):
 
@@ -29,7 +31,10 @@ class ArgRunner(Configurable):
         self.criterion = cross_entropy
 
         self.batch_size = self.para.batch_size
-        self.reader = HashedClozeReader()
+
+        self.reader = HashedClozeReader(self.resources.event_vocab_path,
+                                        self.para.multi_context,
+                                        self.para.max_events)
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
@@ -39,21 +44,50 @@ class ArgRunner(Configurable):
 
         for epoch in range(self.nb_epochs):
             instance_count = 0
-            batch_data = []
+            batch_data = {
+                'context': [],
+                'gold_data': [],
+                'cross_data': [],
+                'inside_data': [],
+            }
             with smart_open(train_in) as train_data:
                 for cloze_task in self.reader.read_clozes(train_data):
-                    batch_data.append(cloze_task)
+                    print("Cloze task")
+                    pprint.PrettyPrinter(indent=2).pprint(cloze_task)
+                    input("A cloze task.")
+
+                    batch_data['context'].append(
+                        cloze_task['context']
+                    )
+
+                    batch_data['gold_data'].append([
+                        cloze_task['gold'],
+                        cloze_task['gold_features'],
+                        cloze_task['gold_distance'],
+                    ])
+
+                    batch_data['cross_data'].append([
+                        cloze_task['cross'],
+                        cloze_task['cross_features'],
+                        cloze_task['cross_distance'],
+                    ])
+
+                    batch_data['inside_data'].append([
+                        cloze_task['inside'],
+                        cloze_task['inside_features'],
+                        cloze_task['inside_distance'],
+                    ])
 
                     if len(batch_data) == self.batch_size:
-                        # as batch
-                        l_predicate, l_correct, l_cross, l_inside = zip(
-                            *batch_data)
-
-                        input("Wait here.")
-
-                        correct_coh = self.model(l_predicate, l_correct)
-                        cross_coh = self.model(l_predicate, l_cross)
-                        inside_coh = self.model(l_predicate, l_inside)
+                        correct_coh = self.model(
+                            batch_data['context'], batch_data['gold_data']
+                        )
+                        cross_coh = self.model(
+                            batch_data['context'], batch_data['cross_data']
+                        )
+                        inside_coh = self.model(
+                            batch_data['context'], batch_data['inside_data']
+                        )
 
                         optimizer.zero_grad()
                         correct_loss = self.criterion(1, correct_coh)

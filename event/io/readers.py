@@ -209,14 +209,15 @@ class ConllUReader:
 
 
 class HashedClozeReader:
-    def __init__(self, multi_context=False, max_context=200):
+    def __init__(self, event_vocab, multi_context=False, max_events=200):
         """
         Reading the hashed dataset into cloze tasks.
+        :param event_vocab: event vocabulary file
         :param multi_context: Whether to use multiple events as context.
-        :param max_context: Number of context events to keep per document.
+        :param max_events: Number of events to keep per document.
         """
         self.multi_context = multi_context
-        self.max_context = max_context
+        self.max_events = max_events
 
     def read_clozes(self, data_in):
         for line in data_in:
@@ -230,8 +231,11 @@ class HashedClozeReader:
             event_args = defaultdict(dict)
             entity_mentions = defaultdict(list)
             arg_entities = set()
+
+            eid_count = Counter()
+
             for evm_index, event in enumerate(doc_info['events']):
-                if evm_index == self.max_context:
+                if evm_index == self.max_events:
                     break
 
                 for slot, arg in event['args'].items():
@@ -245,6 +249,7 @@ class HashedClozeReader:
 
                     if eid > 0:
                         arg_entities.add((evm_index, eid))
+                        eid_count[eid] += 1
 
                 event_data.append(
                     self.get_event_info(doc_info, evm_index,
@@ -253,11 +258,15 @@ class HashedClozeReader:
             arg_entities = list(arg_entities)
 
             for evm_index, event in enumerate(doc_info['events']):
-                if evm_index == self.max_context:
+                if evm_index == self.max_events:
                     break
 
                 for slot, arg in event['args'].items():
-                    if arg['resolvable']:
+                    correct_id = arg['entity_id']
+                    # if arg['resolvable']:
+                    # We re-count for resolvable, because we may filter events,
+                    # which will change the resolvable attribute.
+                    if eid_count[correct_id] > 1:
                         correct_id = arg['entity_id']
                         current_sent = arg['sentence_id']
 
@@ -280,6 +289,8 @@ class HashedClozeReader:
                             str(cross_filler_id)]['features']
                         inside_features = doc_info['entities'][
                             str(inside_filler_id)]['features']
+                        gold_features = doc_info['entities'][
+                            str(correct_id)]['features']
 
                         origin_distances = self.compute_distances(
                             evm_index, entity_mentions, gold_info, current_sent,
@@ -303,10 +314,14 @@ class HashedClozeReader:
                             l_context = [e for (i, e) in enumerate(event_data)
                                          if not i == evm_index]
 
+                        print(l_context)
+                        self._to_torch(l_context)
+
                         yield {
                             'context': l_context,
                             'gold': gold_info,
                             'gold_distances': origin_distances,
+                            'gold_features': gold_features,
                             'cross': cross_info,
                             'cross_distance': cross_distances,
                             'cross_features': cross_features,
@@ -314,6 +329,12 @@ class HashedClozeReader:
                             'inside_distance': inside_distances,
                             'inside_features': inside_features,
                         }
+
+    def _vectorize_context(self, context):
+        context['']
+
+    def _to_torch(self, data):
+        pass
 
     def sample_ignore_item(self, data, ignored_item):
         if len(data) <= 1:
@@ -346,7 +367,7 @@ class HashedClozeReader:
             fe = arg['fe']
             context = arg['context']
             full_info['slots'][slot] = {
-                'eid': arg['entity_id'],
+                'eid': eid,
                 'fe': fe,
                 'context': context,
             }
@@ -365,7 +386,9 @@ class HashedClozeReader:
         """
         distances = []
 
-        for current_slot, (entity_id, _, _) in event['slots']:
+        for current_slot, event_info in event['slots'].items():
+            entity_id = event_info['eid']
+
             if entity_id == -1:
                 # This is an empty slot.
                 distances.append((-1, -1, -1))
@@ -411,8 +434,9 @@ class HashedClozeReader:
         :param correct_id:
         :return:
         """
-        wrong_id = self.sample_ignore_item(arg_entities,
-                                           (current_evm, correct_id))
+        wrong_evm, wrong_id = self.sample_ignore_item(
+            arg_entities, (current_evm, correct_id)
+        )
         neg_instance = {}
         neg_instance.update(event_args[current_evm])
         neg_instance[current_pos] = wrong_id
@@ -433,7 +457,8 @@ class HashedClozeReader:
         neg_instance.update(current_event)
 
         wrong_slot = self.sample_ignore_item(
-            list(current_event.keys()), current_pos)
+            list(current_event.keys()), current_pos
+        )
         wrong_id = current_event[wrong_slot]
 
         # Swap the two slots, this may create:

@@ -3,6 +3,7 @@ from traitlets import (
     Int,
     List,
     Unicode,
+    Bool,
 )
 
 
@@ -30,4 +31,11 @@ class ModelPara(Configurable):
 
     num_extracted_features = Int(help='Feature size').tag(config=True)
 
-    batch_size = Int(help='Batch size').tag(config=True)
+    batch_size = Int(help='Batch size', default_value=128).tag(config=True)
+
+    multi_context = Bool(
+        help='Whether to use only one context, '
+             'or multiple context per document').tag(
+        config=True)
+    max_events = Int(
+        help='Maximum number of events', default_value=200).tag(config=True)
