@@ -2,6 +2,7 @@ from torch import nn
 from torch.nn import functional as F
 import torch
 import numpy as np
+import logging
 
 
 class ArgCompatibleModel(nn.Module):
@@ -14,30 +15,45 @@ class ArgCompatibleModel(nn.Module):
         self.__load_embeddings(resources)
 
     def __load_embeddings(self, resources):
+        logging.info("Loading %d x %d event embedding." % (
+            self.para.event_arg_vocab_size + 1,
+            self.para.event_embedding_dim
+        ))
+        # Add one dimension for padding.
         self.event_embedding = nn.Embedding(
-            self.para.event_arg_vocab_size,
+            self.para.event_arg_vocab_size + 1,
             self.para.event_embedding_dim,
-            padding_idx=0
+            padding_idx=self.para.event_arg_vocab_size
         )
 
+        logging.info("Loading %d x %d word embedding." % (
+            self.para.word_vocab_size + 1,
+            self.para.word_embedding_dim
+        ))
         self.word_embedding = nn.Embedding(
-            self.para.word_vocab_size,
+            self.para.word_vocab_size + 1,
             self.para.word_embedding_dim,
-            padding_idx=0
+            padding_idx=self.para.word_vocab_size
         )
 
-        # TODO: maybe shift by one to allow padding.
         if resources.word_embedding_path is not None:
             word_embed = torch.from_numpy(
                 np.load(resources.word_embedding_path)
             )
-            self.word_embedding.weight = nn.Parameter(word_embed)
+            zeros = torch.zeros(1, self.para.word_embedding_dim)
+
+            self.word_embedding.weight = nn.Parameter(
+                torch.cat((word_embed, zeros))
+            )
 
         if resources.event_embedding_path is not None:
             event_emb = torch.from_numpy(
                 np.load(resources.event_embedding_path)
             )
-            self.event_embedding.weight = nn.Parameter(event_emb)
+            zeros = torch.zeros(1, self.para.event_embedding_dim)
+            self.event_embedding.weight = nn.Parameter(
+                torch.cat((event_emb, zeros))
+            )
 
 
 class EventPairCompositionModel(ArgCompatibleModel):
@@ -82,8 +98,38 @@ class EventPairCompositionModel(ArgCompatibleModel):
             data = F.relu(layer(data))
         return data
 
-    def forward(self, batch_context, batch_event_data):
+    def _event_repr(self, event_data):
+        """
+        Convert event data into a vector.
+        :param event_data:
+        :return:
+        """
+        event_components = []
+
+        pred_emb = self.event_embedding(event_data['predicate'])
+        frame_emb = self.event_embedding(event_data['frame'])
+
+        event_components.append(pred_emb)
+        event_components.append(frame_emb)
+
+        for slot in event_data['slots']:
+            fe_emb = self.event_embedding[slot['fe']]
+            event_components.append(fe_emb)
+        return torch.cat(event_components)
+
+    def forward(self, batch_event_data, batch_context, max_context_size):
         # torch.cat([batch_context, batch_event_data])
+        print("Got %d data in batch" % len(batch_event_data))
+
+        ll_context_emb = []
+        for l_context in batch_context:
+            for context in l_context:
+                self._event_repr(context)
+
+        print(max_context_size)
+        # print(batch_event_data)
+        input("wait here.")
+
         first_event_emd = self._mlp(self.arg_compositions_layers, first_event)
         second_event_emd = self._mlp(self.arg_compositions_layers, second_event)
 

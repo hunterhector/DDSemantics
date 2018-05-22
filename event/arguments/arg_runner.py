@@ -30,9 +30,9 @@ class ArgRunner(Configurable):
         self.nb_epochs = self.para.nb_epochs
         self.criterion = cross_entropy
 
-        self.batch_size = self.para.batch_size
+        # self.batch_size = self.para.batch_size
 
-        self.reader = HashedClozeReader(self.resources.event_vocab_path,
+        self.reader = HashedClozeReader(self.para.batch_size,
                                         self.para.multi_context,
                                         self.para.max_events)
 
@@ -43,63 +43,33 @@ class ArgRunner(Configurable):
         optimizer = torch.optim.Adam(self.model.parameters())
 
         for epoch in range(self.nb_epochs):
-            instance_count = 0
-            batch_data = {
-                'context': [],
-                'gold_data': [],
-                'cross_data': [],
-                'inside_data': [],
-            }
             with smart_open(train_in) as train_data:
-                for cloze_task in self.reader.read_clozes(train_data):
-                    print("Cloze task")
-                    pprint.PrettyPrinter(indent=2).pprint(cloze_task)
-                    input("A cloze task.")
-
-                    batch_data['context'].append(
-                        cloze_task['context']
+                for batch_data in self.reader.read_cloze_batch(train_data):
+                    correct_coh = self.model(
+                        batch_data['gold_data'],
+                        batch_data['context'],
+                        batch_data['max_context_size'],
+                    )
+                    cross_coh = self.model(
+                        batch_data['cross_data'],
+                        batch_data['context'],
+                        batch_data['max_context_size'],
+                    )
+                    inside_coh = self.model(
+                        batch_data['inside_data'],
+                        batch_data['context'],
+                        batch_data['max_context_size'],
                     )
 
-                    batch_data['gold_data'].append([
-                        cloze_task['gold'],
-                        cloze_task['gold_features'],
-                        cloze_task['gold_distance'],
-                    ])
+                    optimizer.zero_grad()
+                    correct_loss = self.criterion(1, correct_coh)
+                    cross_loss = self.criterion(0, cross_coh)
+                    inside_loss = self.criterion(0, inside_coh)
 
-                    batch_data['cross_data'].append([
-                        cloze_task['cross'],
-                        cloze_task['cross_features'],
-                        cloze_task['cross_distance'],
-                    ])
+                    full_loss = correct_loss + cross_loss + inside_loss
 
-                    batch_data['inside_data'].append([
-                        cloze_task['inside'],
-                        cloze_task['inside_features'],
-                        cloze_task['inside_distance'],
-                    ])
-
-                    if len(batch_data) == self.batch_size:
-                        correct_coh = self.model(
-                            batch_data['context'], batch_data['gold_data']
-                        )
-                        cross_coh = self.model(
-                            batch_data['context'], batch_data['cross_data']
-                        )
-                        inside_coh = self.model(
-                            batch_data['context'], batch_data['inside_data']
-                        )
-
-                        optimizer.zero_grad()
-                        correct_loss = self.criterion(1, correct_coh)
-                        cross_loss = self.criterion(0, cross_coh)
-                        inside_loss = self.criterion(0, inside_coh)
-
-                        full_loss = correct_loss + cross_loss + inside_loss
-
-                        full_loss.backward()
-                        optimizer.step()
-
-                        instance_count += 1
+                    full_loss.backward()
+                    optimizer.step()
 
     def event_repr(self, l_predicate, l_args):
 

@@ -7,7 +7,6 @@ import pickle
 import random
 import json
 from collections import Counter
-import sys
 
 
 class Vocab:
@@ -209,15 +208,70 @@ class ConllUReader:
 
 
 class HashedClozeReader:
-    def __init__(self, event_vocab, multi_context=False, max_events=200):
+    def __init__(self, batch_size, multi_context=False, max_events=200):
         """
         Reading the hashed dataset into cloze tasks.
-        :param event_vocab: event vocabulary file
+        :param batch_size: Number of cloze tasks per batch.
         :param multi_context: Whether to use multiple events as context.
         :param max_events: Number of events to keep per document.
         """
+        self.batch_size = batch_size
         self.multi_context = multi_context
         self.max_events = max_events
+
+    def read_cloze_batch(self, data_in):
+        batch_data = {
+            'context': [],
+            'gold_data': [],
+            'cross_data': [],
+            'inside_data': [],
+            'max_context_size': 0,
+        }
+
+        for cloze_task in self.read_clozes(data_in):
+            batch_data['context'].append(
+                cloze_task['context']
+            )
+
+            batch_data['gold_data'].append([
+                cloze_task['gold'],
+                cloze_task['gold_features'],
+                cloze_task['gold_distances'],
+            ])
+
+            batch_data['cross_data'].append([
+                cloze_task['cross'],
+                cloze_task['cross_features'],
+                cloze_task['cross_distances'],
+            ])
+
+            batch_data['inside_data'].append([
+                cloze_task['inside'],
+                cloze_task['inside_features'],
+                cloze_task['inside_distances'],
+            ])
+
+            if len(cloze_task['context']) > batch_data['max_context_size']:
+                batch_data['max_context_size'] = len(cloze_task['context'])
+
+            if len(batch_data['gold_data']) == self.batch_size:
+                yield batch_data
+                batch_data = {
+                    'context': [],
+                    'gold_data': [],
+                    'cross_data': [],
+                    'inside_data': [],
+                    'max_context_size': 0,
+                }
+
+    def _vectorize_event(self, event_info):
+        event_components = [event_info['predicate'], event_info['frame']]
+        for slot in event_info['slots']:
+            event_components.append(slot['fe'])
+
+
+
+        return event_components
 
     def read_clozes(self, data_in):
         for line in data_in:
@@ -306,35 +360,31 @@ class HashedClozeReader:
                             current_sent,
                         )
 
+                        # Events are represented as a list of "event words" now.
                         if not self.multi_context:
                             l_context = [
-                                self.sample_ignore_index(event_data, evm_index)
+                                self._vectorize_event(
+                                    self.sample_ignore_index(
+                                        event_data, evm_index)
+                                )
                             ]
                         else:
-                            l_context = [e for (i, e) in enumerate(event_data)
-                                         if not i == evm_index]
-
-                        print(l_context)
-                        self._to_torch(l_context)
+                            l_context = [self._vectorize_event(e) for (i, e) in
+                                         enumerate(event_data) if
+                                         not i == evm_index]
 
                         yield {
                             'context': l_context,
-                            'gold': gold_info,
+                            'gold': self._vectorize_event(gold_info),
                             'gold_distances': origin_distances,
                             'gold_features': gold_features,
-                            'cross': cross_info,
-                            'cross_distance': cross_distances,
+                            'cross': self._vectorize_event(cross_info),
+                            'cross_distances': cross_distances,
                             'cross_features': cross_features,
-                            'inside': inside_info,
-                            'inside_distance': inside_distances,
+                            'inside': self._vectorize_event(inside_info),
+                            'inside_distances': inside_distances,
                             'inside_features': inside_features,
                         }
-
-    def _vectorize_context(self, context):
-        context['']
-
-    def _to_torch(self, data):
-        pass
 
     def sample_ignore_item(self, data, ignored_item):
         if len(data) <= 1:
