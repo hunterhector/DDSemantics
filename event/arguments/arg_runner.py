@@ -32,9 +32,22 @@ class ArgRunner(Configurable):
 
         # self.batch_size = self.para.batch_size
 
-        self.reader = HashedClozeReader(self.para.batch_size,
-                                        self.para.multi_context,
-                                        self.para.max_events)
+        self.reader = HashedClozeReader(
+            self.resources.event_vocab,
+            self.resources.lookups,
+            self.resources.oovs,
+            self.para.batch_size,
+            self.para.multi_context,
+            self.para.max_events,
+        )
+
+    def _assert(self):
+        if self.resources.word_embedding:
+            assert self.para.word_vocab_size == \
+                   self.resources.word_embedding.shape[0]
+        if self.resources.event_embedding:
+            assert self.para.event_arg_vocab_size == \
+                   self.resources.event_embedding.shape[0]
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
@@ -44,24 +57,27 @@ class ArgRunner(Configurable):
 
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
-                for batch_data in self.reader.read_cloze_batch(train_data):
+                for batch_data, context_size in self.reader.read_cloze_batch(
+                        train_data):
                     correct_coh = self.model(
-                        batch_data['gold_data'],
+                        batch_data['gold'],
                         batch_data['context'],
-                        batch_data['max_context_size'],
+                        context_size,
                     )
                     cross_coh = self.model(
-                        batch_data['cross_data'],
+                        batch_data['cross'],
                         batch_data['context'],
-                        batch_data['max_context_size'],
+                        context_size,
                     )
                     inside_coh = self.model(
-                        batch_data['inside_data'],
+                        batch_data['inside'],
                         batch_data['context'],
-                        batch_data['max_context_size'],
+                        context_size,
                     )
 
                     optimizer.zero_grad()
+
+                    # Cross entropy of the scores.
                     correct_loss = self.criterion(1, correct_coh)
                     cross_loss = self.criterion(0, cross_coh)
                     inside_loss = self.criterion(0, inside_coh)

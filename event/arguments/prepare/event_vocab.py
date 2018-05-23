@@ -70,8 +70,8 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                     text = represent_by_id.get(eid, arg['text'])
 
                     arg_text = get_word(text, 'argument', lookups, oovs)
-
                     arg_role = make_arg(arg_text, syn_role)
+
                     if arg_role is not None:
                         sentence.append(arg_text + "-" + syn_role)
 

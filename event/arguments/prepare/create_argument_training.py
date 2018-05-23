@@ -10,6 +10,12 @@ from event.arguments.prepare.event_vocab import (
 from event.arguments import consts, util
 from collections import defaultdict, Counter
 import json
+from traitlets import (
+    Unicode
+)
+from traitlets.config.loader import PyFileConfigLoader
+from traitlets.config import Configurable
+import sys
 
 
 def hash_context(word_vocab, context):
@@ -89,7 +95,7 @@ def tiebreak_arg(tied_args, pred_start, pred_end):
 
 def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
     if arg is None:
-        # Empty arguemnt case.
+        # Empty argument case.
         return {
             'arg': -1,
             'fe': -1,
@@ -97,6 +103,7 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
             'entity_id': -1,
             'resolvable': False,
             'sentence_id': -1,
+            'dep': "",
         }
     else:
         dep, full_fe, content, source = arg
@@ -128,6 +135,7 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
             'entity_id': content['entity_id'],
             'resolvable': content['resolvable'],
             'sentence_id': content['sentence_id'],
+            'dep': dep,
         }
 
 
@@ -227,8 +235,18 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
     hashed_doc = {
         'docid': docid,
         'events': [],
-        'entities': entities,
     }
+
+    hashed_entities = {}
+    for eid, entity in entities.items():
+        entity_head = get_word(entity['representEntityHead'], 'argument',
+                               lookups, oovs)
+        hashed_entities[eid] = {
+            'features': entity['features'],
+            'entity_head': entity_head,
+        }
+
+    hashed_doc['entities'] = hashed_entities
 
     for event in events:
         pred = make_predicate(
@@ -238,12 +256,7 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
         pid = event_vocab[pred]
 
         frame_name = event.get('frame', 'NA')
-
-        if frame_name in event_vocab:
-            fid = event_vocab[frame_name]
-        else:
-            fid = -1
-
+        fid = event_vocab.get(frame_name, -1)
         mapped_args = get_args(event, frame_args, dep_frames)
 
         full_args = {}
@@ -262,23 +275,23 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
     return hashed_doc
 
 
-def hash_data(cmd_args):
-    frame_args, frame_counts = load_frame_map(cmd_args.frame_arg_map)
-    dep_frames, dep_counts = load_frame_map(cmd_args.dep_frame_map)
+def hash_data(params):
+    frame_args, frame_counts = load_frame_map(params.frame_arg_map)
+    dep_frames, dep_counts = load_frame_map(params.dep_frame_map)
+
+    event_vocab = load_emb_vocab(params.event_vocab)
+    word_vocab = load_emb_vocab(params.word_vocab)
+
+    lookups, oovs = load_vocab(params.component_vocab_dir)
 
     reader = EventReader()
-
-    event_vocab = load_emb_vocab(cmd_args.event_vocab)
-    word_vocab = load_emb_vocab(cmd_args.word_vocab)
-
-    lookups, oovs = load_vocab(cmd_args.component_vocab_dir)
 
     doc_count = 0
     event_count = 0
 
     print("{}: Start hashing".format(util.get_time()))
-    with gzip.open(cmd_args.raw_data) as data_in, gzip.open(
-            cmd_args.output_path, 'w') as data_out:
+    with gzip.open(params.raw_data) as data_in, gzip.open(
+            params.output_path, 'w') as data_out:
         for docid, events, entities in reader.read_events(data_in):
             hashed_doc = hash_one_doc(docid, events, entities, event_vocab,
                                       word_vocab, lookups, oovs, frame_args,
@@ -299,26 +312,25 @@ def hash_data(cmd_args):
 
 
 if __name__ == '__main__':
-    from event.util import OptionPerLineParser
+    class HashParam(Configurable):
+        event_vocab = Unicode(
+            help='Event and Frame Vocabulary.').tag(config=True)
+        word_vocab = Unicode(
+            help='Vocabulary for normal words.').tag(config=True)
+        component_vocab_dir = Unicode(
+            help='Directory containing vocab for each component'
+        ).tag(config=True)
+        frame_arg_map = Unicode(
+            help='Mapping from predicate arguments to frame elements.'
+        ).tag(config=True)
+        dep_frame_map = Unicode(
+            help='Mapping from frame elements to arguments.').tag(config=True)
+        raw_data = Unicode(help='The dataset to hash.').tag(config=True)
+        output_path = Unicode(
+            help='Output path of the hashed data.').tag(config=True)
 
-    parser = OptionPerLineParser(description='Argument Task Hasher.',
-                                 fromfile_prefix_chars='@')
-    parser.add_argument('--event_vocab', type=str,
-                        help='Event and Frame Vocabulary.')
-    parser.add_argument('--word_vocab', type=str,
-                        help='Vocabulary for normal words.')
 
-    parser.add_argument('--component_vocab_dir', type=str,
-                        help='Directory containing vocab for each component')
+    conf = PyFileConfigLoader(sys.argv[1]).load_config()
+    hash_params = HashParam(config=conf)
 
-    parser.add_argument('--frame_arg_map', type=str,
-                        help='Mapping from predicate '
-                             'arguments to frame elements.')
-    parser.add_argument('--dep_frame_map', type=str,
-                        help='Mapping from frame elements to arguments.')
-
-    parser.add_argument('--raw_data', type=str, help='The dataset to hash.')
-    parser.add_argument('--output_path', type=str,
-                        help='Output path of the hashed data.')
-
-    hash_data(parser.parse_args())
+    hash_data(hash_params)
