@@ -57,22 +57,19 @@ class ArgRunner(Configurable):
 
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
-                for batch_data, context_size in self.reader.read_cloze_batch(
+                for batch_data, context in self.reader.read_cloze_batch(
                         train_data):
                     correct_coh = self.model(
                         batch_data['gold'],
-                        batch_data['context'],
-                        context_size,
+                        context,
                     )
                     cross_coh = self.model(
                         batch_data['cross'],
-                        batch_data['context'],
-                        context_size,
+                        context
                     )
                     inside_coh = self.model(
                         batch_data['inside'],
-                        batch_data['context'],
-                        context_size,
+                        context
                     )
 
                     optimizer.zero_grad()

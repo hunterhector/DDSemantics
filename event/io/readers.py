@@ -8,7 +8,7 @@ import random
 import json
 from collections import Counter
 from event.arguments import consts
-from event.arguments.prepare.event_vocab import get_word, make_arg
+import torch.nn.functional as F
 
 
 class Vocab:
@@ -226,35 +226,61 @@ class HashedClozeReader:
         self.lookups = lookups
         self.oovs = oovs
 
+        self.event_padding = len(event_vocab)
+
         self.slot_names = ['subj', 'obj', 'prep', ]
 
+        self.__data_types = {
+            'gold_event': np.int64,
+            'gold_distances': np.float32,
+            'gold_features': np.float32,
+            'cross_event': np.int64,
+            'cross_distances': np.float32,
+            'cross_features': np.float32,
+            'inside_event': np.int64,
+            'inside_distances': np.float32,
+            'inside_features': np.float32,
+        }
+
     def read_cloze_batch(self, data_in):
-        batch_data = defaultdict(list)
+        clozes = defaultdict(list)
 
         max_context_size = 0
 
+        cloze_count = 0
         for cloze_task in self.read_clozes(data_in):
             for key, value in cloze_task.items():
-                batch_data[key].append(value)
+                clozes[key].append(value)
 
             if len(cloze_task['context']) > max_context_size:
                 max_context_size = len(cloze_task['context'])
 
-            if len(batch_data['gold_data']) == self.batch_size:
-                for key, value in batch_data.items():
+            cloze_count += 1
+
+            if cloze_count == self.batch_size:
+                cloze_count = 0
+                instance_data = defaultdict(dict)
+                for key, value in clozes.items():
                     if '_' in key:
                         inst_type, inst_key = key.split('_')
-                        batch_data[inst_type][inst_key] = self._batch_combine(
-                            value)
-                    else:
-                        batch_data[key] = self._batch_combine(value)
+                        instance_data[inst_type][inst_key] = \
+                            self._batch_combine(value)
+                    elif key == 'context':
+                        padded = [self._pad_context(v, max_context_size) for v
+                                  in value]
+                        context = self._batch_combine(padded)
 
-                yield batch_data, max_context_size
-                batch_data = defaultdict(list)
+                yield instance_data, context
+                clozes = defaultdict(list)
                 max_context_size = 0
 
     def _batch_combine(self, l_data):
         return torch.cat([torch.unsqueeze(d, 0) for d in l_data], dim=0)
+
+    def _pad_context(self, context, pad_to_length):
+        pad_len = pad_to_length - context.shape[0]
+        padded = F.pad(context, (0, 0, 0, pad_len), 'constant', 0)
+        return padded
 
     def _take_event_parts(self, event_info):
         event_components = [event_info['predicate'], event_info['frame']]
@@ -262,8 +288,9 @@ class HashedClozeReader:
         for slot_name in self.slot_names:
             slot = event_info['slots'][slot_name]
             event_components.append(slot['fe'])
-            eid = slot['eid']
-        return event_components
+            event_components.append(slot['arg'])
+
+        return [c if c > 0 else self.event_padding for c in event_components]
 
     def read_clozes(self, data_in):
         for line in data_in:
@@ -287,7 +314,7 @@ class HashedClozeReader:
                     break
 
                 for slot, arg in event['args'].items():
-                    print(arg)
+                    # print(arg)
                     # Argument for nth event, at slot position 'slot'.
                     eid = arg['entity_id']
                     event_args[evm_index][slot] = (eid, arg['dep'])
@@ -301,7 +328,7 @@ class HashedClozeReader:
                         eid_count[eid] += 1
 
                 event_data.append(
-                    self.get_event_info(doc_info, entity_heads, evm_index,
+                    self.get_event_info(doc_info, evm_index,
                                         event_args[evm_index]))
 
             arg_entities = list(arg_entities)
@@ -310,7 +337,8 @@ class HashedClozeReader:
                 if evm_index == self.max_events:
                     break
 
-                for slot, arg in event['args'].items():
+                for slot_index, slot in enumerate(self.slot_names):
+                    arg = event['args'][slot]
                     correct_id = arg['entity_id']
                     # if arg['resolvable']:
                     # We re-count for resolvable, because we may filter events,
@@ -328,11 +356,11 @@ class HashedClozeReader:
                         inside_instance, inside_filler_id = self.inside_cloze(
                             event_args, evm_index, slot, correct_id)
 
-                        cross_info = self.get_event_info(
-                            doc_info, entity_heads, evm_index, cross_instance)
+                        cross_info = self.get_event_info(doc_info, evm_index,
+                                                         cross_instance)
 
-                        inside_info = self.get_event_info(
-                            doc_info, entity_heads, evm_index, inside_instance)
+                        inside_info = self.get_event_info(doc_info, evm_index,
+                                                          inside_instance)
 
                         cross_features = features_by_eid[cross_filler_id]
                         inside_features = features_by_eid[inside_filler_id]
@@ -376,24 +404,23 @@ class HashedClozeReader:
                         cloze = {
                             'gold_event': self._take_event_parts(gold_info),
                             'gold_distances': origin_distances,
-                            'gold_features': gold_features,
+                            'gold_features': gold_features + [slot_index],
                             'cross_event': self._take_event_parts(cross_info),
                             'cross_distances': cross_distances,
-                            'cross_features': cross_features,
+                            'cross_features': cross_features + [slot_index],
                             'inside_event': self._take_event_parts(inside_info),
                             'inside_distances': inside_distances,
-                            'inside_features': inside_features,
+                            'inside_features': inside_features + [slot_index],
                         }
 
                         for key, value in cloze.items():
-                            cloze[key] = torch.from_numpy(np.asarray(value))
-                            print(key)
-                            print(value)
-                            input("Check cloze data.")
-
+                            cloze[key] = self.to_torch(key, value)
                         cloze['context'] = context_data
 
                         yield cloze
+
+    def to_torch(self, key, data):
+        return torch.from_numpy(np.asarray(data, self.__data_types[key]))
 
     def sample_ignore_item(self, data, ignored_item):
         if len(data) <= 1:
@@ -413,7 +440,7 @@ class HashedClozeReader:
                 break
         return data[sampled_index]
 
-    def get_event_info(self, doc_info, entity_heads, evm_index, arguments):
+    def get_event_info(self, doc_info, evm_index, arguments):
         event = doc_info['events'][evm_index]
         full_info = {
             'predicate': event['predicate'],
@@ -421,30 +448,25 @@ class HashedClozeReader:
             'slots': {},
         }
 
-        for slot, (eid, dep) in arguments.items():
+        for slot, (eid, _) in arguments.items():
             if eid == -1:
                 # This is an empty slot. Using
                 pad = len(self.event_vocab)
                 fe = pad
-                arg = pad
+                arg_role = pad
             else:
-                arg = event['args'][slot]
-                fe = arg['fe']
+                arg_info = event['args'][slot]
+                fe = arg_info['fe']
+                arg_role = arg_info['arg']
 
                 if fe == -1:
                     fe = self.event_vocab[consts.unk_fe]
 
-                # Take the entity's representative text, and convert it into
-                # text_role format.
-                arg_text = get_word(
-                    entity_heads[eid], 'argument', self.lookups, self.oovs)
-                arg_role = make_arg(arg_text, dep)
-                arg = self.event_vocab[arg_role]
-
             full_info['slots'][slot] = {
-                'arg': arg,
+                'arg': arg_role,
                 'fe': fe,
                 'context': event['args'][slot]['context'],
+                'eid': eid
             }
 
         return full_info
@@ -462,18 +484,22 @@ class HashedClozeReader:
         """
         distances = []
 
+        # Now use a large distance to represent Indefinite.
+        # Infinity: if the entity cannot be found again, or it is not an entity.
+        inf = 10000.0
+
         for current_slot, event_info in event['slots'].items():
             entity_id = event_info['eid']
 
             if entity_id == -1:
                 # This is an empty slot.
-                distances.append((-1, -1, -1))
+                distances.append((inf, inf, inf))
                 continue
 
-            max_dist = 0
-            min_dist = float('inf')
-            total_dist = 0
-            total_pair = 0
+            max_dist = 0.0
+            min_dist = inf
+            total_dist = 0.0
+            total_pair = 0.0
 
             for (evm_id, slot), sid in entity_sents[entity_id]:
                 if evm_id == current_evm_id:
@@ -494,20 +520,21 @@ class HashedClozeReader:
             else:
                 # This argument is not seen elsewhere, it should be a special
                 # distance label.
-                distances.append((float('inf'), float('inf'), float('inf')))
+                distances.append((inf, inf, inf))
                 # print("No other mentions found")
 
-        return distances
+        # Flatten the (argument x type) distances into a flat list.
+        return [d for l in distances for d in l]
 
-    def cross_cloze(self, event_args, arg_entities, current_evm, current_pos,
+    def cross_cloze(self, event_args, arg_entities, current_evm, current_slot,
                     correct_id):
         """
         A negative cloze instance that use arguments from other events.
-        :param event_args:
-        :param arg_entities:
-        :param current_evm:
-        :param current_pos:
-        :param correct_id:
+        :param event_args: List of all origin event arguments.
+        :param arg_entities: Map from argument to entities.
+        :param current_evm: The event id.
+        :param current_slot: The slot id.
+        :param correct_id: Correct entity id.
         :return:
         """
         wrong_evm, wrong_id = self.sample_ignore_item(
@@ -515,33 +542,38 @@ class HashedClozeReader:
         )
         neg_instance = {}
         neg_instance.update(event_args[current_evm])
-        neg_instance[current_pos] = wrong_id
+        dep = event_args[current_evm][current_slot]
+        neg_instance[current_slot] = (wrong_id, dep)
+
         return neg_instance, wrong_id
 
-    def inside_cloze(self, event_args, current_index, current_pos, correct_id):
+    def inside_cloze(self, event_args, current_evm, current_slot, correct_id):
         """
         A negative cloze instance that use arguments within the event.
         :param event_args:
-        :param current_index:
-        :param current_pos:
+        :param current_evm:
+        :param current_slot:
         :param correct_id:
         :return:
         """
-        current_event = event_args[current_index]
+        current_event = event_args[current_evm]
 
         neg_instance = {}
         neg_instance.update(current_event)
 
-        wrong_slot = self.sample_ignore_item(
-            list(current_event.keys()), current_pos
+        swapping_slot = self.sample_ignore_item(
+            list(current_event.keys()), current_slot
         )
-        wrong_id = current_event[wrong_slot]
+        swapping_id = current_event[swapping_slot]
+
+        current_dep = event_args[current_evm][current_slot]
+        swapping_dep = event_args[current_evm][swapping_slot]
 
         # Swap the two slots, this may create:
         # 1. instance with frames swapped
         # 2. instance with a frame moved to another empty slot
-        neg_instance[wrong_slot] = correct_id
-        neg_instance[current_pos] = wrong_id
+        neg_instance[swapping_slot] = (correct_id, swapping_dep)
+        neg_instance[current_slot] = (swapping_id, current_dep)
 
         return neg_instance, correct_id
 

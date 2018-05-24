@@ -60,7 +60,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         super(EventPairCompositionModel, self).__init__(para, resources)
 
         self.arg_compositions_layers = self._config_mlp(
-            self._raw_event_embedding_size(),
+            self._full_event_embedding_size(),
             para.arg_composition_layer_sizes
         )
 
@@ -73,7 +73,12 @@ class EventPairCompositionModel(ArgCompatibleModel):
         pair_event_dim = para.event_composition_layer_sizes[-1]
         # self.coh = nn.Linear(pair_event_dim, 1)
 
-    def _raw_event_embedding_size(self):
+        # Output 9 different sigmas, each corresponding to one distance measure.
+        self.event_to_sigma_layer = self._config_mlp(
+            self.para.event_embedding_dim, [9]
+        )
+
+    def _full_event_embedding_size(self):
         # Default size is 1 predicate + 3 arguments.
         return 4 * self.para.event_embedding_dim
 
@@ -91,16 +96,70 @@ class EventPairCompositionModel(ArgCompatibleModel):
             input_size = output_size
         return nn.ModuleList(layers)
 
-    def _mlp(self, layers, input_data):
+    def _mlp(self, layers, input_data, type='relu'):
         data = input_data
         for layer in layers:
-            data = F.relu(layer(data))
+            if type == 'relu':
+                data = F.relu(layer(data))
+            elif type == 'tanh':
+                data = F.tanh(layer(data))
         return data
 
-    def _encode_distance(self, predicates, distances):
-        # Encode with a predicate specific kernel
+    def _encode_distance(self, event_emb, distances):
+        """
+        Encode distance into kernel, maybe event dependent.
+        :param batch_event:
+        :param distances:
+        :return:
+        """
+        # Encode with a event dependent kernel
         # TODO finish this
-        return distances
+        # May be we should not update the predicates embedding here.
+
+        print("Embeddings")
+        # batch x num event words x embedding
+        print(event_emb.shape)
+        print("Distances")
+        # batch x 9
+        print(distances.shape)
+        print(distances.type())
+
+        predicates = event_emb[:, 1, :]
+
+        print("Predicates")
+        # batch x embedding
+        print(predicates.shape)
+
+        # batch x 9
+        dist_sq = distances * distances
+
+        print("Distance square")
+        print(dist_sq.shape)
+        print(dist_sq.type())
+
+        # Output 9 sigmas, each one for each distance.
+        # Deviation cannot be zero, so we add a soft plus here.
+        sigmas = nn.Softplus()(
+            self._mlp(self.event_to_sigma_layer, predicates, type='tanh')
+        )
+
+        print("Sigmas")
+        # batch x 9
+        print(sigmas.shape)
+
+        sigma_sq = 2.0 * sigmas * sigmas
+        print(sigma_sq.shape)
+
+        print(dist_sq)
+        print(sigma_sq)
+
+        kernel_value = torch.exp(dist_sq / sigma_sq)
+
+        print(kernel_value)
+
+        input("encoding distances.")
+
+        return kernel_value
 
     def _contextual_score(self, event_emb, context_emb, features):
         # TODO finish this
@@ -112,23 +171,22 @@ class EventPairCompositionModel(ArgCompatibleModel):
     def _event_repr(self, event_emb):
         return self._mlp(self.arg_compositions_layers, event_emb)
 
-    def forward(self, batch_event_data, batch_context, max_context_size):
+    def forward(self, batch_event_data, batch_context):
         # torch.cat([batch_context, batch_event_data])
-        print("Got %d data in batch" % len(batch_event_data))
+        batch_event = batch_event_data['event']
+        batch_features = batch_event_data['features']
+        batch_distances = batch_event_data['distances']
 
-        context_emb = self.event_embedding(batch_event_data['context'])
-        event_emb = self.event_embedding(batch_event_data['event'])
+        print("Batch event size: ", batch_event.shape)
+
+        context_emb = self.event_embedding(batch_context)
+        event_emb = self.event_embedding(batch_event)
 
         # The first element in each event is the predicate.
-        predicates = batch_event_data['event'][:, :, 1]
-        distance_emb = self._encode_distance(
-            predicates, batch_event_data['distance'])
+        distance_emb = self._encode_distance(event_emb, batch_distances)
 
-        # TODO: add position feature here.
-        all_features = torch.cat(
-            [distance_emb, batch_event_data['features']], 1)
+        all_features = torch.cat([distance_emb, batch_features], 1)
 
-        print(max_context_size)
         # print(batch_event_data)
         input("wait here.")
 
@@ -145,6 +203,6 @@ class FrameAwareEventPairCompositionModel(EventPairCompositionModel):
     def __init__(self, para, resources):
         super().__init__(para, resources)
 
-    def _raw_event_embedding_size(self):
+    def _full_event_embedding_size(self):
         # The frame embeddings double the size.
         return 4 * self.para.event_embedding_dim * 2
