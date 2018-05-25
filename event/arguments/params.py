@@ -27,7 +27,8 @@ class ModelPara(Configurable):
     ).tag(config=True)
 
     nb_epochs = Int(help='Number of epochs').tag(config=True)
-    num_args = Int(help='Number of args per event').tag(config=True)
+    num_event_components = Int(
+        help='Number of components per event').tag(config=True)
 
     num_extracted_features = Int(help='Feature size').tag(config=True)
 

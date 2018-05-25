@@ -240,6 +240,7 @@ class HashedClozeReader:
             'inside_event': np.int64,
             'inside_distances': np.float32,
             'inside_features': np.float32,
+            'slot': np.int64
         }
 
     def read_cloze_batch(self, data_in):
@@ -260,6 +261,7 @@ class HashedClozeReader:
             if cloze_count == self.batch_size:
                 cloze_count = 0
                 instance_data = defaultdict(dict)
+                common_data = {}
                 for key, value in clozes.items():
                     if '_' in key:
                         inst_type, inst_key = key.split('_')
@@ -269,8 +271,11 @@ class HashedClozeReader:
                         padded = [self._pad_context(v, max_context_size) for v
                                   in value]
                         context = self._batch_combine(padded)
+                        common_data[key] = context
+                    else:
+                        common_data[key] = self._batch_combine(value)
 
-                yield instance_data, context
+                yield instance_data, common_data
                 clozes = defaultdict(list)
                 max_context_size = 0
 
@@ -404,13 +409,14 @@ class HashedClozeReader:
                         cloze = {
                             'gold_event': self._take_event_parts(gold_info),
                             'gold_distances': origin_distances,
-                            'gold_features': gold_features + [slot_index],
+                            'gold_features': gold_features,
                             'cross_event': self._take_event_parts(cross_info),
                             'cross_distances': cross_distances,
-                            'cross_features': cross_features + [slot_index],
+                            'cross_features': cross_features,
                             'inside_event': self._take_event_parts(inside_info),
                             'inside_distances': inside_distances,
-                            'inside_features': inside_features + [slot_index],
+                            'inside_features': inside_features,
+                            'slot': [slot_index],
                         }
 
                         for key, value in cloze.items():
@@ -486,7 +492,8 @@ class HashedClozeReader:
 
         # Now use a large distance to represent Indefinite.
         # Infinity: if the entity cannot be found again, or it is not an entity.
-        inf = 10000.0
+        # Arbitrarily use 1000 since most document is shorter than this.
+        inf = 1000.0
 
         for current_slot, event_info in event['slots'].items():
             entity_id = event_info['eid']

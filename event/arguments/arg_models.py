@@ -3,6 +3,7 @@ from torch.nn import functional as F
 import torch
 import numpy as np
 import logging
+from event.nn.models import KernelPooling
 
 
 class ArgCompatibleModel(nn.Module):
@@ -58,6 +59,10 @@ class ArgCompatibleModel(nn.Module):
 class EventPairCompositionModel(ArgCompatibleModel):
     def __init__(self, para, resources):
         super(EventPairCompositionModel, self).__init__(para, resources)
+        logging.info("Pair composition network started, with %d "
+                     "extracted features and %d distance features." % (
+                         self.para.num_extracted_features, 9
+                     ))
 
         self.arg_compositions_layers = self._config_mlp(
             self._full_event_embedding_size(),
@@ -65,22 +70,28 @@ class EventPairCompositionModel(ArgCompatibleModel):
         )
 
         composed_event_dim = para.arg_composition_layer_sizes[-1]
+
         self.event_composition_layers = self._config_mlp(
-            composed_event_dim * 2 + para.num_extracted_features,
+            composed_event_dim + para.num_extracted_features + 9,
             para.event_composition_layer_sizes
         )
 
         pair_event_dim = para.event_composition_layer_sizes[-1]
         # self.coh = nn.Linear(pair_event_dim, 1)
 
-        # Output 9 different sigmas, each corresponding to one distance measure.
-        self.event_to_sigma_layer = self._config_mlp(
-            self.para.event_embedding_dim, [9]
+        # Output 9 different var, each corresponding to one distance measure.
+        self.event_to_var_layer = nn.Linear(self.para.event_embedding_dim, 9)
+
+        self._kp = KernelPooling()
+
+        self._linear_combine = nn.Linear(
+            self.para.num_extracted_features + 9 + self._kp.K, 1
         )
 
+        # TODO: Add booleans for the multiple experiment settings.
+
     def _full_event_embedding_size(self):
-        # Default size is 1 predicate + 3 arguments.
-        return 4 * self.para.event_embedding_dim
+        return self.para.num_event_components * self.para.event_embedding_dim
 
     def _config_mlp(self, input_hidden_size, output_sizes):
         """
@@ -96,86 +107,80 @@ class EventPairCompositionModel(ArgCompatibleModel):
             input_size = output_size
         return nn.ModuleList(layers)
 
-    def _mlp(self, layers, input_data, type='relu'):
+    def _mlp(self, layers, input_data, activation=F.relu):
         data = input_data
         for layer in layers:
-            if type == 'relu':
-                data = F.relu(layer(data))
-            elif type == 'tanh':
-                data = F.tanh(layer(data))
+            data = activation(layer(data))
         return data
 
     def _encode_distance(self, event_emb, distances):
         """
-        Encode distance into kernel, maybe event dependent.
-        :param batch_event:
+        Encode distance into event dependent kernels.
+        :param event_emb:
         :param distances:
         :return:
         """
         # Encode with a event dependent kernel
-        # TODO finish this
         # May be we should not update the predicates embedding here.
-
-        print("Embeddings")
-        # batch x num event words x embedding
-        print(event_emb.shape)
-        print("Distances")
-        # batch x 9
-        print(distances.shape)
-        print(distances.type())
-
         predicates = event_emb[:, 1, :]
-
-        print("Predicates")
-        # batch x embedding
-        print(predicates.shape)
 
         # batch x 9
         dist_sq = distances * distances
 
-        print("Distance square")
-        print(dist_sq.shape)
-        print(dist_sq.type())
+        # Output 9 variances (\sigma^2), each one for each distance.
+        # Variances cannot be zero, so we use soft plus here.
+        # We detach predicates here, force the model to learn distance operation
+        #  in the fully connected layer.
+        variances = F.softplus(self.event_to_var_layer(predicates.detach()))
 
-        # Output 9 sigmas, each one for each distance.
-        # Deviation cannot be zero, so we add a soft plus here.
-        sigmas = nn.Softplus()(
-            self._mlp(self.event_to_sigma_layer, predicates, type='tanh')
-        )
-
-        print("Sigmas")
-        # batch x 9
-        print(sigmas.shape)
-
-        sigma_sq = 2.0 * sigmas * sigmas
-        print(sigma_sq.shape)
-
-        print(dist_sq)
-        print(sigma_sq)
-
-        kernel_value = torch.exp(dist_sq / sigma_sq)
-
-        print(kernel_value)
-
-        input("encoding distances.")
+        kernel_value = torch.exp(- dist_sq / variances)
 
         return kernel_value
 
-    def _contextual_score(self, event_emb, context_emb, features):
-        # TODO finish this
+    def _contextual_score(self, event_emb, context_emb, batch_slots):
         # Several ways to implement this:
         # 1. feature before/after nonlinear
-        # 2. use/no kernel
-        return 0
+        # 2. use/no kernel. Done
+
+        nom_event_emb = F.normalize(event_emb, 2, -1)
+        nom_context_emb = F.normalize(context_emb, 2, -1)
+
+        print("computing contextual score")
+        print("event embedding")
+        print(nom_event_emb.shape)
+        print("contextual embedding")
+        print(nom_context_emb.transpose(-2, -1).shape)
+
+        print("Slots to filled")
+        print(batch_slots.shape)
+
+        # First compute the trans matrix between events and the context.
+        trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
+        print("Trans matrix")
+        print(trans.shape)
+
+        print("compute kp")
+        kernel_value = self._kp(trans)
+
+        return kernel_value
 
     def _event_repr(self, event_emb):
-        return self._mlp(self.arg_compositions_layers, event_emb)
+        # Flatten the last 2 dimension.
+        full_evm_embedding_size = event_emb.size()[-1] * event_emb.size()[-2]
+        flatten_event_emb = event_emb.view(
+            event_emb.size()[0], -1, full_evm_embedding_size)
+        return self._mlp(self.arg_compositions_layers, flatten_event_emb)
 
-    def forward(self, batch_event_data, batch_context):
-        # torch.cat([batch_context, batch_event_data])
+    def forward(self, batch_event_data, batch_info):
+        # TODO: right now each batch contains one event, and its context.
+        # Maybe a more efficient way is to add more events here.
+
         batch_event = batch_event_data['event']
         batch_features = batch_event_data['features']
         batch_distances = batch_event_data['distances']
+
+        batch_context = batch_info['context']
+        batch_slots = batch_info['slot']
 
         print("Batch event size: ", batch_event.shape)
 
@@ -185,18 +190,45 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # The first element in each event is the predicate.
         distance_emb = self._encode_distance(event_emb, batch_distances)
 
-        all_features = torch.cat([distance_emb, batch_features], 1)
+        # TODO: check whether the features make sense.
+        extracted_features = torch.cat([distance_emb, batch_features], 1)
+        print("Extracted features")
+        print(extracted_features.shape)
 
-        # print(batch_event_data)
-        input("wait here.")
+        print("Compute event representations.")
+
+        print("Event embedding.")
+        print(event_emb.shape)
 
         event_repr = self._event_repr(event_emb)
-        # TODO: broadcast to context.
+
+        print("Event representation.")
+        print(event_repr.shape)
+
+        print("Context embedding")
+        print(context_emb.shape)
+
         context_repr = self._event_repr(context_emb)
 
+        print("Context representation.")
+        print(context_repr.shape)
+
         # Now compute the "attention" with all context events.
-        score = self._contextual_score(event_repr, context_repr, all_features)
-        return score
+        kp_mtx = self._contextual_score(event_repr, context_repr, batch_slots)
+
+        print("KP")
+        print(kp_mtx.shape)
+
+        print("Features")
+        print(extracted_features.shape)
+
+        all_features = torch.cat((extracted_features.unsqueeze(1), kp_mtx), -1)
+        scores = self._linear_combine(all_features).squeeze(-1)
+
+        # TODO: need to output between zero and 1.
+        print(scores.shape)
+
+        return scores
 
 
 class FrameAwareEventPairCompositionModel(EventPairCompositionModel):

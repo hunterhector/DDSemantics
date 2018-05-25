@@ -16,8 +16,6 @@ from event.arguments.loss import cross_entropy
 from event.util import smart_open
 from event.arguments.resources import Resources
 
-import pprint
-
 
 class ArgRunner(Configurable):
 
@@ -28,7 +26,7 @@ class ArgRunner(Configurable):
         self.model = EventPairCompositionModel(self.para, self.resources)
 
         self.nb_epochs = self.para.nb_epochs
-        self.criterion = cross_entropy
+        self.criterion = torch.nn.functional.binary_cross_entropy
 
         # self.batch_size = self.para.batch_size
 
@@ -57,29 +55,34 @@ class ArgRunner(Configurable):
 
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
-                for batch_data, context in self.reader.read_cloze_batch(
+                for batch_instance, batch_info in self.reader.read_cloze_batch(
                         train_data):
                     correct_coh = self.model(
-                        batch_data['gold'],
-                        context,
+                        batch_instance['gold'],
+                        batch_info,
                     )
                     cross_coh = self.model(
-                        batch_data['cross'],
-                        context
+                        batch_instance['cross'],
+                        batch_info
                     )
                     inside_coh = self.model(
-                        batch_data['inside'],
-                        context
+                        batch_instance['inside'],
+                        batch_info
                     )
 
                     optimizer.zero_grad()
 
                     # Cross entropy of the scores.
-                    correct_loss = self.criterion(1, correct_coh)
-                    cross_loss = self.criterion(0, cross_coh)
-                    inside_loss = self.criterion(0, inside_coh)
+                    correct_loss = self.criterion(
+                        correct_coh, torch.ones(correct_coh.shape))
+                    cross_loss = self.criterion(
+                        cross_coh, torch.zeros(cross_coh.shape))
+                    inside_loss = self.criterion(
+                        inside_coh, torch.zeros(inside_coh.shape))
 
                     full_loss = correct_loss + cross_loss + inside_loss
+
+                    print(full_loss)
 
                     full_loss.backward()
                     optimizer.step()

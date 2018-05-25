@@ -1,8 +1,13 @@
+import torch
+
+
 def cross_entropy(y_hat, y):
+    print(y_hat)
+    print(y)
     if y_hat == 1:
-        return -log(y)
+        return -torch.log(y)
     else:
-        return -log(1 - y)
+        return -torch.log(1 - y)
 
 
 def hinge(y_hat, y):
