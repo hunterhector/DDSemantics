@@ -223,9 +223,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
         print(extracted_features.shape)
 
         all_features = torch.cat((extracted_features.unsqueeze(1), kp_mtx), -1)
-        scores = self._linear_combine(all_features).squeeze(-1)
 
-        # TODO: need to output between zero and 1.
+        # TODO: right now it must be sigmoid to do the cross entropy loss,
+        # we can also consider a normal score with ranking loss.
+        scores = torch.nn.Sigmoid()(
+            self._linear_combine(all_features).squeeze(-1)
+        )
+
         print(scores.shape)
 
         return scores

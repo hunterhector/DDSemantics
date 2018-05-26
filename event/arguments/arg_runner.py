@@ -82,6 +82,7 @@ class ArgRunner(Configurable):
 
                     full_loss = correct_loss + cross_loss + inside_loss
 
+                    print("Full loss")
                     print(full_loss)
 
                     full_loss.backward()
