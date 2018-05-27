@@ -6,12 +6,12 @@ from traitlets import (
 )
 from traitlets.config.loader import PyFileConfigLoader
 import torch
+from torch.nn import functional as F
 
 import logging
 import sys
 
 from event.io.readers import HashedClozeReader
-from event.arguments.loss import cross_entropy
 
 from event.util import smart_open
 from event.arguments.resources import Resources
@@ -26,9 +26,6 @@ class ArgRunner(Configurable):
         self.model = EventPairCompositionModel(self.para, self.resources)
 
         self.nb_epochs = self.para.nb_epochs
-        self.criterion = torch.nn.functional.binary_cross_entropy
-
-        # self.batch_size = self.para.batch_size
 
         self.reader = HashedClozeReader(
             self.resources.event_vocab,
@@ -46,6 +43,21 @@ class ArgRunner(Configurable):
         if self.resources.event_embedding:
             assert self.para.event_arg_vocab_size == \
                    self.resources.event_embedding.shape[0]
+
+    def __loss(self, l_label, l_scores):
+        if self.para.loss == 'cross_entropy':
+            total_loss = 0
+            for label, scores in zip(l_label, l_scores):
+                if label == 1:
+                    gold = torch.ones(scores.shape)
+                else:
+                    gold = torch.zeros(scores.shape)
+
+                v_loss = F.binary_cross_entropy(scores, gold)
+                total_loss += v_loss
+            return total_loss
+        elif self.para.loss == 'pairwise_letor':
+            raise NotImplementedError
 
     def train(self, train_in, validation_in=None, model_out=None):
         logging.info("Training with data [%s]", train_in)
@@ -70,22 +82,17 @@ class ArgRunner(Configurable):
                         batch_info
                     )
 
+                    outputs = [correct_coh, cross_coh, inside_coh]
+                    labels = [1, 0, 0]
+
                     optimizer.zero_grad()
 
-                    # Cross entropy of the scores.
-                    correct_loss = self.criterion(
-                        correct_coh, torch.ones(correct_coh.shape))
-                    cross_loss = self.criterion(
-                        cross_coh, torch.zeros(cross_coh.shape))
-                    inside_loss = self.criterion(
-                        inside_coh, torch.zeros(inside_coh.shape))
+                    loss = self.__loss(labels, outputs)
 
-                    full_loss = correct_loss + cross_loss + inside_loss
+                    print("Loss")
+                    print(loss)
 
-                    print("Full loss")
-                    print(full_loss)
-
-                    full_loss.backward()
+                    loss.backward()
                     optimizer.step()
 
     def event_repr(self, l_predicate, l_args):

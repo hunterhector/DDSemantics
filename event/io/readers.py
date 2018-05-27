@@ -361,6 +361,11 @@ class HashedClozeReader:
                         inside_instance, inside_filler_id = self.inside_cloze(
                             event_args, evm_index, slot, correct_id)
 
+                        # TODO: A better learning strategy is to select one
+                        # cross instance that is difficult. We can have two
+                        # strategies here:
+                        # 1. Use unigram distribution to sample items.
+                        # 2. Select items based on classifier output.
                         cross_info = self.get_event_info(doc_info, evm_index,
                                                          cross_instance)
 

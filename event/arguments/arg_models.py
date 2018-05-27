@@ -88,7 +88,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
             self.para.num_extracted_features + 9 + self._kp.K, 1
         )
 
-        # TODO: Add booleans for the multiple experiment settings.
+        if para.loss == 'cross_entropy':
+            self.normalize_score = True
+        else:
+            self.normalize_score = False
 
     def _full_event_embedding_size(self):
         return self.para.num_event_components * self.para.event_embedding_dim
@@ -172,8 +175,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
         return self._mlp(self.arg_compositions_layers, flatten_event_emb)
 
     def forward(self, batch_event_data, batch_info):
-        # TODO: right now each batch contains one event, and its context.
-        # Maybe a more efficient way is to add more events here.
+        # TODO: each batch only contains one center event. If joint modeling
+        # with multiple events are needed, we will have multiple centers here.
 
         batch_event = batch_event_data['event']
         batch_features = batch_event_data['features']
@@ -190,7 +193,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # The first element in each event is the predicate.
         distance_emb = self._encode_distance(event_emb, batch_distances)
 
-        # TODO: check whether the features make sense.
         extracted_features = torch.cat([distance_emb, batch_features], 1)
         print("Extracted features")
         print(extracted_features.shape)
@@ -224,11 +226,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         all_features = torch.cat((extracted_features.unsqueeze(1), kp_mtx), -1)
 
-        # TODO: right now it must be sigmoid to do the cross entropy loss,
-        # we can also consider a normal score with ranking loss.
-        scores = torch.nn.Sigmoid()(
-            self._linear_combine(all_features).squeeze(-1)
-        )
+        scores = self._linear_combine(all_features).squeeze(-1)
+
+        if self.normalize_score:
+            scores = torch.nn.Sigmoid()(scores)
 
         print(scores.shape)
 
