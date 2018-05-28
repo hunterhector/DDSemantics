@@ -1,10 +1,8 @@
 from torch import nn
-from torch.autograd import Variable
 import torch
 import json
 import logging
-
-use_cuda = False
+from torch.nn.parameter import Parameter
 
 
 class KernelPooling(nn.Module):
@@ -24,17 +22,16 @@ class KernelPooling(nn.Module):
         super(KernelPooling, self).__init__()
         if l_mu is None:
             l_mu = [1, 0.9, 0.7, 0.5, 0.3, 0.1, -0.1, -0.3, -0.5, -0.7, -0.9]
-        self.v_mu = Variable(torch.FloatTensor(l_mu), requires_grad=False)
+        self.v_mu = Parameter(torch.FloatTensor(l_mu))
         self.K = len(l_mu)
         if l_sigma is None:
             l_sigma = [1e-3] + [0.1] * (self.v_mu.size()[-1] - 1)
-        self.v_sigma = Variable(torch.FloatTensor(l_sigma), requires_grad=False)
-        if use_cuda:
-            self.v_mu = self.v_mu.cuda()
-            self.v_sigma = self.v_sigma.cuda()
-        logging.info('[%d] pooling kernels: %s',
-                     self.K, json.dumps(list(zip(l_mu, l_sigma)))
-                     )
+        self.v_sigma = Parameter(torch.FloatTensor(l_sigma))
+
+        logging.info(
+            '[%d] pooling kernels: %s', self.K,
+            json.dumps(list(zip(l_mu, l_sigma)))
+        )
         return
 
     def forward(self, in_tensor, mtx_score=None):

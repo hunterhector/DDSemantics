@@ -211,7 +211,7 @@ class ConllUReader:
 
 class HashedClozeReader:
     def __init__(self, event_vocab, lookups, oovs, batch_size,
-                 multi_context=False, max_events=200):
+                 multi_context=False, max_events=200, gpu=True):
         """
         Reading the hashed dataset into cloze tasks.
         :param event_vocab: Event token vocabulary.
@@ -242,6 +242,12 @@ class HashedClozeReader:
             'inside_features': np.float32,
             'slot': np.int64
         }
+
+        self.device = torch.device(
+            "cuda" if gpu and torch.cuda.is_available() else "cpu")
+
+        # Fix seed to generate the same instances.
+        random.seed(17)
 
     def read_cloze_batch(self, data_in):
         clozes = defaultdict(list)
@@ -280,7 +286,10 @@ class HashedClozeReader:
                 max_context_size = 0
 
     def _batch_combine(self, l_data):
-        return torch.cat([torch.unsqueeze(d, 0) for d in l_data], dim=0)
+        data = torch.cat(
+            [torch.unsqueeze(d, 0) for d in l_data], dim=0
+        ).to(self.device)
+        return data
 
     def _pad_context(self, context, pad_to_length):
         pad_len = pad_to_length - context.shape[0]
@@ -345,7 +354,7 @@ class HashedClozeReader:
                 for slot_index, slot in enumerate(self.slot_names):
                     arg = event['args'][slot]
                     correct_id = arg['entity_id']
-                    # if arg['resolvable']:
+
                     # We re-count for resolvable, because we may filter events,
                     # which will change the resolvable attribute.
                     if eid_count[correct_id] > 1:
@@ -361,7 +370,7 @@ class HashedClozeReader:
                         inside_instance, inside_filler_id = self.inside_cloze(
                             event_args, evm_index, slot, correct_id)
 
-                        # TODO: A better learning strategy is to select one
+                        # A better learning strategy is to select one
                         # cross instance that is difficult. We can have two
                         # strategies here:
                         # 1. Use unigram distribution to sample items.

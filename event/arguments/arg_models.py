@@ -1,9 +1,9 @@
 from torch import nn
 from torch.nn import functional as F
 import torch
-import numpy as np
 import logging
 from event.nn.models import KernelPooling
+from torch.nn.parameter import Parameter
 
 
 class ArgCompatibleModel(nn.Module):
@@ -76,17 +76,33 @@ class EventPairCompositionModel(ArgCompatibleModel):
             para.event_composition_layer_sizes
         )
 
-        pair_event_dim = para.event_composition_layer_sizes[-1]
-        # self.coh = nn.Linear(pair_event_dim, 1)
-
         # Output 9 different var, each corresponding to one distance measure.
         self.event_to_var_layer = nn.Linear(self.para.event_embedding_dim, 9)
 
-        self._kp = KernelPooling()
+        feature_size = self.para.num_extracted_features + 9
 
-        self._linear_combine = nn.Linear(
-            self.para.num_extracted_features + 9 + self._kp.K, 1
-        )
+        # Config feature size.
+        self._vote_pool_type = para.vote_pooling
+        if self._vote_pool_type == 'kernel':
+            self._kp = KernelPooling()
+            feature_size += self._kp.K
+        elif self._vote_pool_type == 'average' or self._vote_pool_type == 'max':
+            feature_size += 1
+
+        self._vote_method = para.vote_method
+
+        if self._vote_method == 'biaffine':
+            self.mtx_vote_comp = Parameter(
+                torch.Tensor(self.para.event_embedding_dim,
+                             self.para.event_embedding_dim)
+            )
+
+        self._linear_combine = nn.Linear(feature_size, 1)
+
+        if para.coherence_method == 'attentive':
+            self.coh = self._attentive_contextual_score
+        elif para.coherence_method == 'concat':
+            self.coh = self._concat_contextual_score
 
         if para.loss == 'cross_entropy':
             self.normalize_score = True
@@ -140,32 +156,52 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         return kernel_value
 
-    def _contextual_score(self, event_emb, context_emb, batch_slots):
-        # Several ways to implement this:
-        # 1. feature before/after nonlinear
-        # 2. use/no kernel. Done
+    def _concat_contextual_score(self, event_emb, context_emb, batch_slots):
+        """
+        Compute the contextual scores after concatenation and projection.
+        :param event_emb:
+        :param context_emb:
+        :param batch_slots:
+        :return:
+        """
+        raise NotImplementedError
 
+    def _attentive_contextual_score(self, event_emb, context_emb, batch_slots):
+        """
+        Compute the contextual scores in the attentive way, i.e., computing
+        dot products between the embeddings, and then apply pooling.
+        :param event_emb:
+        :param context_emb:
+        :param batch_slots:
+        :return:
+        """
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
 
-        print("computing contextual score")
-        print("event embedding")
-        print(nom_event_emb.shape)
-        print("contextual embedding")
-        print(nom_context_emb.transpose(-2, -1).shape)
-
-        print("Slots to filled")
-        print(batch_slots.shape)
-
         # First compute the trans matrix between events and the context.
-        trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
-        print("Trans matrix")
-        print(trans.shape)
+        if self._vote_method == 'cosine':
+            trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
+        elif self._vote_method == 'biaffine':
+            # TODO finish the bi-linear implementation.
+            trans = torch.bmm(nom_event_emb, self.mtx_vote_comp)
+            trans = torch.bmm(trans, nom_context_emb)
+        else:
+            raise ValueError(
+                'Unknown vote computation method {}'.format(self._vote_method)
+            )
 
-        print("compute kp")
-        kernel_value = self._kp(trans)
+        if self._vote_pool_type == 'kernel':
+            pooled_value = self._kp(trans)
+        elif self._vote_pool_type == 'max':
+            pooled_value, _ = trans.max(2, keepdim=True)
+        elif self._vote_pool_type == 'average':
+            pooled_value = trans.mean(2, keepdim=True)
+        else:
+            raise ValueError(
+                'Unknown pool type {}'.format(self._vote_pool_type)
+            )
 
-        return kernel_value
+        return pooled_value
 
     def _event_repr(self, event_emb):
         # Flatten the last 2 dimension.
@@ -175,17 +211,12 @@ class EventPairCompositionModel(ArgCompatibleModel):
         return self._mlp(self.arg_compositions_layers, flatten_event_emb)
 
     def forward(self, batch_event_data, batch_info):
-        # TODO: each batch only contains one center event. If joint modeling
-        # with multiple events are needed, we will have multiple centers here.
-
         batch_event = batch_event_data['event']
         batch_features = batch_event_data['features']
         batch_distances = batch_event_data['distances']
 
         batch_context = batch_info['context']
         batch_slots = batch_info['slot']
-
-        print("Batch event size: ", batch_event.shape)
 
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event)
@@ -194,52 +225,19 @@ class EventPairCompositionModel(ArgCompatibleModel):
         distance_emb = self._encode_distance(event_emb, batch_distances)
 
         extracted_features = torch.cat([distance_emb, batch_features], 1)
-        print("Extracted features")
-        print(extracted_features.shape)
-
-        print("Compute event representations.")
-
-        print("Event embedding.")
-        print(event_emb.shape)
 
         event_repr = self._event_repr(event_emb)
 
-        print("Event representation.")
-        print(event_repr.shape)
-
-        print("Context embedding")
-        print(context_emb.shape)
-
         context_repr = self._event_repr(context_emb)
 
-        print("Context representation.")
-        print(context_repr.shape)
+        # Now compute the coherent features with all context events.
+        coh_features = self.coh(event_repr, context_repr, batch_slots)
 
-        # Now compute the "attention" with all context events.
-        kp_mtx = self._contextual_score(event_repr, context_repr, batch_slots)
-
-        print("KP")
-        print(kp_mtx.shape)
-
-        print("Features")
-        print(extracted_features.shape)
-
-        all_features = torch.cat((extracted_features.unsqueeze(1), kp_mtx), -1)
+        all_features = torch.cat(
+            (extracted_features.unsqueeze(1), coh_features), -1)
 
         scores = self._linear_combine(all_features).squeeze(-1)
 
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
-
-        print(scores.shape)
-
         return scores
-
-
-class FrameAwareEventPairCompositionModel(EventPairCompositionModel):
-    def __init__(self, para, resources):
-        super().__init__(para, resources)
-
-    def _full_event_embedding_size(self):
-        # The frame embeddings double the size.
-        return 4 * self.para.event_embedding_dim * 2

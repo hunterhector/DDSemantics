@@ -4,6 +4,7 @@ import sys
 import os
 import gzip
 
+
 class OptionPerLineParser(argparse.ArgumentParser):
     def convert_arg_line_to_args(self, arg_line):
         if arg_line.startswith("#"):
@@ -33,7 +34,6 @@ def tokens_to_sent(tokens, sent_start):
             sent += padding
         sent += token
     return sent
-
 
 
 def evm_args():
@@ -91,9 +91,5 @@ def evm_args():
 
 
 def set_basic_log(log_level=logging.INFO):
-    root = logging.getLogger()
-    root.setLevel(log_level)
-    ch = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    logging.basicConfig(level=log_level, format=log_format)

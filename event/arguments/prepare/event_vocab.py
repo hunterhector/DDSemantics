@@ -5,6 +5,7 @@ import json
 import pickle
 from gensim.models.word2vec import Word2Vec
 from json.decoder import JSONDecodeError
+import logging
 
 
 def get_word(word, key, lookups, oovs):
@@ -231,8 +232,8 @@ def load_vocab(vocab_dir):
                 lookups[vocab_type][word] = index
                 index += 1
 
-        print("Loaded {} types for {}".format(len(lookups[vocab_type]),
-                                              vocab_type))
+        logging.info("Loaded {} types for {}".format(len(lookups[vocab_type]),
+                                                     vocab_type))
     return lookups, oov_words
 
 
