@@ -3,6 +3,14 @@ import logging
 import sys
 import os
 import gzip
+from traitlets.config import Configurable
+from traitlets import (
+    Unicode,
+    Bool,
+    Float,
+    Integer,
+    List
+)
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -36,58 +44,45 @@ def tokens_to_sent(tokens, sent_start):
     return sent
 
 
-def evm_args():
-    parser = OptionPerLineParser(description='Event Mention Detector.',
-                                 fromfile_prefix_chars='@')
+class DetectionParams(Configurable):
+    model_name = Unicode(help='').tag(config=True)
 
-    parser.add_argument('--model_name', type=str)
+    experiment_folder = Unicode(help='').tag(config=True)
+    model_dir = Unicode(help='').tag(config=True)
 
-    parser.add_argument('--experiment_folder', type=str)
-    parser.add_argument('--model_dir', type=str)
+    train_files = List(help='').tag(config=True)
+    dev_files = List(help='').tag(config=True)
+    test_folder = Unicode(help='').tag(config=True)
 
-    parser.add_argument('--train_files',
-                        type=lambda s: [item for item in s.split(',')])
-    parser.add_argument('--dev_files',
-                        type=lambda s: [item for item in s.split(',')])
-    parser.add_argument('--test_folder', type=str)
+    output = Unicode(help='').tag(config=True)
 
-    parser.add_argument('--output', type=str)
+    word_embedding = Unicode(help='').tag(config=True)
+    word_embedding_dim = Integer(help='', default=300).tag(config=True)
 
-    parser.add_argument('--word_embedding', type=str,
-                        help='Word embedding path')
-    parser.add_argument('--word_embedding_dim', type=int, default=300)
+    position_embedding_dim = Integer(help='', default=50).tag(config=True)
 
-    parser.add_argument('--position_embedding_dim', type=int, default=50)
+    tag_list = Unicode(help='').tag(config=True)
+    tag_embedding_dim = Integer(help='', default_value=50).tag(config=True)
 
-    parser.add_argument('--tag_list', type=str,
-                        help='Frame embedding path')
-    parser.add_argument('--tag_embedding_dim', type=int, default=50)
+    dropout = Float(help='', default=0.5).tag(config=True)
+    context_size = Integer(help='', default=30).tag(config=True)
+    window_sizes = List(help='', default=[2, 3, 4, 5]).tag(config=True)
+    filter_num = Integer(help='', default=100).tag(config=True)
+    fix_embedding = Bool(help='', default=False).tag(config=True)
 
-    parser.add_argument('--dropout', type=float, default=0.5,
-                        help='the probability for dropout [default: 0.5]')
-    parser.add_argument('--context_size', default=30, type=int)
-    parser.add_argument('--window_sizes', default='2,3,4,5',
-                        type=lambda s: [int(item) for item in s.split(',')])
-    parser.add_argument('--filter_num', default=100, type=int,
-                        help='Number of filters for each type.')
-    parser.add_argument('--fix_embedding', type=bool, default=False)
+    batch_size = Integer(help='').tag(config=True)
 
-    parser.add_argument('--batch_size', type=int, default=50)
-
-    parser.add_argument('--format', type=str, default="conllu")
-    parser.add_argument('--no_punct', type=bool, default=False)
-    parser.add_argument('--no_sentence', type=bool, default=False)
+    format = Unicode(help='').tag(config=True)
+    no_punct = Bool(help='', default=False).tag(config=True)
+    no_sentence = Bool(help='', default=False).tag(config=True)
 
     # Frame based detector.
-    parser.add_argument('--frame_lexicon', type=str, help='Frame lexicon path')
-    parser.add_argument('--event_list', help='Lexicon for events', type=str)
-    parser.add_argument('--entity_list', help='Lexicon for entities', type=str)
-    parser.add_argument('--relation_list', help='Lexicon for relations',
-                        type=str)
+    frame_lexicon = Unicode(help='').tag(config=True)
+    event_list = Unicode(help='').tag(config=True)
+    entity_list = Unicode(help='').tag(config=True)
+    relation_list = Unicode(help='Lexicon for relations', ).tag(config=True)
 
-    parser.add_argument('--language', help='Language code', type=str)
-
-    return parser
+    language = Unicode(help='').tag(config=True)
 
 
 def set_basic_log(log_level=logging.INFO):

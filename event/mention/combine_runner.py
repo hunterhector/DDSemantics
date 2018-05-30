@@ -10,6 +10,14 @@ from collections import defaultdict
 import glob
 import os
 
+from traitlets.config import Configurable
+from traitlets import (
+    Unicode,
+    Bool,
+)
+from traitlets.config.loader import PyFileConfigLoader
+from event.util import DetectionParams
+
 
 def add_edl_entities(edl_file, csr):
     if not edl_file:
@@ -440,20 +448,20 @@ def main(config):
 
 if __name__ == '__main__':
     from event import util
+    import sys
 
-    parser = util.evm_args()
-    parser.add_argument('--source_folder', type=str)
-    parser.add_argument('--event_tbf', type=str)
-    parser.add_argument('--rich_event', type=str)
-    parser.add_argument('--edl_json', type=str)
-    parser.add_argument('--salience_data', type=str)
-    parser.add_argument('--rich_event_token', default=False, type=bool)
 
-    program_args = parser.parse_args()
+    class CombineParams(DetectionParams):
+        source_folder = Unicode(help='source text folder').tag(config=True)
+        rich_event = Unicode(help='Rich event output.').tag(config=True)
+        edl_json = Unicode(help='EDL json output.').tag(config=True)
+        salience_data = Unicode(help='Salience output.').tag(config=True)
+        rich_event_token = Bool(
+            help='Whether to use tokens from rich event output',
+            default_value=False).tag(config=True)
+
 
     util.set_basic_log()
-
-    logging.info("Starting with the following config:")
-    logging.info(program_args)
-
-    main(program_args)
+    conf = PyFileConfigLoader(sys.argv[1]).load_config()
+    basic_para = CombineParams(config=conf)
+    main(basic_para)

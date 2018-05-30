@@ -4,12 +4,13 @@ from urllib.parse import quote
 import json
 
 
-def call_tagme(in_file, out_file, freebase_map, username, password):
+def call_tagme(in_file, out_file, freebase_map, token, username, password):
     url = 'https://tagme.d4science.org/tagme/tag'
 
     params = {
         'lang': 'en',
-        'gcube-token': '3ccca27e-d0a1-4752-a830-b906b7c089fa-843339462',
+        'gcube-token': token,
+        # 'gcube-token': '3ccca27e-d0a1-4752-a830-b906b7c089fa-843339462',
         'text': in_file.read()
     }
 
@@ -18,9 +19,10 @@ def call_tagme(in_file, out_file, freebase_map, username, password):
     with open(out_file, 'w') as out:
         tagme_json = json.loads(r.text)
         for spot in tagme_json['annotations']:
-            wiki_title = get_wiki_name(spot['title'])
-            fbid = freebase_map.get(wiki_title, '/m/UNK')
-            spot['mid'] = fbid
+            if 'title' in spot:
+                wiki_title = get_wiki_name(spot['title'])
+                fbid = freebase_map.get(wiki_title, '/m/UNK')
+                spot['mid'] = fbid
         json.dump(tagme_json, out)
         out.write('\n')
 
@@ -29,7 +31,7 @@ def get_wiki_name(name):
     return name.title().replace(' ', '_')
 
 
-def main(in_dir, out_dir, freebase_map_file):
+def main(in_dir, out_dir, freebase_map_file, token):
     import os
     username = input('Username:')
     password = getpass.getpass('Password:')
@@ -51,10 +53,11 @@ def main(in_dir, out_dir, freebase_map_file):
         if fn.endswith('.txt'):
             with open(os.path.join(in_dir, fn)) as infile:
                 out_path = os.path.join(out_dir, fn + '.json')
-                call_tagme(infile, out_path, freebase_map, username, password)
+                call_tagme(infile, out_path, freebase_map, token,
+                           username, password)
 
 
 if __name__ == '__main__':
     import sys
 
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
