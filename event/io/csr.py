@@ -39,11 +39,12 @@ class Frame(Jsonable):
     Represent top level frame collection.
     """
 
-    def __init__(self, fid, frame_type, parent, component=None):
+    def __init__(self, fid, frame_type, parent, component=None, score=None):
         self.type = frame_type
         self.id = fid
         self.parent = parent
         self.component = component
+        self.score = score
 
     def json_rep(self):
         rep = {
@@ -58,6 +59,9 @@ class Frame(Jsonable):
 
         if self.component:
             rep['component'] = self.component
+
+        if self.score:
+            rep['score'] = self.score
 
         return rep
 
@@ -85,6 +89,11 @@ class Document(Frame):
 
 
 class Interp(Jsonable):
+    """
+    An interp is an interpretation of the evidence. It can contain values like
+    event/entity type, database links, etc.
+    """
+
     def __init__(self, interp_type):
         self.interp_type = interp_type
         self.fields = defaultdict(lambda: defaultdict(dict))
@@ -158,6 +167,10 @@ class Interp(Jsonable):
 
 
 class InterpFrame(Frame):
+    """
+    A frame that can contain interpretations.
+    """
+
     def __init__(self, fid, frame_type, parent, interp_type, component=None):
         super().__init__(fid, frame_type, parent, component)
         self.interp_type = interp_type
@@ -173,6 +186,10 @@ class InterpFrame(Frame):
 
 
 class RelFrame(Frame):
+    """
+    A frame for relations between other frames.
+    """
+
     def __init__(self, fid):
         super().__init__(fid, 'argument', None)
         self.members = []
@@ -196,11 +213,20 @@ class RelFrame(Frame):
 
 
 class ValueFrame(Frame):
-    def __init__(self, fid, frame_type):
-        super().__init__(fid, frame_type, None)
+    """
+    A frame that mainly contain values.
+    """
+
+    def __init__(self, fid, frame_type, component=None, score=None):
+        super().__init__(fid, frame_type, None, component=component,
+                         score=score)
 
 
 class Span:
+    """
+    Represent text span (begin and end), according to the reference.
+    """
+
     def __init__(self, reference, begin, length):
         self.reference = reference
         self.begin = begin
@@ -221,6 +247,11 @@ class Span:
 
 
 class SpanInterpFrame(InterpFrame):
+    """
+    Commonly used frame to represent a mention, has both spans and
+    interpretations.
+    """
+
     def __init__(self, fid, frame_type, parent, interp_type, reference, begin,
                  length, text, component=None):
         super().__init__(fid, frame_type, parent, interp_type, component)
@@ -244,6 +275,10 @@ class SpanInterpFrame(InterpFrame):
 
 
 class Sentence(SpanInterpFrame):
+    """
+    Represent a sentence.
+    """
+
     def __init__(self, fid, parent, reference, begin, length,
                  text, component=None):
         super().__init__(fid, 'sentence', parent, 'sentence_interp', reference,
@@ -251,6 +286,10 @@ class Sentence(SpanInterpFrame):
 
 
 class EntityMention(SpanInterpFrame):
+    """
+    Represent a entity mention (in output, it is called entity_evidence).
+    """
+
     def __init__(self, fid, parent, reference, begin, length, text,
                  component=None):
         super().__init__(fid, 'entity_evidence', parent,
@@ -277,20 +316,23 @@ class EntityMention(SpanInterpFrame):
         if mid.startswith('/'):
             mid = mid.strip('/')
 
-        fb_xref = ValueFrame('freebase:' + mid, 'db_reference')
-        self.interp.add_fields('xref', 'freebase', mid, fb_xref, score=score,
-                               component=component, multi_value=True)
-
-        wiki_xref = ValueFrame('wikipedia:' + wiki, 'db_reference')
-        self.interp.add_fields('xref', 'wikipedia', wiki, wiki_xref,
-                               score=score, component=component,
+        fb_xref = ValueFrame('freebase:' + mid, 'db_reference', score=score)
+        self.interp.add_fields('xref', 'freebase', mid, fb_xref,
                                multi_value=True)
+
+        wiki_xref = ValueFrame('wikipedia:' + wiki, 'db_reference', score=score)
+        self.interp.add_fields('xref', 'wikipedia', wiki, wiki_xref,
+                               component=component, multi_value=True)
 
     def add_salience(self, salience_score):
         self.interp.add_fields('salience', 'score', 'score', salience_score)
 
 
 class Argument(Frame):
+    """
+    An argument of event, which is simply a wrap around an entity,
+    """
+
     def __init__(self, arg_role, entity_mention, fid, component=None):
         super().__init__(fid, 'argument', None, component=component)
         self.entity_mention = entity_mention
@@ -307,6 +349,10 @@ class Argument(Frame):
 
 
 class EventMention(SpanInterpFrame):
+    """
+    An event mention (in output, it is called event_evidence)
+    """
+
     def __init__(self, fid, parent, reference, begin, length, text,
                  component=None):
         super().__init__(fid, 'event_evidence', parent, 'event_evidence_interp',
@@ -341,6 +387,10 @@ class EventMention(SpanInterpFrame):
 
 
 class RelationMention(InterpFrame):
+    """
+    Represent a relation between frames (more than 1).
+    """
+
     def __init__(self, fid, ontology, relation_type, arguments, score=None,
                  component=None):
         super().__init__(fid, 'relation_evidence', None,
@@ -364,6 +414,10 @@ class RelationMention(InterpFrame):
 
 
 class CSR:
+    """
+    Main class that collect and output frames.
+    """
+
     def __init__(self, component_name, run_id, out_path, namespace,
                  media_type='text'):
         self.header = {
@@ -371,7 +425,7 @@ class CSR:
                 "https://www.isi.edu/isd/LOOM/opera/"
                 "jsonld-contexts/resources.jsonld",
                 "https://www.isi.edu/isd/LOOM/opera/"
-                "jsonld-contexts/ail/0.2/frames.jsonld",
+                "jsonld-contexts/ail/0.3/frames.jsonld",
             ],
             '@type': 'frame_collection',
             'meta': {
