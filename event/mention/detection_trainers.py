@@ -1,7 +1,17 @@
+from event.io.readers import (
+    ConllUReader,
+    Vocab
+)
+from event.io.csr import CSR
+from event.mention.models.trainable_detectors import (
+    TextCNN,
+    FrameMappingDetector
+)
+import logging
 import os
 
 
-class DetectionRunner:
+class DetectionTrainer:
     def __init__(self, config, token_vocab, tag_vocab):
         self.model_name = config.model_name
         self.model_dir = config.model_dir
@@ -9,20 +19,29 @@ class DetectionRunner:
         self.model = None
         self.init_model(config, token_vocab, tag_vocab)
 
+        if not os.path.isdir(config.model_dir):
+            os.makedirs(config.model_dir)
+
     def init_model(self, config, token_vocab, tag_vocab):
         if self.model_name == 'cnn':
             import torch
-            from event.mention.models.trainable_detectors import TextCNN
             self.model = TextCNN(config, tag_vocab.vocab_size(),
                                  token_vocab.vocab_size())
-            # Load model here.
             if torch.cuda.is_available():
                 self.model.cuda()
         elif self.model_name == 'frame':
-            from event.mention.models.rule_detectors import \
-                FrameMappingDetector
             self.model = FrameMappingDetector(config, token_vocab)
             self.trainable = False
+
+    def train(self, train_reader, dev_reader):
+        if not self.trainable:
+            return
+        from event.mention import train_util
+        train_util.train(self.model, train_reader, dev_reader, self.model_dir,
+                         self.model_name)
+
+    def eval(self, dev_reader):
+        return 0
 
     def predict(self, test_reader, csr):
         for data in test_reader.read_window():
@@ -59,3 +78,44 @@ class DetectionRunner:
                         csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
                                                   'aida', role,
                                                   component='Implicit')
+
+
+def main(config):
+    token_vocab = Vocab(config.experiment_folder, 'tokens',
+                        embedding_path=config.word_embedding,
+                        emb_dim=config.word_embedding_dim)
+
+    tag_vocab = Vocab(config.experiment_folder, 'tag',
+                      embedding_path=config.tag_list)
+
+    train_reader = ConllUReader(config.train_files, config, token_vocab,
+                                tag_vocab, config.language)
+    dev_reader = ConllUReader(config.dev_files, config, token_vocab,
+                              train_reader.tag_vocab, config.language)
+    detector = DetectionTrainer(config, token_vocab, tag_vocab)
+    detector.train(train_reader, dev_reader)
+
+    #     def __init__(self, component_name, run_id, out_path):
+    res_collector = CSR('Event_hector_frames', 1, config.output, 'belcat')
+
+    test_reader = ConllUReader(config.test_files, config, token_vocab,
+                               train_reader.tag_vocab)
+
+    detector.predict(test_reader, res_collector)
+
+    res_collector.write()
+
+
+if __name__ == '__main__':
+    from event import util
+
+    parser = util.evm_args()
+
+    arguments = parser.parse_args()
+
+    util.set_basic_log()
+
+    logging.info("Starting with the following config:")
+    logging.info(arguments)
+
+    main(arguments)

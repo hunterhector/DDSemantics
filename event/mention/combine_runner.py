@@ -403,10 +403,8 @@ def main(config):
 
     train_reader = ConllUReader(config.train_files, config, token_vocab,
                                 tag_vocab, config.language)
-    dev_reader = ConllUReader(config.dev_files, config, token_vocab,
-                              train_reader.tag_vocab, config.language)
+
     detector = DetectionRunner(config, token_vocab, tag_vocab)
-    detector.train(train_reader, dev_reader)
 
     assert config.test_folder is not None
     assert config.output is not None
@@ -436,8 +434,10 @@ def main(config):
             add_rich_events(rich_event_file, csr, tokens)
 
         if config.salience_data:
-            add_entity_salience(csr, scored_entities[docid])
-            add_event_salience(csr, scored_events[docid])
+            if docid in scored_entities:
+                add_entity_salience(csr, scored_entities[docid])
+            if docid in scored_events:
+                add_event_salience(csr, scored_events[docid])
 
         logging.info("Predicting with CoNLLU: {}".format(conll_file))
         test_reader = ConllUReader([conll_file], config, token_vocab,

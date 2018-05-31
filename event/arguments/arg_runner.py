@@ -11,7 +11,7 @@ from torch.nn import functional as F
 import logging
 import sys
 
-from event.io.readers import HashedClozeReader
+from event.arguments.cloze_readers import HashedClozeReader
 
 from event.util import smart_open
 from event.arguments.resources import Resources
