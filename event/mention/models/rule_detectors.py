@@ -13,7 +13,6 @@ class MentionDetector:
 class FrameMappingDetector(MentionDetector):
     def __init__(self, config, token_vocab):
         super().__init__(config=config)
-        self.experiment_folder = config.experiment_folder
         self.lex_mapping = self.load_frame_lex(config.frame_lexicon)
         self.entities, self.events, self.relations = self.load_wordlist(
             config.entity_list, config.event_list, config.relation_list

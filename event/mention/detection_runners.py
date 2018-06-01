@@ -28,8 +28,6 @@ class DetectionRunner:
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
 
-            # Found the center lemma's type and possible arguments in
-            # the window.
             event_type, args = self.model.predict(data)
 
             center = int(len(l_word_meta) / 2)
@@ -46,7 +44,7 @@ class DetectionRunner:
                         extent_span[1] = a_span[1]
 
                 evm = csr.add_event_mention(span, span, token, 'aida',
-                                            event_type, component='aida')
+                                            event_type, component='rule')
 
                 if evm:
                     for role, (index, entity_type) in args.items():
@@ -54,8 +52,8 @@ class DetectionRunner:
 
                         csr.add_entity_mention(a_span, a_span, a_token, 'aida',
                                                entity_type=entity_type,
-                                               component='implicit')
+                                               component='rule')
 
                         csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
                                                   'aida', role,
-                                                  component='Implicit')
+                                                  component='rule')

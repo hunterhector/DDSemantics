@@ -82,7 +82,6 @@ class Vocab:
 
 class ConllUReader:
     def __init__(self, data_files, config, token_vocab, tag_vocab, language):
-        self.experiment_folder = config.experiment_folder
         self.data_files = data_files
         self.data_format = config.format
 

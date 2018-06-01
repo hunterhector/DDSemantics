@@ -1,8 +1,3 @@
-from event.mention.detection_runners import DetectionRunner
-from event.io.readers import (
-    ConllUReader,
-    Vocab
-)
 from event.io.csr import CSR
 import logging
 import json
@@ -10,13 +5,13 @@ from collections import defaultdict
 import glob
 import os
 
-from traitlets.config import Configurable
 from traitlets import (
     Unicode,
     Bool,
 )
 from traitlets.config.loader import PyFileConfigLoader
-from event.util import DetectionParams
+from event.mention.params import DetectionParams
+from event.util import find_by_id
 
 
 def add_edl_entities(edl_file, csr):
@@ -369,7 +364,8 @@ def add_entity_salience(csr, entity_salience_info):
                 print("Entity mention [{}] rejected.".format(span))
             else:
                 print(
-                    "Entity mention [{}:{}] rejected.".format(span, data['text'])
+                    "Entity mention [{}:{}] rejected.".format(span,
+                                                              data['text'])
                 )
 
         if entity:
@@ -385,12 +381,6 @@ def add_event_salience(csr, event_salience_info):
             event = csr.add_event_mention(span, data['span'], data['text'],
                                           'aida', None, component='tagme')
         event.add_salience(data['salience'])
-
-
-def find_by_id(folder, docid):
-    for filename in os.listdir(folder):
-        if filename.startswith(docid):
-            return os.path.join(folder, filename)
 
 
 def token_to_span(conll_file):
@@ -410,18 +400,6 @@ def token_to_span(conll_file):
 
 
 def main(config):
-    token_vocab = Vocab(config.experiment_folder, 'tokens',
-                        embedding_path=config.word_embedding,
-                        emb_dim=config.word_embedding_dim)
-
-    tag_vocab = Vocab(config.experiment_folder, 'tag',
-                      embedding_path=config.tag_list)
-
-    train_reader = ConllUReader(config.train_files, config, token_vocab,
-                                tag_vocab, config.language)
-
-    detector = DetectionRunner(config, token_vocab, tag_vocab)
-
     assert config.test_folder is not None
     assert config.output is not None
 
@@ -430,6 +408,17 @@ def main(config):
 
     if not os.path.exists(config.output):
         os.makedirs(config.output)
+
+    if config.add_rule_detector:
+        from event.io.readers import (
+            ConllUReader,
+            Vocab
+        )
+        token_vocab = Vocab(config.resource_folder, 'tokens',
+                            embedding_path=config.word_embedding,
+                            emb_dim=config.word_embedding_dim)
+        tag_vocab = Vocab(config.resource_folder, 'tag',
+                          embedding_path=config.tag_list)
 
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
@@ -455,10 +444,17 @@ def main(config):
             if docid in scored_events:
                 add_event_salience(csr, scored_events[docid])
 
-        # logging.info("Predicting with CoNLLU: {}".format(conll_file))
-        # test_reader = ConllUReader([conll_file], config, token_vocab,
-        #                            train_reader.tag_vocab, config.language)
-        # detector.predict(test_reader, csr)
+        if config.add_rule_detector:
+            logging.info("Adding from ontology based rule detector.")
+
+            from event.mention.detection_runners import DetectionRunner
+            logging.info("Predicting on CoNLLU: {}".format(conll_file))
+            test_reader = ConllUReader([conll_file], config, token_vocab,
+                                       tag_vocab, config.language)
+            # Adding rule detector.
+            detector = DetectionRunner(config, token_vocab, tag_vocab)
+            detector.predict(test_reader, csr)
+
         csr.write()
 
 
@@ -474,6 +470,9 @@ if __name__ == '__main__':
         salience_data = Unicode(help='Salience output.').tag(config=True)
         rich_event_token = Bool(
             help='Whether to use tokens from rich event output',
+            default_value=False).tag(config=True)
+        add_rule_detector = Bool(
+            help='Whether to add rule dtector',
             default_value=False).tag(config=True)
 
 
