@@ -5,7 +5,6 @@ from event.io.readers import (
 from event.io.csr import CSR
 from event.mention.models.trainable_detectors import (
     TextCNN,
-    FrameMappingDetector
 )
 import logging
 import os
@@ -29,9 +28,6 @@ class DetectionTrainer:
                                  token_vocab.vocab_size())
             if torch.cuda.is_available():
                 self.model.cuda()
-        elif self.model_name == 'frame':
-            self.model = FrameMappingDetector(config, token_vocab)
-            self.trainable = False
 
     def train(self, train_reader, dev_reader):
         if not self.trainable:

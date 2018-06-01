@@ -121,10 +121,14 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
             ent = csr.add_entity_mention(head_span, span, text, 'conll',
                                          rich_ent.get('type', None),
                                          sent_id, component='corenlp')
+
             if ent:
                 ent_by_id[eid] = ent
             else:
-                print("Entity mention {} rejected.".format(text))
+                if len(text) > 20:
+                    print("Entity mention {} rejected.".format(eid))
+                else:
+                    print("Entity mention {}:{} rejected.".format(eid, text))
 
         evm_by_id = {}
         for mention in rich_event_info['eventMentions']:
@@ -186,11 +190,13 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
         for relation in rich_event_info['relations']:
             if relation['relationType'] == 'event_coreference':
-                args = [evm_by_id[i].id for i in relation['arguments']]
+                args = [evm_by_id[i].id for i in relation['arguments'] if
+                        i in evm_by_id]
                 csr.add_relation('aida', args, 'event_coreference', 'hector')
 
             if relation['relationType'] == 'entity_coreference':
-                args = [ent_by_id[i].id for i in relation['arguments']]
+                args = [ent_by_id[i].id for i in relation['arguments'] if
+                        i in ent_by_id]
                 csr.add_relation('aida', args, 'entity_coreference', 'corenlp')
 
 
@@ -357,9 +363,19 @@ def add_entity_salience(csr, entity_salience_info):
         if not entity:
             entity = csr.add_entity_mention(span, data['span'], data['text'],
                                             'aida', None, component='tagme')
-        entity.add_salience(data['salience'])
-        entity.add_linking(data['mid'], data['wiki'], data['link_score'],
-                           component='tagme')
+
+        if not entity:
+            if len(data['text']) > 20:
+                print("Entity mention [{}] rejected.".format(span))
+            else:
+                print(
+                    "Entity mention [{}:{}] rejected.".format(span, data['text'])
+                )
+
+        if entity:
+            entity.add_salience(data['salience'])
+            entity.add_linking(data['mid'], data['wiki'], data['link_score'],
+                               component='tagme')
 
 
 def add_event_salience(csr, event_salience_info):
@@ -439,10 +455,10 @@ def main(config):
             if docid in scored_events:
                 add_event_salience(csr, scored_events[docid])
 
-        logging.info("Predicting with CoNLLU: {}".format(conll_file))
-        test_reader = ConllUReader([conll_file], config, token_vocab,
-                                   train_reader.tag_vocab, config.language)
-        detector.predict(test_reader, csr)
+        # logging.info("Predicting with CoNLLU: {}".format(conll_file))
+        # test_reader = ConllUReader([conll_file], config, token_vocab,
+        #                            train_reader.tag_vocab, config.language)
+        # detector.predict(test_reader, csr)
         csr.write()
 
 
