@@ -41,6 +41,12 @@ def find_by_id(folder, docid):
             return os.path.join(folder, filename)
 
 
+def rm_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
 def set_basic_log(log_level=logging.INFO):
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logging.basicConfig(level=log_level, format=log_format)
