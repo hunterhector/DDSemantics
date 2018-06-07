@@ -112,6 +112,11 @@ class OntologyLoader:
             onto, t = full_type.split(':')
             grouped_ent_types[onto].append(t)
 
+        grouped_filler_types = defaultdict(list)
+        for full_type in self.filler_types:
+            onto, t = full_type.split(':')
+            grouped_filler_types[onto].append(t)
+
         grouped_evm_types = defaultdict(list)
         for full_type in self.event_onto.keys():
             onto, t = full_type.split(':')
@@ -121,7 +126,13 @@ class OntologyLoader:
             out.write('[entities]\n\n')
 
             for onto, types in grouped_ent_types.items():
-                out.write('!{}\n'.format(onto))
+                out.write('!{}\n'.format(onto + '_entity'))
+                for t in types:
+                    out.write('\t' + t + '\n')
+                out.write('\n')
+
+            for onto, types in grouped_filler_types.items():
+                out.write('!{}\n'.format(onto + '_filler'))
                 for t in types:
                     out.write('\t' + t + '\n')
                 out.write('\n')
@@ -129,8 +140,12 @@ class OntologyLoader:
             out.write('[relations]\n\n')
             for rel_type in self.relation_types:
                 out.write(
+                    '{}\tArg1:<ENTITY>, Arg2:<ENTITY>'
+                    '\n'.format(rel_type.split(':')[1]))
+                out.write(
                     '<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, '
-                    '<OVL-TYPE>:{}\n'.format(rel_type))
+                    '<OVL-TYPE>:<ANY>\n'
+                )
             out.write('\n')
 
             out.write('[attributes]\n\n')
@@ -140,7 +155,7 @@ class OntologyLoader:
             # out.write('other_event\trelation:<ENTITY>\n')
 
             for onto, types in grouped_evm_types.items():
-                out.write('!{}\n'.format(onto))
+                out.write('!{}\n'.format(onto + '_event'))
                 for t in types:
                     full_type = onto + ':' + t
 
@@ -155,7 +170,8 @@ class OntologyLoader:
                         plain_res = [r.split(':')[1] for r in restricts]
 
                         out.write(
-                            '{}{}:{}'.format(sep, plain_arg, '|'.join(plain_res))
+                            '{}{}:{}'.format(sep, plain_arg,
+                                             '|'.join(plain_res))
                         )
                         sep = ', '
                     out.write('\n')
@@ -173,6 +189,7 @@ class OntologyLoader:
 
 
 if __name__ == '__main__':
-    loader = OntologyLoader('/home/zhengzhl/projects/data/project_data/'
-                            'aida/resources/seedling-ontology.ttl')
+    loader = OntologyLoader('https://raw.githubusercontent.com/isi-vista'
+                            '/gaia-interchange/master/src/main/resources'
+                            '/edu/isi/gaia/seedling-ontology.ttl')
     loader.as_brat_conf('temp.conf')
