@@ -86,7 +86,8 @@ class Vocab:
 
 
 class ConllUReader:
-    def __init__(self, data_files, config, token_vocab, tag_vocab, language):
+    def __init__(self, data_files, config, token_vocab, tag_vocab, language,
+                 tag_index=-1):
         self.data_files = data_files
         self.data_format = config.input_format
 
@@ -104,7 +105,11 @@ class ConllUReader:
         self.token_vocab = token_vocab
         self.tag_vocab = tag_vocab
 
+        self.tag_index = tag_index
+
         self.language = language
+
+        self.feature_vector_len = 7
 
         logging.info("Corpus with [%d] words and [%d] tags.",
                      self.token_vocab.vocab_size(),
@@ -130,10 +135,11 @@ class ConllUReader:
                 sent_end = (-1, -1)
 
                 for line in data:
+                    line = line.strip()
                     if line.startswith("#"):
                         if line.startswith("# newdoc"):
                             docid = line.split("=")[1].strip()
-                    elif not line.strip():
+                    elif not line:
                         # Yield data when seeing sentence break.
                         yield parsed_data, (
                             sentence_id, (sent_start[1], sent_end[1]), docid
@@ -142,22 +148,31 @@ class ConllUReader:
                         sentence_id += 1
                     else:
                         parts = line.split()
-                        _, token, lemma, _, pos, _, head, dep, _, tag \
-                            = parts[:10]
-                        lemma = lemma.lower()
-                        pos = pos.lower()
+
+                        (wid, token, lemma, upos, xpos, feats, head, deprel,
+                         deps) = parts[:9]
+
+                        tag = parts[self.tag_index] if \
+                            self.tag_index >= 0 else self.tag_vocab.unk
+
+                        xpos = xpos.lower()
 
                         span = [int(x) for x in parts[-1].split(",")]
 
-                        if pos == 'punct' and self.no_punct:
+                        if xpos == 'punct' and self.no_punct:
                             # Simulate the non-punctuation audio input.
                             continue
 
                         parsed_data[0].append(self.token_vocab(token.lower()))
                         parsed_data[1].append(self.tag_vocab(tag))
+
+                        word_feature = parts[2:9]
+
                         parsed_data[2].append(
-                            (lemma, pos, head, dep)
+                            word_feature
                         )
+
+                        assert len(word_feature) == self.feature_vector_len
                         parsed_data[3].append(
                             (token, span)
                         )
@@ -168,14 +183,15 @@ class ConllUReader:
                         sent_end = [sentence_id, span[1]]
 
     def read_window(self):
-        # empty_feature =
+        empty_feature = ["EMPTY"] * self.feature_vector_len
+
         for (token_ids, tag_ids, features, token_meta), meta in self.parse():
             assert len(token_ids) == len(tag_ids)
 
             token_pad = [self.token_vocab.pad] * self.context_size
             tag_pad = [self.tag_vocab.pad] * self.context_size
 
-            feature_pad = ["EMPTY"] * self.context_size
+            feature_pad = [empty_feature] * self.context_size
 
             actual_len = len(token_ids)
 

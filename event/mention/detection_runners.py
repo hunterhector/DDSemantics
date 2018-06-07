@@ -18,42 +18,48 @@ class DetectionRunner:
             # Load model here.
             if torch.cuda.is_available():
                 self.model.cuda()
-        elif self.model_name == 'frame':
+        elif self.model_name == 'frame_rule':
             from event.mention.models.rule_detectors import \
                 FrameMappingDetector
             self.model = FrameMappingDetector(config, token_vocab)
+            self.trainable = False
+        elif self.model_name == 'marked_field':
+            from event.mention.models.rule_detectors import \
+                MarkedDetector
+            self.model = MarkedDetector(config, token_vocab)
             self.trainable = False
 
     def predict(self, test_reader, csr):
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
-
-            event_type, args = self.model.predict(data)
+            event_types = self.model.predict(data)
 
             center = int(len(l_word_meta) / 2)
 
             token, span = l_word_meta[center]
 
-            if not event_type == self.model.unknown_type:
+            if event_types:
                 extent_span = [span[0], span[1]]
-                for role, (index, entity_type) in args.items():
-                    a_token, a_span = l_word_meta[index]
-                    if a_span[0] < extent_span[0]:
-                        extent_span[0] = a_span[0]
-                    if a_span[1] > extent_span[1]:
-                        extent_span[1] = a_span[1]
 
-                evm = csr.add_event_mention(span, span, token, 'aida',
-                                            event_type, component='rule')
+                # for role, (index, entity_type) in args.items():
+                #     a_token, a_span = l_word_meta[index]
+                #     if a_span[0] < extent_span[0]:
+                #         extent_span[0] = a_span[0]
+                #     if a_span[1] > extent_span[1]:
+                #         extent_span[1] = a_span[1]
 
-                if evm:
-                    for role, (index, entity_type) in args.items():
-                        a_token, a_span = l_word_meta[index]
+                for onto, t in event_types:
+                    evm = csr.add_event_mention(span, span, token, onto,
+                                                t, component=self.model_name)
 
-                        csr.add_entity_mention(a_span, a_span, a_token, 'aida',
-                                               entity_type=entity_type,
-                                               component='rule')
-
-                        csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
-                                                  'aida', role,
-                                                  component='rule')
+        # if evm:
+        #     for role, (index, entity_type) in args.items():
+        #         a_token, a_span = l_word_meta[index]
+        #
+        #         csr.add_entity_mention(a_span, a_span, a_token, 'aida',
+        #                                entity_type=entity_type,
+        #                                component='rule')
+        #
+        #         csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
+        #                                   'aida', role,
+        #                                   component='rule')

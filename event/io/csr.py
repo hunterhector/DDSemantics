@@ -96,26 +96,32 @@ class Interp(Jsonable):
 
     def __init__(self, interp_type):
         self.interp_type = interp_type
-        self.fields = defaultdict(lambda: defaultdict(dict))
+        self.__fields = defaultdict(lambda: defaultdict(dict))
         self.multi_value_fields = set()
+
+    def get_field(self, key):
+        if key in self.__fields:
+            return dict(self.__fields.get(key))
+        else:
+            return None
 
     def add_fields(self, name, key_name, key, content,
                    component=None, score=None, multi_value=False):
         # If the key is the same, then the two interps are consider the same.
-        self.fields[name][key_name][key] = {
+        self.__fields[name][key_name][key] = {
             'content': content, 'component': component, 'score': score
         }
         if multi_value:
             self.multi_value_fields.add(name)
 
     def is_empty(self):
-        return len(self.fields) == 0
+        return len(self.__fields) == 0
 
     def json_rep(self):
         rep = {
             '@type': self.interp_type,
         }
-        for field_name, field_info in self.fields.items():
+        for field_name, field_info in self.__fields.items():
             field_data = []
 
             for key_name, keyed_content in field_info.items():
@@ -358,7 +364,6 @@ class EventMention(SpanInterpFrame):
         super().__init__(fid, 'event_evidence', parent, 'event_evidence_interp',
                          reference, begin, length, text, component=component)
         self.trigger = None
-        self.args = []
 
     def add_trigger(self, begin, length):
         self.trigger = Span(self.span.reference, begin, length)
@@ -472,6 +477,18 @@ class CSR:
         doc = Document(ns_docid, doc_name, doc_type, language, self.media_type)
         self.current_doc = doc
         self._docs[ns_docid] = doc
+
+    def get_events_mentions(self):
+        return self.get_frames(self.event_key)
+
+    def get_frames(self, key_type):
+        if key_type not in self._frame_map:
+            raise KeyError('Unknown frame type.')
+        return self._frame_map[key_type]
+
+    def get_frame(self, key_type, frame_id):
+        frames = self.get_frames(key_type)
+        return frames.get(frame_id)
 
     def add_sentence(self, span, text=None, component=None):
         sent_id = self.get_id('sent')

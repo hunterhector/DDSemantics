@@ -18,14 +18,29 @@ class BaseRuleDetector(MentionDetector):
         self.token_vocab = token_vocab
 
     def predict(self, *input):
-        for words, _, l_feature, word_meta, sent_meta in input:
-            center = math.floor(len(words) / 2)
-            lemmas = [features[0] for features in l_feature]
-            words = self.token_vocab.reveal_origin(words)
-            self.predict_by_word(words, lemmas, l_feature, center)
+        words, _, l_feature, word_meta, sent_meta = input[0]
+        center = math.floor(len(words) / 2)
+        lemmas = [features[0] for features in l_feature]
+        words = self.token_vocab.reveal_origin(words)
+        return self.predict_by_word(words, lemmas, l_feature, center)
 
     def predict_by_word(self, words, lemmas, l_feature, center):
         raise NotImplementedError('Please implement the rule detector.')
+
+
+class MarkedDetector(BaseRuleDetector):
+    """
+    Assume there is one field already marked with event type.
+    """
+
+    def __init__(self, config, token_vocab, marked_field_index=-2):
+        super().__init__(config, token_vocab)
+        self.marked_field_index = marked_field_index
+
+    def predict(self, *input):
+        words, _, l_feature, word_meta, sent_meta = input[0]
+        center = math.floor(len(words) / 2)
+        return l_feature[center][self.marked_field_index]
 
 
 class FrameMappingDetector(BaseRuleDetector):
@@ -35,6 +50,8 @@ class FrameMappingDetector(BaseRuleDetector):
         self.entities, self.events, self.relations = self.load_wordlist(
             config.entity_list, config.event_list, config.relation_list
         )
+
+        self.temp_memory = set()
 
     def load_frame_lex(self, frame_path):
         import xml.etree.ElementTree as ET
@@ -49,14 +66,19 @@ class FrameMappingDetector(BaseRuleDetector):
                 tree = ET.parse(f)
                 frame = tree.getroot()
                 frame_name = frame.get('name')
+
+                lexemes = []
                 for lexUnit in frame.findall('berkeley:lexUnit', ns):
                     lex = lexUnit.get('name')
-                    lexeme = lexUnit.findall('berkeley:lexeme', ns)[0].get(
-                        'name')
-                    if lexeme not in lex_mapping:
-                        lex_mapping[lexeme] = []
+                    lexeme = lexUnit.findall(
+                        'berkeley:lexeme', ns)[0].get('name')
+                    lexemes.append(lexeme)
 
-                    lex_mapping[lexeme].append(frame_name)
+                lex_text = ' '.join(lexemes)
+                if lex_text not in lex_mapping:
+                    lex_mapping[lex_text] = []
+
+                lex_mapping[lex_text].append(frame_name)
         return lex_mapping
 
     def load_wordlist(self, entity_file, event_file, relation_file):
@@ -92,38 +114,33 @@ class FrameMappingDetector(BaseRuleDetector):
         return entities, events, relations
 
     def predict_by_word(self, words, lemmas, l_feature, center):
-        event_type = self.unknown_type
-        args = {}
+        event_types = []
 
         center_word = words[center]
         center_lemma = lemmas[center]
 
-        if center_word in self.events:
-            event_type = self.events[center_word]
+        # if center_lemma in self.lex_mapping:
+        #     for fname in self.lex_mapping[center_lemma]:
+        #         event_types.append(('FrameNet', fname))
 
-        if center_lemma in self.events:
-            event_type = self.events[center_lemma]
+        # if center_word in self.events:
+        #     event_type = self.events[center_word]
+        #
+        # if center_lemma in self.events:
+        #     event_type = self.events[center_lemma]
+        # pos_list = [features[1] for features in l_feature]
+        # deps = [(features[2], features[3]) for features in l_feature]
+        # if not event_type == self.unknown_type:
+        #     res = self.predict_args(center, event_type, lemmas, pos_list,
+        #                             deps)
+        #
+        #     for role, entity in res.items():
+        #         if entity:
+        #             index, entity_type = entity
+        #             features = l_feature[index]
+        #             args[role] = index, entity_type
 
-        pos_list = [features[1] for features in l_feature]
-        deps = [(features[2], features[3]) for features in l_feature]
-
-        print(words)
-        print(lemmas)
-        print(l_feature)
-        print(center)
-
-        if center_word in self.events:
-            event_type = self.events[center_word]
-
-        if not event_type == self.unknown_type:
-            res = self.predict_args(center, event_type, lemmas, pos_list,
-                                    deps)
-
-            for role, entity in res.items():
-                if entity:
-                    index, entity_type = entity
-                    features = l_feature[index]
-                    args[role] = index, entity_type
+        return event_types
 
     def predict_args(self, center, event_type, context, pos_list, deps):
         if event_type not in self.relations:

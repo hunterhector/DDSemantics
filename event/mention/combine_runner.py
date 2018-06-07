@@ -17,6 +17,7 @@ from event.io.readers import (
     Vocab
 )
 from event.mention.detection_runners import DetectionRunner
+from event.io.ontology import OntologyLoader
 
 
 def add_edl_entities(edl_file, csr):
@@ -402,6 +403,33 @@ def token_to_span(conll_file):
     return tokens
 
 
+def align_ontology(csr, aida_ontology):
+    # Make sure the event types all contain the same ontology.
+    pass
+
+
+def find_args(csr, aida_ontology):
+    """
+    Link more arguments using the ontology mapper.
+    :param csr:
+    :param aida_ontology:
+    :return:
+    """
+    for eid, event_mention in csr.get_events_mentions().items():
+        trigger = event_mention.trigger
+
+        trigger_begin = trigger.begin
+        trigger_len = trigger.length
+
+        sent = csr.get_frame(csr.sent_key, trigger.reference)
+
+        print(sent, trigger_begin, trigger_len)
+        print(sent.text)
+        print(event_mention.interp.get_field('type'))
+        print(event_mention.interp.get_field('args'))
+        input('wait')
+
+
 def main(config):
     assert config.test_folder is not None
     assert config.output is not None
@@ -412,16 +440,18 @@ def main(config):
     if not os.path.exists(config.output):
         os.makedirs(config.output)
 
+    aida_ontology = OntologyLoader(config.ontology_path)
+
     if config.add_rule_detector:
         # Rule detector should not need existing vocabulary.
         token_vocab = Vocab(config.resource_folder, 'tokens',
                             embedding_path=config.word_embedding,
                             emb_dim=config.word_embedding_dim,
                             ignore_existing=True)
-
         tag_vocab = Vocab(config.resource_folder, 'tag',
                           embedding_path=config.tag_list,
                           ignore_existing=True)
+        detector = DetectionRunner(config, token_vocab, tag_vocab)
 
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
@@ -448,15 +478,19 @@ def main(config):
             if docid in scored_events:
                 add_event_salience(csr, scored_events[docid])
 
+        logging.info("Reading on CoNLLU: {}".format(conll_file))
+        # The conll files may contain information from another language.
+        test_reader = ConllUReader([conll_file], config, token_vocab,
+                                   tag_vocab, config.language)
+
         if config.add_rule_detector:
             logging.info("Adding from ontology based rule detector.")
-
-            logging.info("Predicting on CoNLLU: {}".format(conll_file))
-            test_reader = ConllUReader([conll_file], config, token_vocab,
-                                       tag_vocab, config.language)
-            # Adding rule detector.
-            detector = DetectionRunner(config, token_vocab, tag_vocab)
+            # Adding rule detector. This is the last detector that use other
+            # information from the CSR, including entity and events.
             detector.predict(test_reader, csr)
+
+        align_ontology(csr, aida_ontology)
+        find_args(csr, aida_ontology)
 
         csr.write()
 
