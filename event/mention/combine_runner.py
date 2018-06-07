@@ -12,6 +12,11 @@ from traitlets import (
 from traitlets.config.loader import PyFileConfigLoader
 from event.mention.params import DetectionParams
 from event.util import find_by_id
+from event.io.readers import (
+    ConllUReader,
+    Vocab
+)
+from event.mention.detection_runners import DetectionRunner
 
 
 def add_edl_entities(edl_file, csr):
@@ -322,8 +327,6 @@ def read_source(source_folder, output_dir, language):
     for source_text_path in glob.glob(source_folder + '/*.txt'):
         with open(source_text_path) as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
-            print("Processing " + docid)
-
             csr = CSR('Frames_hector_combined', 1,
                       os.path.join(output_dir, docid + '.csr.json'), 'data')
 
@@ -410,15 +413,15 @@ def main(config):
         os.makedirs(config.output)
 
     if config.add_rule_detector:
-        from event.io.readers import (
-            ConllUReader,
-            Vocab
-        )
+        # Rule detector should not need existing vocabulary.
         token_vocab = Vocab(config.resource_folder, 'tokens',
                             embedding_path=config.word_embedding,
-                            emb_dim=config.word_embedding_dim)
+                            emb_dim=config.word_embedding_dim,
+                            ignore_existing=True)
+
         tag_vocab = Vocab(config.resource_folder, 'tag',
-                          embedding_path=config.tag_list)
+                          embedding_path=config.tag_list,
+                          ignore_existing=True)
 
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
@@ -429,6 +432,7 @@ def main(config):
 
         conll_file = find_by_id(config.test_folder, docid)
         tokens = None
+
         if config.rich_event_token:
             tokens = token_to_span(conll_file)
 
@@ -447,7 +451,6 @@ def main(config):
         if config.add_rule_detector:
             logging.info("Adding from ontology based rule detector.")
 
-            from event.mention.detection_runners import DetectionRunner
             logging.info("Predicting on CoNLLU: {}".format(conll_file))
             test_reader = ConllUReader([conll_file], config, token_vocab,
                                        tag_vocab, config.language)
@@ -471,12 +474,13 @@ if __name__ == '__main__':
         rich_event_token = Bool(
             help='Whether to use tokens from rich event output',
             default_value=False).tag(config=True)
-        add_rule_detector = Bool(
-            help='Whether to add rule dtector',
-            default_value=False).tag(config=True)
+        add_rule_detector = Bool(help='Whether to add rule detector',
+                                 default_value=False).tag(config=True)
+        output = Unicode(help='Main result output directory').tag(config=True)
 
 
     util.set_basic_log()
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
-    basic_para = CombineParams(config=conf)
-    main(basic_para)
+    params = CombineParams(config=conf)
+
+    main(params)

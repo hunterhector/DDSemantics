@@ -1,11 +1,13 @@
 import rdflib
 from rdflib import Namespace
-from event.util import rm_prefix
 import re
+import logging
 
 
 class OntologyLoader:
     def __init__(self, ontology_file):
+        logging.info("Loading ontology from : {}".format(ontology_file))
+
         self.g = rdflib.Graph()
         self.g.load(ontology_file, format='ttl')
 
@@ -175,14 +177,6 @@ class OntologyLoader:
                         )
                         sep = ', '
                     out.write('\n')
-
-                # for t, args in type_args.items():
-                #     out.write('\t' + t)
-                #     sep = '\t'
-                #     for arg in args:
-                #         out.write('{}{}:<ENTITY>'.format(sep, arg))
-                #         sep = ', '
-                #     out.write('\n')
 
     def __find_arg_restrictions(self):
         pass

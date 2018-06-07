@@ -1,4 +1,5 @@
 import math
+from event.io.ontology import OntologyLoader
 
 
 class MentionDetector:
@@ -10,15 +11,30 @@ class MentionDetector:
         pass
 
 
-class FrameMappingDetector(MentionDetector):
+class BaseRuleDetector(MentionDetector):
     def __init__(self, config, token_vocab):
-        super().__init__(config=config)
+        super().__init__()
+        self.onto = OntologyLoader(config.ontology_path)
+        self.token_vocab = token_vocab
+
+    def predict(self, *input):
+        for words, _, l_feature, word_meta, sent_meta in input:
+            center = math.floor(len(words) / 2)
+            lemmas = [features[0] for features in l_feature]
+            words = self.token_vocab.reveal_origin(words)
+            self.predict_by_word(words, lemmas, l_feature, center)
+
+    def predict_by_word(self, words, lemmas, l_feature, center):
+        raise NotImplementedError('Please implement the rule detector.')
+
+
+class FrameMappingDetector(BaseRuleDetector):
+    def __init__(self, config, token_vocab):
+        super().__init__(config, token_vocab)
         self.lex_mapping = self.load_frame_lex(config.frame_lexicon)
         self.entities, self.events, self.relations = self.load_wordlist(
             config.entity_list, config.event_list, config.relation_list
         )
-        self.token_vocab = token_vocab
-        self.load_ontology()
 
     def load_frame_lex(self, frame_path):
         import xml.etree.ElementTree as ET
@@ -75,42 +91,39 @@ class FrameMappingDetector(MentionDetector):
 
         return entities, events, relations
 
-    def load_ontology(self):
-        pass
-
-    def predict(self, *input):
+    def predict_by_word(self, words, lemmas, l_feature, center):
         event_type = self.unknown_type
         args = {}
-        # l_args = []
 
-        for words, _, l_feature, word_meta, sent_meta in input:
-            center = math.floor(len(words) / 2)
-            lemmas = [features[0] for features in l_feature]
-            pos_list = [features[1] for features in l_feature]
-            deps = [(features[2], features[3]) for features in l_feature]
+        center_word = words[center]
+        center_lemma = lemmas[center]
 
-            center_lemma = lemmas[center]
-            word = self.token_vocab.reveal_origin(words)[center]
+        if center_word in self.events:
+            event_type = self.events[center_word]
 
-            if word in self.events:
-                event_type = self.events[word]
+        if center_lemma in self.events:
+            event_type = self.events[center_lemma]
 
-            if center_lemma in self.events:
-                event_type = self.events[center_lemma]
+        pos_list = [features[1] for features in l_feature]
+        deps = [(features[2], features[3]) for features in l_feature]
 
-            if not event_type == self.unknown_type:
-                res = self.predict_args(center, event_type, lemmas, pos_list,
-                                        deps)
+        print(words)
+        print(lemmas)
+        print(l_feature)
+        print(center)
 
-                for role, entity in res.items():
-                    if entity:
-                        index, entity_type = entity
-                        features = l_feature[index]
+        if center_word in self.events:
+            event_type = self.events[center_word]
 
-                        args[role] = index, entity_type
+        if not event_type == self.unknown_type:
+            res = self.predict_args(center, event_type, lemmas, pos_list,
+                                    deps)
 
-            # l_args.append(args)
-        return event_type, args
+            for role, entity in res.items():
+                if entity:
+                    index, entity_type = entity
+                    features = l_feature[index]
+                    args[role] = index, entity_type
 
     def predict_args(self, center, event_type, context, pos_list, deps):
         if event_type not in self.relations:

@@ -6,19 +6,20 @@ import pickle
 
 
 class Vocab:
-    def __init__(self, base_folder, name, embedding_path=None, emb_dim=100):
+    def __init__(self, base_folder, name, embedding_path=None, emb_dim=100,
+                 ignore_existing=False):
         self.fixed = False
         self.base_folder = base_folder
         self.name = name
 
-        if self.load_map():
-            logging.info("Loaded existing vocabulary mapping.")
+        if not ignore_existing and self.load_map():
             self.fix()
         else:
             logging.info("Creating new vocabulary mapping file.")
             self.token2i = defaultdict(lambda: len(self.token2i))
 
         self.unk = self.token2i["<unk>"]
+        self.pad = self.token2i["<padding>"]
 
         if embedding_path:
             logging.info("Loading embeddings from %s." % embedding_path)
@@ -28,7 +29,10 @@ class Vocab:
         self.i2token = dict([(v, k) for k, v in self.token2i.items()])
 
     def __call__(self, *args, **kwargs):
-        return self.token_dict()[args[0]]
+        token = args[0]
+        index = self.token_dict()[token]
+        self.i2token[index] = token
+        return index
 
     def load_embedding(self, embedding_path, emb_dim):
         with open(embedding_path, 'r') as f:
@@ -75,15 +79,16 @@ class Vocab:
         if os.path.exists(path):
             with open(path, 'rb') as p:
                 self.token2i = pickle.load(p)
+                logging.info(
+                    "Loaded existing vocabulary mapping at: {}".format(path))
                 return True
-        else:
-            return False
+        return False
 
 
 class ConllUReader:
     def __init__(self, data_files, config, token_vocab, tag_vocab, language):
         self.data_files = data_files
-        self.data_format = config.format
+        self.data_format = config.input_format
 
         self.no_punct = config.no_punct
         self.no_sentence = config.no_sentence
@@ -163,11 +168,12 @@ class ConllUReader:
                         sent_end = [sentence_id, span[1]]
 
     def read_window(self):
+        # empty_feature =
         for (token_ids, tag_ids, features, token_meta), meta in self.parse():
             assert len(token_ids) == len(tag_ids)
 
-            token_pad = [self.token_vocab.unk] * self.context_size
-            tag_pad = [self.tag_vocab.unk] * self.context_size
+            token_pad = [self.token_vocab.pad] * self.context_size
+            tag_pad = [self.tag_vocab.pad] * self.context_size
 
             feature_pad = ["EMPTY"] * self.context_size
 
@@ -181,8 +187,10 @@ class ConllUReader:
             for i in range(actual_len):
                 start = i
                 end = i + self.context_size * 2 + 1
-                yield token_ids[start: end], tag_ids[start:end], \
-                      features[start:end], token_meta[start:end], meta
+                yield (
+                    token_ids[start:end], tag_ids[start:end],
+                    features[start:end], token_meta[start:end], meta
+                )
 
     def convert_batch(self):
         import torch
