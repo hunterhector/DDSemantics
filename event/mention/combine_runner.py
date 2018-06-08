@@ -21,6 +21,8 @@ from event.io.ontology import OntologyLoader
 
 
 def add_edl_entities(edl_file, csr):
+    edl_component_id = 'opera.entities.edl.xuezhe'
+
     if not edl_file:
         return
     with open(edl_file) as edl:
@@ -35,7 +37,7 @@ def add_edl_entities(edl_file, csr):
                 head_span = [int(s) for s in entity['head_span'].split('-')]
                 csr.add_entity_mention(head_span, mention_span,
                                        entity['mention'], 'aida', entity['ner'],
-                                       component='EDL')
+                                       component=edl_component_id)
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
@@ -43,13 +45,15 @@ def add_edl_entities(edl_file, csr):
                 ner = 'NOM' if entity['ner'] == 'null' else entity['ner']
                 csr.add_entity_mention(head_span, mention_span,
                                        entity['headword'], 'aida', ner,
-                                       component='EDL')
+                                       component=edl_component_id)
 
 
 def add_tbf_event(csr, sent_id, mention_span, text, kbp_type, args):
+    event_mention_component_id = 'opera.events.mention.tac.hector'
+
     evm = csr.add_event_mention(mention_span, mention_span,
-                                text, 'tac', kbp_type,
-                                sent_id=sent_id, component='tac')
+                                text, 'tac', kbp_type, sent_id=sent_id,
+                                component=event_mention_component_id)
 
     if len(args) > 0:
         pb_name = args[0]
@@ -405,7 +409,9 @@ def token_to_span(conll_file):
 
 def align_ontology(csr, aida_ontology):
     # Make sure the event types all contain the same ontology.
-    pass
+    for eid, event_mention in csr.get_events_mentions().items():
+        event_type = event_mention.interp.get_field('type')
+        # input(event_type)
 
 
 def find_args(csr, aida_ontology):
@@ -423,11 +429,10 @@ def find_args(csr, aida_ontology):
 
         sent = csr.get_frame(csr.sent_key, trigger.reference)
 
-        print(sent, trigger_begin, trigger_len)
-        print(sent.text)
-        print(event_mention.interp.get_field('type'))
-        print(event_mention.interp.get_field('args'))
-        input('wait')
+        # print(sent, trigger_begin, trigger_len)
+        # print(sent.text)
+        # print(event_mention.interp.get_field('type'))
+        # print(event_mention.interp.get_field('args'))
 
 
 def main(config):
