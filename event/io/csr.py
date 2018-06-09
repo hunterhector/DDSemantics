@@ -483,7 +483,7 @@ class CSR:
 
     def get_frames(self, key_type):
         if key_type not in self._frame_map:
-            raise KeyError('Unknown frame type.')
+            raise KeyError('Unknown frame type : {}'.format(key_type))
         return self._frame_map[key_type]
 
     def get_frame(self, key_type, frame_id):

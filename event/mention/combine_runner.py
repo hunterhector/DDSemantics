@@ -494,8 +494,8 @@ def main(config):
             # information from the CSR, including entity and events.
             detector.predict(test_reader, csr)
 
-        align_ontology(csr, aida_ontology)
-        find_args(csr, aida_ontology)
+        # align_ontology(csr, aida_ontology)
+        # find_args(csr, aida_ontology)
 
         csr.write()
 
