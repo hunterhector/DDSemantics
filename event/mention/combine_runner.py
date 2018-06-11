@@ -468,6 +468,10 @@ def main(config):
                 add_edl_entities(edl_file, csr)
 
         conll_file = find_by_id(config.test_folder, docid)
+        if not conll_file:
+            logging.warn("CoNLL file for doc {} is missing, please check your paths.".format(docid))
+            continue
+        
         tokens = None
 
         if config.rich_event_token:
@@ -486,7 +490,7 @@ def main(config):
             if docid in scored_events:
                 add_event_salience(csr, scored_events[docid])
 
-        logging.info("Reading on CoNLLU: {}".format(conll_file))
+        logging.info("Reading on CoNLLU: {}".format(conll_file))     
         # The conll files may contain information from another language.
         test_reader = ConllUReader([conll_file], config, token_vocab,
                                    tag_vocab, config.language)
@@ -496,9 +500,6 @@ def main(config):
             # Adding rule detector. This is the last detector that use other
             # information from the CSR, including entity and events.
             detector.predict(test_reader, csr)
-
-        # align_ontology(csr, aida_ontology)
-        # find_args(csr, aida_ontology)
 
         csr.write()
 
