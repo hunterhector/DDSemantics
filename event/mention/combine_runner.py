@@ -460,10 +460,12 @@ def main(config):
 
     for csr, docid in read_source(config.source_folder, config.output,
                                   config.language):
+        logging.info('Working with docid: {}'.format(docid))
         if config.edl_json:
             edl_file = find_by_id(config.edl_json, docid)
-            logging.info("Predicting with EDL: {}".format(edl_file))
-            add_edl_entities(edl_file, csr)
+            if eld_file:
+                logging.info("Predicting with EDL: {}".format(edl_file))
+                add_edl_entities(edl_file, csr)
 
         conll_file = find_by_id(config.test_folder, docid)
         tokens = None
@@ -473,9 +475,10 @@ def main(config):
 
         if config.rich_event:
             rich_event_file = find_by_id(config.rich_event, docid)
-            logging.info(
-                "Adding events with rich output: {}".format(rich_event_file))
-            add_rich_events(rich_event_file, csr, tokens)
+            if rich_event_file:
+                logging.info(
+                    "Adding events with rich output: {}".format(rich_event_file))
+                add_rich_events(rich_event_file, csr, tokens)
 
         if config.salience_data:
             if docid in scored_entities:
