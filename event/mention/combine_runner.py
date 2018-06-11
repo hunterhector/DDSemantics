@@ -463,7 +463,7 @@ def main(config):
         logging.info('Working with docid: {}'.format(docid))
         if config.edl_json:
             edl_file = find_by_id(config.edl_json, docid)
-            if eld_file:
+            if edl_file:
                 logging.info("Predicting with EDL: {}".format(edl_file))
                 add_edl_entities(edl_file, csr)
 
