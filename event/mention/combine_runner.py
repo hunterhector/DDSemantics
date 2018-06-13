@@ -411,7 +411,7 @@ def align_ontology(csr, aida_ontology):
     # Make sure the event types all contain the same ontology.
     for eid, event_mention in csr.get_events_mentions().items():
         event_type = event_mention.interp.get_field('type')
-        # input(event_type)
+        input(event_type)
 
 
 def find_args(csr, aida_ontology):
@@ -469,9 +469,10 @@ def main(config):
 
         conll_file = find_by_id(config.test_folder, docid)
         if not conll_file:
-            logging.warn("CoNLL file for doc {} is missing, please check your paths.".format(docid))
+            logging.warning("CoNLL file for doc {} is missing, please "
+                            "check your paths.".format(docid))
             continue
-        
+
         tokens = None
 
         if config.rich_event_token:
@@ -481,7 +482,8 @@ def main(config):
             rich_event_file = find_by_id(config.rich_event, docid)
             if rich_event_file:
                 logging.info(
-                    "Adding events with rich output: {}".format(rich_event_file))
+                    "Adding events with rich output: {}".format(
+                        rich_event_file))
                 add_rich_events(rich_event_file, csr, tokens)
 
         if config.salience_data:
@@ -490,7 +492,7 @@ def main(config):
             if docid in scored_events:
                 add_event_salience(csr, scored_events[docid])
 
-        logging.info("Reading on CoNLLU: {}".format(conll_file))     
+        logging.info("Reading on CoNLLU: {}".format(conll_file))
         # The conll files may contain information from another language.
         test_reader = ConllUReader([conll_file], config, token_vocab,
                                    tag_vocab, config.language)
@@ -500,6 +502,8 @@ def main(config):
             # Adding rule detector. This is the last detector that use other
             # information from the CSR, including entity and events.
             detector.predict(test_reader, csr)
+
+            align_ontology(csr, aida_ontology)
 
         csr.write()
 
