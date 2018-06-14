@@ -118,18 +118,44 @@ class OntologyLoader:
         for origin, _, label in self.g.triples((
                 None, self.namespaces[self.rdfs].label, None
         )):
-            print(origin)
-            if origin == self.namespaces[self.ldc_ont]:
-                self.labels[origin] = label
+
+            if origin.startswith(self.namespaces[self.ldc_ont]):
+                if not str(origin) == str(self.namespaces[self.ldc_ont]):
+                    self.labels[origin] = label
 
     def as_text(self, output_path):
         with open(output_path, 'w') as out:
-            print(len(self.event_onto))
-            for full_type, args in self.event_onto.items():
-                print(full_type)
-                out.write(full_type)
-                out.write('\t')
-                out.write(' '.join(args))
+            out.write('#Event:\n')
+            for full_type, event_info in self.event_onto.items():
+                _, _, evm_type = self.shorten(full_type)
+                for full_arg_name, arg_info in event_info['args'].items():
+                    restricts = []
+                    for restrict in arg_info['restrictions']:
+                        _, _, arg_name = self.shorten(full_arg_name)
+                        _, _, ent_name = self.shorten(restrict)
+                        # print(arg_name, ent_name)
+                        restricts.append(ent_name)
+                out.write(evm_type + '\t' + '\t'.join(restricts))
+                out.write('\n')
+            out.write('\n')
+
+            out.write('#Entity\n')
+            for full_type in self.entity_types:
+                _, _, entity_type = self.shorten(full_type)
+                out.write(entity_type + '\n')
+            out.write('\n')
+
+            out.write('#Filler\n')
+            for full_type in self.filler_types:
+                _, _, filler_type = self.shorten(full_type)
+                out.write(filler_type + '\n')
+            out.write('\n')
+
+            out.write('#Relation\n')
+            for full_type in self.relation_types:
+                _, _, filler_type = self.shorten(full_type)
+                out.write(filler_type + '\n')
+            out.write('\n')
 
     def as_brat_conf(self, conf_path, visual_path=None):
         """
@@ -177,10 +203,16 @@ class OntologyLoader:
                 out.write(
                     '{}\tArg1:<ENTITY>, Arg2:<ENTITY>'
                     '\n'.format(rel_type))
-                out.write(
-                    '<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, '
-                    '<OVL-TYPE>:<ANY>\n'
-                )
+            out.write(
+                'ENT_COREF\tArg1:<ENTITY>, Arg2:<ENTITY>\n'
+            )
+            out.write(
+                'EVM_COREF\tArg1:<EVENT>, Arg2:<EVENT>\n'
+            )
+            out.write(
+                '<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, '
+                '<OVL-TYPE>:<ANY>\n'
+            )
             out.write('\n')
 
             out.write('[attributes]\n\n')
@@ -223,6 +255,8 @@ class OntologyLoader:
                     out.write('\n')
 
                 out.write('\n[drawing]\n')
+                out.write('SPAN_DEFAULT	fgColor:black, bgColor:lightgreen, '
+                          'borderColor:darken')
 
     def __find_arg_restrictions(self):
         pass
@@ -236,4 +270,4 @@ if __name__ == '__main__':
                             '/gaia-interchange/master/src/main/resources'
                             '/edu/isi/gaia/seedling-ontology.ttl')
     loader.as_brat_conf('annotation.conf', 'visual.conf')
-    # loader.as_text('temp.txt')
+    loader.as_text('temp.txt')

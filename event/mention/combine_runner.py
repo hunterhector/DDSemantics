@@ -152,6 +152,10 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
             sent_id = csr.get_sentence_by_span(span)
 
+            component_name = 'opera.events.mention.tac.hector'
+
+            # if mention['component'] == "CrfMentionTypeAnnotator":
+
             evm = csr.add_event_mention(head_span, span, text, 'tac',
                                         mention['type'], sent_id=sent_id,
                                         component='tac')
