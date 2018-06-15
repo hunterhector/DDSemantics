@@ -48,33 +48,33 @@ def add_edl_entities(edl_file, csr):
                                        component=edl_component_id)
 
 
-def add_tbf_event(csr, sent_id, mention_span, text, kbp_type, args):
-    event_mention_component_id = 'opera.events.mention.tac.hector'
-
-    evm = csr.add_event_mention(mention_span, mention_span,
-                                text, 'tac', kbp_type, sent_id=sent_id,
-                                component=event_mention_component_id)
-
-    if len(args) > 0:
-        pb_name = args[0]
-        frame_name = args[1]
-        args = args[2:]
-
-        for arg in args:
-            arg_span, arg_text, pb_role, fn_role = arg.split(',')
-            arg_span = [int(a) for a in arg_span.split('-')]
-
-            if not fn_role == 'N/A':
-                csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
-                                          'framenet', fn_role,
-                                          component='Semafor')
-
-            if not pb_role == 'N/A':
-                csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
-                                          'propbank', pb_role,
-                                          component='Fanse')
-
-    return evm
+# def add_tbf_event(csr, sent_id, mention_span, text, kbp_type, args):
+#     event_mention_component_id = 'opera.events.mention.tac.hector'
+#
+#     evm = csr.add_event_mention(mention_span, mention_span,
+#                                 text, 'tac', kbp_type, sent_id=sent_id,
+#                                 component=event_mention_component_id)
+#
+#     if len(args) > 0:
+#         pb_name = args[0]
+#         frame_name = args[1]
+#         args = args[2:]
+#
+#         for arg in args:
+#             arg_span, arg_text, pb_role, fn_role = arg.split(',')
+#             arg_span = [int(a) for a in arg_span.split('-')]
+#
+#             if not fn_role == 'N/A':
+#                 csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
+#                                           'framenet', fn_role,
+#                                           component='Semafor')
+#
+#             if not pb_role == 'N/A':
+#                 csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
+#                                           'propbank', pb_role,
+#                                           component='Fanse')
+#
+#     return evm
 
 
 def recover_via_token(tokens, token_ids):
@@ -153,12 +153,17 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
             sent_id = csr.get_sentence_by_span(span)
 
             component_name = 'opera.events.mention.tac.hector'
+            ontology = 'tac'
 
-            # if mention['component'] == "CrfMentionTypeAnnotator":
+            if mention['component'] == "FrameBasedEventDetector":
+                component_name = 'opera.events.mention.framenet.semafor'
+                ontology = 'framenet'
 
-            evm = csr.add_event_mention(head_span, span, text, 'tac',
-                                        mention['type'], sent_id=sent_id,
-                                        component='tac')
+            evm = csr.add_event_mention(
+                head_span, span, text, ontology, mention['type'],
+                realis=mention.get('realis', None), sent_id=sent_id,
+                component=component_name
+            )
 
             if evm:
                 eid = mention['id']
@@ -209,48 +214,48 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 csr.add_relation('aida', args, 'entity_coreference', 'corenlp')
 
 
-def add_tbf_events(kbp_file, csr):
-    if not kbp_file:
-        return
-
-    with open(kbp_file) as kbp:
-        relations = defaultdict(list)
-        evms = {}
-
-        for line in kbp:
-            line = line.strip()
-            if line.startswith("#"):
-                if line.startswith("#BeginOfDocument"):
-                    docid = line.split()[1]
-                    # Take the non-extension docid.
-                    docid = docid.split('.')[0]
-                    # csr.add_doc(docid)
-                    relations.clear()
-                    evms.clear()
-            elif line.startswith("@"):
-                rel_type, rid, rel_args = line.split('\t')
-                rel_type = rel_type[1:]
-                rel_args = rel_args.split(',')
-                relations[rel_type].append(rel_args)
-            else:
-                parts = line.split('\t')
-                if len(parts) < 7:
-                    continue
-
-                kbp_eid = parts[2]
-                mention_span, text, kbp_type, realis = parts[3:7]
-                mention_span = [int(p) for p in mention_span.split(',')]
-
-                sent_id = csr.get_sentence_by_span(mention_span)
-                if sent_id:
-                    csr_evm = add_tbf_event(csr, sent_id, mention_span, text,
-                                            kbp_type, parts[7:])
-                    evms[kbp_eid] = csr_evm.id
-
-        for rel_type, relations in relations.items():
-            for rel_args in relations:
-                csr_rel_args = [evms[r] for r in rel_args]
-                csr.add_relation('tac', csr_rel_args, rel_type)
+# def add_tbf_events(kbp_file, csr):
+#     if not kbp_file:
+#         return
+#
+#     with open(kbp_file) as kbp:
+#         relations = defaultdict(list)
+#         evms = {}
+#
+#         for line in kbp:
+#             line = line.strip()
+#             if line.startswith("#"):
+#                 if line.startswith("#BeginOfDocument"):
+#                     docid = line.split()[1]
+#                     # Take the non-extension docid.
+#                     docid = docid.split('.')[0]
+#                     # csr.add_doc(docid)
+#                     relations.clear()
+#                     evms.clear()
+#             elif line.startswith("@"):
+#                 rel_type, rid, rel_args = line.split('\t')
+#                 rel_type = rel_type[1:]
+#                 rel_args = rel_args.split(',')
+#                 relations[rel_type].append(rel_args)
+#             else:
+#                 parts = line.split('\t')
+#                 if len(parts) < 7:
+#                     continue
+#
+#                 kbp_eid = parts[2]
+#                 mention_span, text, kbp_type, realis = parts[3:7]
+#                 mention_span = [int(p) for p in mention_span.split(',')]
+#
+#                 sent_id = csr.get_sentence_by_span(mention_span)
+#                 if sent_id:
+#                     csr_evm = add_tbf_event(csr, sent_id, mention_span, text,
+#                                             kbp_type, parts[7:])
+#                     evms[kbp_eid] = csr_evm.id
+#
+#         for rel_type, relations in relations.items():
+#             for rel_args in relations:
+#                 csr_rel_args = [evms[r] for r in rel_args]
+#                 csr.add_relation('tac', csr_rel_args, rel_type)
 
 
 def load_salience(salience_folder):
@@ -391,7 +396,7 @@ def add_event_salience(csr, event_salience_info):
         event = csr.get_by_span(csr.event_key, span)
         if not event:
             event = csr.add_event_mention(span, data['span'], data['text'],
-                                          'aida', None, component='tagme')
+                                          'aida', None, component='salience')
         event.add_salience(data['salience'])
 
 
@@ -415,7 +420,13 @@ def align_ontology(csr, aida_ontology):
     # Make sure the event types all contain the same ontology.
     for eid, event_mention in csr.get_events_mentions().items():
         event_type = event_mention.interp.get_field('type')
-        input(event_type)
+
+        if event_mention.component == 'opera.events.mention.tac.hector':
+            print("Changing it to ontology type.")
+            print(event_type)
+
+        # print(event_type)
+        input('wait at align')
 
 
 def find_args(csr, aida_ontology):
@@ -440,14 +451,14 @@ def find_args(csr, aida_ontology):
 
 
 def main(config):
-    assert config.test_folder is not None
-    assert config.output is not None
+    assert config.conllu_folder is not None
+    assert config.csr_output is not None
 
     if config.salience_data:
         scored_entities, scored_events = load_salience(config.salience_data)
 
-    if not os.path.exists(config.output):
-        os.makedirs(config.output)
+    if not os.path.exists(config.csr_output):
+        os.makedirs(config.csr_output)
 
     aida_ontology = OntologyLoader(config.ontology_path)
 
@@ -462,7 +473,7 @@ def main(config):
                           ignore_existing=True)
         detector = DetectionRunner(config, token_vocab, tag_vocab)
 
-    for csr, docid in read_source(config.source_folder, config.output,
+    for csr, docid in read_source(config.source_folder, config.csr_output,
                                   config.language):
         logging.info('Working with docid: {}'.format(docid))
         if config.edl_json:
@@ -471,7 +482,7 @@ def main(config):
                 logging.info("Predicting with EDL: {}".format(edl_file))
                 add_edl_entities(edl_file, csr)
 
-        conll_file = find_by_id(config.test_folder, docid)
+        conll_file = find_by_id(config.conllu_folder, docid)
         if not conll_file:
             logging.warning("CoNLL file for doc {} is missing, please "
                             "check your paths.".format(docid))
@@ -527,7 +538,10 @@ if __name__ == '__main__':
             default_value=False).tag(config=True)
         add_rule_detector = Bool(help='Whether to add rule detector',
                                  default_value=False).tag(config=True)
-        output = Unicode(help='Main result output directory').tag(config=True)
+        output_folder = Unicode(help='Parent output directory').tag(config=True)
+        conllu_folder = Unicode(help='CoNLLU directory').tag(config=True)
+        csr_output = Unicode(help='Main CSR output directory').tag(
+            config=True)
 
 
     util.set_basic_log()

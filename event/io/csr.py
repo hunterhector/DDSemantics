@@ -99,16 +99,42 @@ class Interp(Jsonable):
         self.__fields = defaultdict(lambda: defaultdict(dict))
         self.multi_value_fields = set()
 
-    def get_field(self, key):
-        if key in self.__fields:
-            return dict(self.__fields.get(key))
+    def get_field(self, name):
+        if name in self.__fields:
+            return dict(self.__fields.get(name))
         else:
             return None
 
-    def add_fields(self, name, key_name, key, content,
+    def modify_field(self, name, key_name, content_rep, content, component=None,
+                     score=None):
+        original = self.__fields[name][key_name][content_rep]
+
+        if not component:
+            component = original['component']
+
+        if not score:
+            score = original['score']
+
+        self.__fields[name][key_name][content_rep] = {
+            'content': content, 'score': score, 'component': component,
+        }
+
+    def add_fields(self, name, key_name, content_rep, content,
                    component=None, score=None, multi_value=False):
+        """
+        Add an interp field
+        :param name: The name to be displayed for this field.
+        :param key_name: A unique key name for this field.
+        :param content_rep: A value to identify this content from the rest,
+        if two content_reps are the same, the are consider the same field.
+        :param content: The actual content.
+        :param component: The component name.
+        :param score: The score of this interp field.
+        :param multi_value: Whether this field can contain multiple values.
+        :return:
+        """
         # If the key is the same, then the two interps are consider the same.
-        self.__fields[name][key_name][key] = {
+        self.__fields[name][key_name][content_rep] = {
             'content': content, 'component': component, 'score': score
         }
         if multi_value:
@@ -368,7 +394,8 @@ class EventMention(SpanInterpFrame):
     def add_trigger(self, begin, length):
         self.trigger = Span(self.span.reference, begin, length)
 
-    def add_type(self, ontology, event_type, score=None, component=None):
+    def add_interp(self, ontology, event_type, realis, score=None,
+                   component=None):
         # interp = Interp(self.interp_type)
         onto_type = ontology + ":" + event_type
 
@@ -378,6 +405,8 @@ class EventMention(SpanInterpFrame):
 
         self.interp.add_fields('type', 'type', onto_type, onto_type,
                                score=score, component=component)
+        self.interp.add_fields('realis', 'realis', realis, realis, score=score,
+                               component=component)
 
     def add_arg(self, ontology, arg_role, entity_mention, arg_id,
                 score=None, component=None):
@@ -482,8 +511,8 @@ class CSR:
         return self.get_frames(self.event_key)
 
     def get_frames(self, key_type):
-        if key_type not in self._frame_map:
-            raise KeyError('Unknown frame type : {}'.format(key_type))
+        # if key_type not in self._frame_map:
+        #     raise KeyError('Unknown frame type : {}'.format(key_type))
         return self._frame_map[key_type]
 
     def get_frame(self, key_type, frame_id):
@@ -584,7 +613,7 @@ class CSR:
         return entity_mention
 
     def add_event_mention(self, head_span, span, text, ontology,
-                          evm_type, sent_id=None, component=None):
+                          evm_type, realis=None, sent_id=None, component=None):
         # Annotation on the same span will be reused.
         head_span = tuple(head_span)
         span = tuple(span)
@@ -605,9 +634,8 @@ class CSR:
             relative_begin = span[0] - sent.span.begin
             length = span[1] - span[0]
 
-            evm = EventMention(event_id, sent_id, sent_id,
-                               relative_begin, length,
-                               text, component=component)
+            evm = EventMention(event_id, sent_id, sent_id, relative_begin,
+                               length, text, component=component)
             evm.add_trigger(relative_begin, length)
             self._frame_map[self.event_key][event_id] = evm
         else:
@@ -625,7 +653,8 @@ class CSR:
         evm_group.add_arg(event_id)
 
         if evm_type:
-            evm.add_type(ontology, evm_type, component=component)
+            realis = 'UNK' if not realis else realis
+            evm.add_interp(ontology, evm_type, realis, component=component)
         return evm
 
     def get_id(self, prefix, index=None):
