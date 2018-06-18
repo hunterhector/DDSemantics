@@ -33,6 +33,9 @@ class Jsonable:
     def json_rep(self):
         raise NotImplementedError
 
+    def __str__(self):
+        return json.dumps(self.json_rep())
+
 
 class Frame(Jsonable):
     """
@@ -391,6 +394,9 @@ class EventMention(SpanInterpFrame):
                          reference, begin, length, text, component=component)
         self.trigger = None
 
+        self.type = None
+        self.realis = None
+
     def add_trigger(self, begin, length):
         self.trigger = Span(self.span.reference, begin, length)
 
@@ -407,6 +413,8 @@ class EventMention(SpanInterpFrame):
                                score=score, component=component)
         self.interp.add_fields('realis', 'realis', realis, realis, score=score,
                                component=component)
+        self.type = onto_type
+        self.realis = realis
 
     def add_arg(self, ontology, arg_role, entity_mention, arg_id,
                 score=None, component=None):
@@ -453,7 +461,7 @@ class CSR:
     """
 
     def __init__(self, component_name, run_id, out_path, namespace,
-                 media_type='text'):
+                 media_type='text', aida_ontology=None):
         self.header = {
             "@context": [
                 "https://www.isi.edu/isd/LOOM/opera/"
@@ -492,6 +500,12 @@ class CSR:
         self.event_group_key = 'event_group'
         self.sent_key = 'sentence'
         self.rel_key = 'relation'
+
+        self.aida_ontology = aida_ontology
+
+        self.event_onto = aida_ontology.event_onto_text()
+
+        self.temp_out = None
 
     def clear(self):
         self._span_frame_map.clear()
@@ -612,8 +626,15 @@ class CSR:
             entity_mention.add_type(ontology, 'other', component=component)
         return entity_mention
 
-    def add_event_mention(self, head_span, span, text, ontology,
-                          evm_type, realis=None, sent_id=None, component=None):
+    def map_event_type(self, evm_type, onto_name):
+        if onto_name == 'tac':
+            mapped_evm_type = evm_type.upper()
+            if mapped_evm_type in self.event_onto:
+                return mapped_evm_type
+        return None
+
+    def add_event_mention(self, head_span, span, text, onto_name, evm_type,
+                          realis=None, sent_id=None, component=None):
         # Annotation on the same span will be reused.
         head_span = tuple(head_span)
         span = tuple(span)
@@ -654,7 +675,14 @@ class CSR:
 
         if evm_type:
             realis = 'UNK' if not realis else realis
-            evm.add_interp(ontology, evm_type, realis, component=component)
+
+            mapped_type = self.map_event_type(evm_type, onto_name)
+
+            if mapped_type:
+                evm.add_interp('aida', mapped_type, realis, component=component)
+            else:
+                evm.add_interp(onto_name, evm_type, realis, component=component)
+
         return evm
 
     def get_id(self, prefix, index=None):
@@ -670,17 +698,29 @@ class CSR:
             index,
         )
 
+    def map_event_arg_type(self, evm, onto_name, arg_role):
+        type_onto, evm_type = evm.type.split(':')
+        if type_onto == 'aida':
+            self.temp_out.write(
+                ' '.join(('check mapping: ', evm_type, onto_name, arg_role)))
+            self.temp_out.write('\n')
+
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
-                              arg_text, ontology, arg_role, component=None):
+                              arg_text, onto_name, arg_role, component):
         ent = self.add_entity_mention(arg_head_span, arg_span,
                                       arg_text, 'aida', "argument",
-                                      component='tac')
+                                      component=component)
         if ent:
             arg_id = self.get_id('arg')
-            evm.add_arg(ontology, arg_role, ent, arg_id, component=component)
+            self.map_event_arg_type(evm, onto_name, arg_role)
+            self.temp_out.write(
+                ' '.join(('Adding', arg_text, 'to event', evm.text, '.'))
+            )
+            self.temp_out.write('\n')
 
-    def add_event_arg(self, evm, ent, ontology, arg_role,
-                      component=None):
+            evm.add_arg(onto_name, arg_role, ent, arg_id, component=component)
+
+    def add_event_arg(self, evm, ent, ontology, arg_role, component):
         arg_id = self.get_id('arg')
         evm.add_arg(ontology, arg_role, ent, arg_id, component=component)
 

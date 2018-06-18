@@ -138,7 +138,6 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
         evm_by_id = {}
         for mention in rich_event_info['eventMentions']:
             arguments = mention['arguments']
-            # text = mention.get('text', "")
 
             if provided_tokens:
                 span, text = recover_via_token(provided_tokens,
@@ -191,7 +190,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                         component = None
                         if onto_name == 'fn':
                             onto = "framenet"
+                            frame_name = mention['frame']
                             component = 'Semafor'
+                            role_name = frame_name + ':' + role_name
                         elif onto_name == 'pb':
                             onto = "propbank"
                             component = 'propbank'
@@ -337,12 +338,13 @@ def load_salience(salience_folder):
     return scored_entities, scored_events
 
 
-def read_source(source_folder, output_dir, language):
+def read_source(source_folder, output_dir, language, aida_ontology):
     for source_text_path in glob.glob(source_folder + '/*.txt'):
         with open(source_text_path) as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
             csr = CSR('Frames_hector_combined', 1,
-                      os.path.join(output_dir, docid + '.csr.json'), 'data')
+                      os.path.join(output_dir, docid + '.csr.json'), 'data',
+                      aida_ontology=aida_ontology)
 
             csr.add_doc(docid, 'report', language)
             text = text_in.read()
@@ -417,13 +419,31 @@ def token_to_span(conll_file):
 
 
 def align_ontology(csr, aida_ontology):
+    event_onto = aida_ontology.event_onto_text()
+
     # Make sure the event types all contain the same ontology.
     for eid, event_mention in csr.get_events_mentions().items():
-        event_type = event_mention.interp.get_field('type')
+        event_type_field = event_mention.interp.get_field('type')
+        event_args = event_mention.interp.get_field('args')
+        component = event_mention.interp.get_field('component')
 
-        if event_mention.component == 'opera.events.mention.tac.hector':
+        print(event_type_field)
+        print(event_args)
+        print(component)
+
+        if component is None:
+            # Inherit the parent component ID.
+            component = event_mention.component
+
+        if component == 'opera.events.mention.tac.hector':
             print("Changing it to ontology type.")
-            print(event_type)
+            print(event_type_field)
+            for event_type in event_type_field['type']:
+                mapped_event_type = event_type.split(':')[1].upper()
+                print("checking", mapped_event_type)
+
+                if mapped_event_type in event_onto:
+                    print("Found mapping.")
 
         # print(event_type)
         input('wait at align')
@@ -473,8 +493,12 @@ def main(config):
                           ignore_existing=True)
         detector = DetectionRunner(config, token_vocab, tag_vocab)
 
+    temp_out = open('../temp_out.txt', 'w')
+
     for csr, docid in read_source(config.source_folder, config.csr_output,
-                                  config.language):
+                                  config.language, aida_ontology):
+        csr.temp_out = temp_out
+
         logging.info('Working with docid: {}'.format(docid))
         if config.edl_json:
             edl_file = find_by_id(config.edl_json, docid)
@@ -518,9 +542,10 @@ def main(config):
             # information from the CSR, including entity and events.
             detector.predict(test_reader, csr)
 
-            align_ontology(csr, aida_ontology)
+            # align_ontology(csr, aida_ontology)
 
         csr.write()
+    temp_out.close()
 
 
 if __name__ == '__main__':

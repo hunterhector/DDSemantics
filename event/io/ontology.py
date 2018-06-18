@@ -30,6 +30,23 @@ class OntologyLoader:
         self.labels = {}
         self.__load()
 
+    def event_onto_text(self):
+        text_dict = {}
+        for event_key, content in self.event_onto.items():
+            _, _, event = self.shorten(event_key)
+            args_text = {}
+
+            for arg_type_ref, arg_content in content.get('args', {}).items():
+                _, _, arg_type = self.shorten(arg_type_ref)
+                args_text[arg_type] = {'restrictions': set()}
+                for restrict_ref in arg_content.get('restrictions', {}):
+                    _, _, restrict = self.shorten(restrict_ref)
+                    args_text[arg_type]['restrictions'].add(restrict)
+
+            text_dict[event] = {'args': args_text}
+
+        return text_dict
+
     def __find_subclassof(self, target_class):
         return [a for (a, b, c) in self.g.triples(
             (None, self.namespaces[self.rdfs].subClassOf, target_class)
@@ -128,15 +145,24 @@ class OntologyLoader:
             out.write('#Event:\n')
             for full_type, event_info in self.event_onto.items():
                 _, _, evm_type = self.shorten(full_type)
+                restricts = {}
+
                 for full_arg_name, arg_info in event_info['args'].items():
-                    restricts = []
+
+                    _, _, arg_name = self.shorten(full_arg_name)
+                    restricts[arg_name] = []
+
                     for restrict in arg_info['restrictions']:
-                        _, _, arg_name = self.shorten(full_arg_name)
                         _, _, ent_name = self.shorten(restrict)
-                        # print(arg_name, ent_name)
-                        restricts.append(ent_name)
-                out.write(evm_type + '\t' + '\t'.join(restricts))
-                out.write('\n')
+                        restricts[arg_name].append(ent_name)
+
+                for restrict_arg, l_restrict_ent in restricts.items():
+                    out.write(
+                        '%s\t%s\t%s\t' % (
+                            evm_type, restrict_arg, ' '.join(l_restrict_ent)
+                        )
+                    )
+                    out.write('\n')
             out.write('\n')
 
             out.write('#Entity\n')
