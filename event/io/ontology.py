@@ -4,6 +4,28 @@ import re
 import logging
 
 
+class MappingLoader:
+    def __init__(self):
+        self.mappings = {}
+
+    def get_seedling_map(self):
+        return self.mappings['seedling']
+
+    def load_seedling_mapping(self, mapping_file):
+        seedling_map = {}
+        with open(mapping_file) as seedling_mappings:
+            for line in seedling_mappings:
+                parts = line.strip().split('\t')
+                evm = parts[0]
+                evm_arg = parts[1]
+                constraints = parts[2]
+                mapped_frames = parts[3:]
+
+                for frame in mapped_frames:
+                    seedling_map[(evm, frame)] = evm_arg
+        self.mappings['seedling'] = seedling_map
+
+
 class OntologyLoader:
     def __init__(self, ontology_file):
         logging.info("Loading ontology from : {}".format(ontology_file))

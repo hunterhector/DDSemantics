@@ -14,10 +14,13 @@ from event.mention.params import DetectionParams
 from event.util import find_by_id
 from event.io.readers import (
     ConllUReader,
-    Vocab
+    Vocab,
 )
 from event.mention.detection_runners import DetectionRunner
-from event.io.ontology import OntologyLoader
+from event.io.ontology import (
+    OntologyLoader,
+    MappingLoader,
+)
 
 
 def add_edl_entities(edl_file, csr):
@@ -338,13 +341,14 @@ def load_salience(salience_folder):
     return scored_entities, scored_events
 
 
-def read_source(source_folder, output_dir, language, aida_ontology):
+def read_source(source_folder, output_dir, language, aida_ontology,
+                onto_mapper):
     for source_text_path in glob.glob(source_folder + '/*.txt'):
         with open(source_text_path) as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
             csr = CSR('Frames_hector_combined', 1,
                       os.path.join(output_dir, docid + '.csr.json'), 'data',
-                      aida_ontology=aida_ontology)
+                      aida_ontology=aida_ontology, onto_mapper=onto_mapper)
 
             csr.add_doc(docid, 'report', language)
             text = text_in.read()
@@ -481,6 +485,8 @@ def main(config):
         os.makedirs(config.csr_output)
 
     aida_ontology = OntologyLoader(config.ontology_path)
+    onto_mapper = MappingLoader()
+    onto_mapper.load_seedling_mapping(config.seedling_onto_mapping)
 
     if config.add_rule_detector:
         # Rule detector should not need existing vocabulary.
@@ -496,7 +502,7 @@ def main(config):
     temp_out = open('../temp_out.txt', 'w')
 
     for csr, docid in read_source(config.source_folder, config.csr_output,
-                                  config.language, aida_ontology):
+                                  config.language, aida_ontology, onto_mapper):
         csr.temp_out = temp_out
 
         logging.info('Working with docid: {}'.format(docid))

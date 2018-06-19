@@ -461,7 +461,7 @@ class CSR:
     """
 
     def __init__(self, component_name, run_id, out_path, namespace,
-                 media_type='text', aida_ontology=None):
+                 media_type='text', aida_ontology=None, onto_mapper=None):
         self.header = {
             "@context": [
                 "https://www.isi.edu/isd/LOOM/opera/"
@@ -502,8 +502,11 @@ class CSR:
         self.rel_key = 'relation'
 
         self.aida_ontology = aida_ontology
+        self.onto_mapper = onto_mapper
 
         self.event_onto = aida_ontology.event_onto_text()
+
+        self.base_onto_name = 'aida'
 
         self.temp_out = None
 
@@ -699,11 +702,28 @@ class CSR:
         )
 
     def map_event_arg_type(self, evm, onto_name, arg_role):
+        seedling_map = self.onto_mapper.get_seedling_map()
+
         type_onto, evm_type = evm.type.split(':')
+
         if type_onto == 'aida':
-            self.temp_out.write(
-                ' '.join(('check mapping: ', evm_type, onto_name, arg_role)))
-            self.temp_out.write('\n')
+            key = (evm_type, arg_role)
+
+            if 'CONTACT' not in evm_type:
+                print("Finding ", key)
+
+            if arg_role == 'ARG_TMP' or 'Time' in arg_role:
+                mapped_arg = evm_type.lower() + '_time'
+                if mapped_arg in self.event_onto:
+                    return mapped_arg
+
+            elif key in seedling_map:
+                mapped_arg = seedling_map[key]
+                if 'CONTACT' not in evm_type:
+                    print('Found mapped argument ', mapped_arg)
+                    input('wait for argument mapping')
+
+                return mapped_arg
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
                               arg_text, onto_name, arg_role, component):
@@ -712,11 +732,14 @@ class CSR:
                                       component=component)
         if ent:
             arg_id = self.get_id('arg')
-            self.map_event_arg_type(evm, onto_name, arg_role)
-            self.temp_out.write(
-                ' '.join(('Adding', arg_text, 'to event', evm.text, '.'))
-            )
-            self.temp_out.write('\n')
+            in_domain_arg = self.map_event_arg_type(evm, onto_name, arg_role)
+
+            if in_domain_arg:
+                if ':' in in_domain_arg:
+                    onto_name, arg_role = in_domain_arg.split(':')
+                else:
+                    onto_name = self.base_onto_name
+                    arg_role = in_domain_arg
 
             evm.add_arg(onto_name, arg_role, ent, arg_id, component=component)
 

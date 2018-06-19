@@ -60,3 +60,5 @@ class DetectionParams(Configurable):
 
     # Aida specific
     ontology_path = Unicode(help='Ontology url or path.').tag(config=True)
+    seedling_onto_mapping = Unicode(
+        help='Seedling ontology mapping to TAC-KBP').tag(config=True)
