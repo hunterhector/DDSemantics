@@ -104,6 +104,13 @@ def recover_via_token(tokens, token_ids):
     return (first_token[0][0], last_token[0][1]), text
 
 
+def handle_noise(origin_type, frame_type):
+    if 'Contact' in origin_type:
+        if frame_type == 'Shoot_projectiles':
+            return 'Conflict_Attack'
+    return origin_type
+
+
 def add_rich_events(rich_event_file, csr, provided_tokens=None):
     with open(rich_event_file) as fin:
         rich_event_info = json.load(fin)
@@ -161,8 +168,11 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 component_name = 'opera.events.mention.framenet.semafor'
                 ontology = 'framenet'
 
+            mention_type = handle_noise(mention['type'],
+                                        mention.get('frame', ''))
+
             evm = csr.add_event_mention(
-                head_span, span, text, ontology, mention['type'],
+                head_span, span, text, ontology, mention_type,
                 realis=mention.get('realis', None), sent_id=sent_id,
                 component=component_name
             )
@@ -486,7 +496,8 @@ def main(config):
 
     aida_ontology = OntologyLoader(config.ontology_path)
     onto_mapper = MappingLoader()
-    onto_mapper.load_seedling_mapping(config.seedling_onto_mapping)
+    onto_mapper.load_seedling_arg_mapping(config.seedling_argument_mapping)
+    onto_mapper.load_seedling_event_mapping(config.seedling_event_mapping)
 
     if config.add_rule_detector:
         # Rule detector should not need existing vocabulary.

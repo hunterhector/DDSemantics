@@ -8,10 +8,13 @@ class MappingLoader:
     def __init__(self):
         self.mappings = {}
 
-    def get_seedling_map(self):
-        return self.mappings['seedling']
+    def get_seedling_arg_map(self):
+        return self.mappings['seedling_arg']
 
-    def load_seedling_mapping(self, mapping_file):
+    def get_seedling_event_map(self):
+        return self.mappings['seedling_event']
+
+    def load_seedling_arg_mapping(self, mapping_file):
         seedling_map = {}
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
@@ -23,7 +26,18 @@ class MappingLoader:
 
                 for frame in mapped_frames:
                     seedling_map[(evm, frame)] = evm_arg
-        self.mappings['seedling'] = seedling_map
+        self.mappings['seedling_arg'] = seedling_map
+
+    def load_seedling_event_mapping(self, mapping_file):
+        seedling_map = {}
+        with open(mapping_file) as seedling_mappings:
+            for line in seedling_mappings:
+                parts = line.strip().split('\t')
+                evm = parts[0]
+
+                for frame in parts[1:]:
+                    seedling_map[frame] = evm
+        self.mappings['seedling_event'] = seedling_map
 
 
 class OntologyLoader:
@@ -68,6 +82,19 @@ class OntologyLoader:
             text_dict[event] = {'args': args_text}
 
         return text_dict
+
+    def arg_set(self):
+        arg_restrictions = {}
+        for event_key, content in self.event_onto.items():
+            _, _, event = self.shorten(event_key)
+
+            for arg_type_ref, arg_content in content.get('args', {}).items():
+                _, _, arg_type = self.shorten(arg_type_ref)
+                arg_restrictions[(event, arg_type)] = []
+                for restrict_ref in arg_content.get('restrictions', {}):
+                    _, _, restrict = self.shorten(restrict_ref)
+                    arg_restrictions[(event, arg_type)].append(restrict)
+        return arg_restrictions
 
     def __find_subclassof(self, target_class):
         return [a for (a, b, c) in self.g.triples(

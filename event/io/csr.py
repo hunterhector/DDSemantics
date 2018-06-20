@@ -2,6 +2,8 @@ import json
 import os
 from collections import defaultdict, Counter
 import logging
+import string
+from event.util import remove_punctuation
 
 
 class Constants:
@@ -505,10 +507,23 @@ class CSR:
         self.onto_mapper = onto_mapper
 
         self.event_onto = aida_ontology.event_onto_text()
+        self.canonical_types = self.__canonicalize_event_type()
+
+        self.arg_set = aida_ontology.arg_set()
 
         self.base_onto_name = 'aida'
 
         self.temp_out = None
+
+    def __canonicalize_event_type(self):
+        canonical_map = {}
+        for event_type in self.event_onto:
+            c_type = self.__cannonicalize_one_type(event_type)
+            canonical_map[c_type] = event_type
+        return canonical_map
+
+    def __cannonicalize_one_type(self, event_type):
+        return remove_punctuation(event_type).lower()
 
     def clear(self):
         self._span_frame_map.clear()
@@ -631,9 +646,16 @@ class CSR:
 
     def map_event_type(self, evm_type, onto_name):
         if onto_name == 'tac':
-            mapped_evm_type = evm_type.upper()
-            if mapped_evm_type in self.event_onto:
-                return mapped_evm_type
+            mapped_evm_type = self.__cannonicalize_one_type(evm_type)
+
+            if mapped_evm_type in self.canonical_types:
+                return self.canonical_types[mapped_evm_type]
+        else:
+            full_type = onto_name + ':' + evm_type
+            event_map = self.onto_mapper.get_seedling_event_map()
+            if full_type in event_map:
+                return event_map[full_type]
+
         return None
 
     def add_event_mention(self, head_span, span, text, onto_name, evm_type,
@@ -702,28 +724,32 @@ class CSR:
         )
 
     def map_event_arg_type(self, evm, onto_name, arg_role):
-        seedling_map = self.onto_mapper.get_seedling_map()
-
+        seedling_arg_map = self.onto_mapper.get_seedling_arg_map()
         type_onto, evm_type = evm.type.split(':')
 
         if type_onto == 'aida':
             key = (evm_type, arg_role)
 
-            if 'CONTACT' not in evm_type:
-                print("Finding ", key)
+            print("Finding ", key, arg_role)
 
-            if arg_role == 'ARG_TMP' or 'Time' in arg_role:
+            if arg_role == 'ARGM-TMP' or 'Time' in arg_role:
                 mapped_arg = evm_type.lower() + '_time'
-                if mapped_arg in self.event_onto:
+                full_arg = (evm_type, mapped_arg)
+                # print('Found time')
+                if full_arg in self.arg_set:
                     return mapped_arg
-
-            elif key in seedling_map:
-                mapped_arg = seedling_map[key]
-                if 'CONTACT' not in evm_type:
-                    print('Found mapped argument ', mapped_arg)
-                    input('wait for argument mapping')
-
+            if arg_role == 'ARGM-LOC' or 'Place' in arg_role:
+                mapped_arg = evm_type.lower() + '_location'
+                full_arg = (evm_type, mapped_arg)
+                # print("Found location")
+                if full_arg in self.arg_set:
+                    return mapped_arg
+            elif key in seedling_arg_map:
+                mapped_arg = seedling_arg_map[key]
+                # print('Found mapped argument ', mapped_arg)
                 return mapped_arg
+            else:
+                input('not found')
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
                               arg_text, onto_name, arg_role, component):
@@ -731,6 +757,9 @@ class CSR:
                                       arg_text, 'aida', "argument",
                                       component=component)
         if ent:
+            print("Event is", evm.text, 'Event type is', evm.type,
+                  ', argument is', arg_text, ', arg role is', arg_role)
+
             arg_id = self.get_id('arg')
             in_domain_arg = self.map_event_arg_type(evm, onto_name, arg_role)
 

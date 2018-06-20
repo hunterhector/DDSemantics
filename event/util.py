@@ -2,6 +2,8 @@ import argparse
 import logging
 import os
 import gzip
+import unicodedata
+import sys
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -50,3 +52,13 @@ def rm_prefix(text, prefix):
 def set_basic_log(log_level=logging.INFO):
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logging.basicConfig(level=log_level, format=log_format)
+
+
+tbl = dict.fromkeys(
+    i for i in range(sys.maxunicode) if
+    unicodedata.category(chr(i)).startswith('P')
+)
+
+
+def remove_punctuation(text):
+    return text.translate(tbl)
