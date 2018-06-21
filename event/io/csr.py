@@ -45,7 +45,7 @@ class Frame(Jsonable):
     """
 
     def __init__(self, fid, frame_type, parent, component=None, score=None):
-        self.type = frame_type
+        self.event_type = frame_type
         self.id = fid
         self.parent = parent
         self.component = component
@@ -53,7 +53,7 @@ class Frame(Jsonable):
 
     def json_rep(self):
         rep = {
-            '@type': self.type,
+            '@type': self.event_type,
         }
 
         if self.id:
@@ -396,7 +396,7 @@ class EventMention(SpanInterpFrame):
                          reference, begin, length, text, component=component)
         self.trigger = None
 
-        self.type = None
+        self.event_type = None
         self.realis = None
 
     def add_trigger(self, begin, length):
@@ -415,7 +415,7 @@ class EventMention(SpanInterpFrame):
                                score=score, component=component)
         self.interp.add_fields('realis', 'realis', realis, realis, score=score,
                                component=component)
-        self.type = onto_type
+        self.event_type = onto_type
         self.realis = realis
 
     def add_arg(self, ontology, arg_role, entity_mention, arg_id,
@@ -512,8 +512,6 @@ class CSR:
         self.arg_set = aida_ontology.arg_set()
 
         self.base_onto_name = 'aida'
-
-        self.temp_out = None
 
     def __canonicalize_event_type(self):
         canonical_map = {}
@@ -723,45 +721,40 @@ class CSR:
             index,
         )
 
-    def map_event_arg_type(self, evm, onto_name, arg_role):
+    def map_event_arg_type(self, type_onto, evm_type, arg_role):
         seedling_arg_map = self.onto_mapper.get_seedling_arg_map()
-        type_onto, evm_type = evm.type.split(':')
 
         if type_onto == 'aida':
             key = (evm_type, arg_role)
 
-            print("Finding ", key, arg_role)
-
             if arg_role == 'ARGM-TMP' or 'Time' in arg_role:
                 mapped_arg = evm_type.lower() + '_time'
                 full_arg = (evm_type, mapped_arg)
-                # print('Found time')
                 if full_arg in self.arg_set:
                     return mapped_arg
             if arg_role == 'ARGM-LOC' or 'Place' in arg_role:
-                mapped_arg = evm_type.lower() + '_location'
+                mapped_arg = evm_type.lower() + '_place'
                 full_arg = (evm_type, mapped_arg)
-                # print("Found location")
                 if full_arg in self.arg_set:
                     return mapped_arg
             elif key in seedling_arg_map:
                 mapped_arg = seedling_arg_map[key]
-                # print('Found mapped argument ', mapped_arg)
                 return mapped_arg
             else:
-                input('not found')
+                # print("Finding ", key, arg_role, ", not found")
+                pass
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
                               arg_text, onto_name, arg_role, component):
         ent = self.add_entity_mention(arg_head_span, arg_span,
                                       arg_text, 'aida', "argument",
                                       component=component)
-        if ent:
-            print("Event is", evm.text, 'Event type is', evm.type,
-                  ', argument is', arg_text, ', arg role is', arg_role)
 
+        if ent:
+            type_onto, evm_type = evm.event_type.split(':')
             arg_id = self.get_id('arg')
-            in_domain_arg = self.map_event_arg_type(evm, onto_name, arg_role)
+            in_domain_arg = self.map_event_arg_type(type_onto, evm_type,
+                                                    arg_role)
 
             if in_domain_arg:
                 if ':' in in_domain_arg:
@@ -769,6 +762,11 @@ class CSR:
                 else:
                     onto_name = self.base_onto_name
                     arg_role = in_domain_arg
+            else:
+                if type_onto == 'aida':
+                    # print("Event is", evm.text, 'Event type is', evm.type,
+                    #     ', argument is', arg_text, ', arg role is', arg_role)
+                    pass
 
             evm.add_arg(onto_name, arg_role, ent, arg_id, component=component)
 

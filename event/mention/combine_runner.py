@@ -51,35 +51,6 @@ def add_edl_entities(edl_file, csr):
                                        component=edl_component_id)
 
 
-# def add_tbf_event(csr, sent_id, mention_span, text, kbp_type, args):
-#     event_mention_component_id = 'opera.events.mention.tac.hector'
-#
-#     evm = csr.add_event_mention(mention_span, mention_span,
-#                                 text, 'tac', kbp_type, sent_id=sent_id,
-#                                 component=event_mention_component_id)
-#
-#     if len(args) > 0:
-#         pb_name = args[0]
-#         frame_name = args[1]
-#         args = args[2:]
-#
-#         for arg in args:
-#             arg_span, arg_text, pb_role, fn_role = arg.split(',')
-#             arg_span = [int(a) for a in arg_span.split('-')]
-#
-#             if not fn_role == 'N/A':
-#                 csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
-#                                           'framenet', fn_role,
-#                                           component='Semafor')
-#
-#             if not pb_role == 'N/A':
-#                 csr.add_event_arg_by_span(evm, arg_span, arg_span, arg_text,
-#                                           'propbank', pb_role,
-#                                           component='Fanse')
-#
-#     return evm
-
-
 def recover_via_token(tokens, token_ids):
     if not token_ids:
         return None
@@ -104,15 +75,19 @@ def recover_via_token(tokens, token_ids):
     return (first_token[0][0], last_token[0][1]), text
 
 
-def handle_noise(origin_type, frame_type):
+def handle_noise(origin_onto, origin_type, frame_type):
     if 'Contact' in origin_type:
         if frame_type == 'Shoot_projectiles':
-            return 'Conflict_Attack'
-    return origin_type
+            return 'tac', 'Conflict_Attack'
+        if frame_type == 'Quantity':
+            return 'framenet', frame_type
+    return origin_onto, origin_type
 
 
 def add_rich_events(rich_event_file, csr, provided_tokens=None):
     with open(rich_event_file) as fin:
+        # Add negation and modal words.
+
         rich_event_info = json.load(fin)
 
         rich_entities = {}
@@ -168,8 +143,8 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 component_name = 'opera.events.mention.framenet.semafor'
                 ontology = 'framenet'
 
-            mention_type = handle_noise(mention['type'],
-                                        mention.get('frame', ''))
+            ontology, mention_type = handle_noise(ontology, mention['type'],
+                                                  mention.get('frame', ''))
 
             evm = csr.add_event_mention(
                 head_span, span, text, ontology, mention_type,
@@ -208,7 +183,7 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                             role_name = frame_name + ':' + role_name
                         elif onto_name == 'pb':
                             onto = "propbank"
-                            component = 'propbank'
+                            component = 'Fanse'
 
                         if onto and component:
                             csr.add_event_arg_by_span(
@@ -226,50 +201,6 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 args = [ent_by_id[i].id for i in relation['arguments'] if
                         i in ent_by_id]
                 csr.add_relation('aida', args, 'entity_coreference', 'corenlp')
-
-
-# def add_tbf_events(kbp_file, csr):
-#     if not kbp_file:
-#         return
-#
-#     with open(kbp_file) as kbp:
-#         relations = defaultdict(list)
-#         evms = {}
-#
-#         for line in kbp:
-#             line = line.strip()
-#             if line.startswith("#"):
-#                 if line.startswith("#BeginOfDocument"):
-#                     docid = line.split()[1]
-#                     # Take the non-extension docid.
-#                     docid = docid.split('.')[0]
-#                     # csr.add_doc(docid)
-#                     relations.clear()
-#                     evms.clear()
-#             elif line.startswith("@"):
-#                 rel_type, rid, rel_args = line.split('\t')
-#                 rel_type = rel_type[1:]
-#                 rel_args = rel_args.split(',')
-#                 relations[rel_type].append(rel_args)
-#             else:
-#                 parts = line.split('\t')
-#                 if len(parts) < 7:
-#                     continue
-#
-#                 kbp_eid = parts[2]
-#                 mention_span, text, kbp_type, realis = parts[3:7]
-#                 mention_span = [int(p) for p in mention_span.split(',')]
-#
-#                 sent_id = csr.get_sentence_by_span(mention_span)
-#                 if sent_id:
-#                     csr_evm = add_tbf_event(csr, sent_id, mention_span, text,
-#                                             kbp_type, parts[7:])
-#                     evms[kbp_eid] = csr_evm.id
-#
-#         for rel_type, relations in relations.items():
-#             for rel_args in relations:
-#                 csr_rel_args = [evms[r] for r in rel_args]
-#                 csr.add_relation('tac', csr_rel_args, rel_type)
 
 
 def load_salience(salience_folder):
@@ -394,11 +325,11 @@ def add_entity_salience(csr, entity_salience_info):
 
         if not entity:
             if len(data['text']) > 20:
-                print("Entity mention [{}] rejected.".format(span))
+                logging.info("Entity mention [{}] rejected.".format(span))
             else:
-                print(
-                    "Entity mention [{}:{}] rejected.".format(span,
-                                                              data['text'])
+                logging.info(
+                    "Entity mention [{}:{}] rejected.".format(
+                        span, data['text'])
                 )
 
         if entity:
@@ -430,37 +361,6 @@ def token_to_span(conll_file):
                 span = tuple([int(s) for s in parts[-1].split(',')])
                 tokens.append((span, parts[1]))
     return tokens
-
-
-def align_ontology(csr, aida_ontology):
-    event_onto = aida_ontology.event_onto_text()
-
-    # Make sure the event types all contain the same ontology.
-    for eid, event_mention in csr.get_events_mentions().items():
-        event_type_field = event_mention.interp.get_field('type')
-        event_args = event_mention.interp.get_field('args')
-        component = event_mention.interp.get_field('component')
-
-        print(event_type_field)
-        print(event_args)
-        print(component)
-
-        if component is None:
-            # Inherit the parent component ID.
-            component = event_mention.component
-
-        if component == 'opera.events.mention.tac.hector':
-            print("Changing it to ontology type.")
-            print(event_type_field)
-            for event_type in event_type_field['type']:
-                mapped_event_type = event_type.split(':')[1].upper()
-                print("checking", mapped_event_type)
-
-                if mapped_event_type in event_onto:
-                    print("Found mapping.")
-
-        # print(event_type)
-        input('wait at align')
 
 
 def find_args(csr, aida_ontology):
@@ -510,12 +410,8 @@ def main(config):
                           ignore_existing=True)
         detector = DetectionRunner(config, token_vocab, tag_vocab)
 
-    temp_out = open('../temp_out.txt', 'w')
-
     for csr, docid in read_source(config.source_folder, config.csr_output,
                                   config.language, aida_ontology, onto_mapper):
-        csr.temp_out = temp_out
-
         logging.info('Working with docid: {}'.format(docid))
         if config.edl_json:
             edl_file = find_by_id(config.edl_json, docid)
@@ -562,7 +458,6 @@ def main(config):
             # align_ontology(csr, aida_ontology)
 
         csr.write()
-    temp_out.close()
 
 
 if __name__ == '__main__':
