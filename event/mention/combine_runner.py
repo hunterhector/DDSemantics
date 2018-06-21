@@ -112,6 +112,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                                          rich_ent.get('type', None),
                                          sent_id, component='corenlp')
 
+            if 'negationWord' in rich_ent:
+                ent.add_modifier('NEG', rich_ent['negationWord'])
+
             if ent:
                 ent_by_id[eid] = ent
             else:
@@ -151,6 +154,12 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 realis=mention.get('realis', None), sent_id=sent_id,
                 component=component_name
             )
+
+            if 'negationWord' in mention:
+                evm.add_modifier('NEG', mention['negationWord'])
+
+            if 'modalWord' in mention:
+                evm.add_modifier('MOD', mention['modalWord'])
 
             if evm:
                 eid = mention['id']

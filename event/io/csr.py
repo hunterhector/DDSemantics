@@ -294,6 +294,10 @@ class SpanInterpFrame(InterpFrame):
         super().__init__(fid, frame_type, parent, interp_type, component)
         self.span = Span(reference, begin, length)
         self.text = text
+        self.modifiers = {}
+
+    def add_modifier(self, modifier_type, modifier_text):
+        self.modifiers[modifier_type] = modifier_text
 
     def json_rep(self):
         rep = super().json_rep()
@@ -305,6 +309,7 @@ class SpanInterpFrame(InterpFrame):
                 'length': self.span.length,
                 'text': self.text,
                 'parent_scope': self.parent,
+                'modifiers': self.modifiers,
             }
         }
         rep.update(info)
@@ -621,6 +626,7 @@ class CSR:
                                            span[0] - sentence_start,
                                            span[1] - span[0], text,
                                            component=component)
+
             self._frame_map[self.entity_key][entity_id] = entity_mention
         else:
             return
