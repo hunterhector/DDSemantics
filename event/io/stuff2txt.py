@@ -45,7 +45,7 @@ def ltf2txt(in_dir, out_dir):
                     sents.append(
                         "%d %s" % (
                             int(seg.attrib['start_char']) - 1,
-                            seg.attrib['end_char']
+                            int(seg.attrib['end_char']) + 1
                         )
                     )
 

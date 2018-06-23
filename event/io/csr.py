@@ -45,7 +45,7 @@ class Frame(Jsonable):
     """
 
     def __init__(self, fid, frame_type, parent, component=None, score=None):
-        self.event_type = frame_type
+        self.type = frame_type
         self.id = fid
         self.parent = parent
         self.component = component
@@ -53,7 +53,7 @@ class Frame(Jsonable):
 
     def json_rep(self):
         rep = {
-            '@type': self.event_type,
+            '@type': self.type,
         }
 
         if self.id:
@@ -400,7 +400,6 @@ class EventMention(SpanInterpFrame):
         super().__init__(fid, 'event_evidence', parent, 'event_evidence_interp',
                          reference, begin, length, text, component=component)
         self.trigger = None
-
         self.event_type = None
         self.realis = None
 
@@ -615,12 +614,13 @@ class CSR:
             sent_id = self.get_sentence_by_span(span)
             if not sent_id:
                 # No suitable sentence to cover it.
+                logging.warning(
+                    "No suitable sentence for entity {}".format(span))
                 return
         valid = self.validate_span(sent_id, span, text)
 
         if valid:
-            sentence_start = self._frame_map[self.sent_key][
-                sent_id].span.begin
+            sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
             entity_id = self.get_id('ent')
             entity_mention = EntityMention(entity_id, sent_id, sent_id,
                                            span[0] - sentence_start,
