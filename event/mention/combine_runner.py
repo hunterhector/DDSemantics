@@ -419,10 +419,17 @@ def main(config):
                           ignore_existing=True)
         detector = DetectionRunner(config, token_vocab, tag_vocab)
 
+    ignore_edl = False
+    if config.edl_json:
+        if os.path.exists(config.edl_json):
+            logging.warning("EDL output not found: {}, will be ignored.".format(
+                config.edl_json))
+            ignore_edl = True
+
     for csr, docid in read_source(config.source_folder, config.csr_output,
                                   config.language, aida_ontology, onto_mapper):
         logging.info('Working with docid: {}'.format(docid))
-        if config.edl_json:
+        if config.edl_json and not ignore_edl:
             edl_file = find_by_id(config.edl_json, docid)
             if edl_file:
                 logging.info("Predicting with EDL: {}".format(edl_file))
