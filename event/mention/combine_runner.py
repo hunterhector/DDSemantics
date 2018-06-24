@@ -422,11 +422,11 @@ def main(config):
     ignore_edl = False
     if config.edl_json:
         if os.path.exists(config.edl_json):
+            logging.info("Loading from EDL: {}".format(config.edl_json))
+        else:
             logging.warning("EDL output not found: {}, will be ignored.".format(
                 config.edl_json))
             ignore_edl = True
-        else:
-            logging.info("Loading from EDL: {}".format(config.edl_json))
 
     for csr, docid in read_source(config.source_folder, config.csr_output,
                                   config.language, aida_ontology, onto_mapper):
