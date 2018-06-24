@@ -353,7 +353,8 @@ def add_event_salience(csr, event_salience_info):
         if not event:
             event = csr.add_event_mention(span, data['span'], data['text'],
                                           'aida', None, component='salience')
-        event.add_salience(data['salience'])
+            if event:
+                event.add_salience(data['salience'])
 
 
 def token_to_span(conll_file):
@@ -501,6 +502,10 @@ if __name__ == '__main__':
 
     util.set_basic_log()
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
+
+    cl_conf = util.load_command_line_config(sys.argv[2:])
+    conf.merge(cl_conf)
+
     params = CombineParams(config=conf)
 
     main(params)

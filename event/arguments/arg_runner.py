@@ -122,7 +122,6 @@ class ArgRunner(Configurable):
             "Loaded {} validation batches".format(len(dev_instances)))
 
         for epoch in range(self.nb_epochs):
-            # TODO: improve training speed.
             with smart_open(train_in) as train_data:
                 for batch_instance, batch_info in self.reader.read_cloze_batch(
                         train_data):
@@ -133,21 +132,26 @@ class ArgRunner(Configurable):
                     recent_loss += loss_val
 
                     optimizer.zero_grad()
-
                     loss.backward()
                     optimizer.step()
+
                     batch_count += 1
 
                     if not batch_count % 100:
                         logging.info(
                             "Batch {} ({} instances), "
-                            "recent avg. loss {}, overall avg. loss {}".
+                            "recent avg. loss {}, overall avg. loss {:.5f}".
                                 format(batch_count,
                                        batch_count * self.reader.batch_size,
                                        recent_loss / 100,
                                        total_loss / batch_count)
                         )
                         recent_loss = 0
+
+                        if batch_count == 1000:
+                            logging.info("Debugging, stop for now.")
+                            return
+
 
             dev_loss = 0
             for batch_instance, batch_info in dev_instances:
@@ -187,6 +191,7 @@ if __name__ == '__main__':
 
 
     from event.util import set_basic_log
+    from event.util import load_command_line_config
 
     set_basic_log()
     root = logging.getLogger()
@@ -198,8 +203,21 @@ if __name__ == '__main__':
 
     logging.info("Started the runner.")
 
+    cl_conf = load_command_line_config(sys.argv[2:])
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
+
     basic_para = Basic(config=conf)
 
     model = ArgRunner(config=conf)
+
+    import cProfile
+
+    pr = cProfile.Profile()
+    pr.enable()
+
     model.train(basic_para.train_in, basic_para.valid_in, basic_para.model_out)
+
+    pr.disable()
+    pr.dump_stats('../profile.dump')
+    pr.print_stats(sort='time')
+

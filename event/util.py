@@ -5,6 +5,8 @@ import gzip
 import unicodedata
 import sys
 
+from traitlets.config.loader import KeyValueConfigLoader
+
 
 class OptionPerLineParser(argparse.ArgumentParser):
     def convert_arg_line_to_args(self, arg_line):
@@ -52,6 +54,11 @@ def rm_prefix(text, prefix):
 def set_basic_log(log_level=logging.INFO):
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logging.basicConfig(level=log_level, format=log_format)
+
+
+def load_command_line_config(args):
+    cl_loader = KeyValueConfigLoader()
+    return cl_loader.load_config(args)
 
 
 tbl = dict.fromkeys(
