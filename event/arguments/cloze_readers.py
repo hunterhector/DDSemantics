@@ -211,8 +211,8 @@ class HashedClozeReader:
                                     )
                                 ]
                             )
-
                         else:
+                            # TODO take 32.91 % time.
                             l_context = [
                                 np.asarray(
                                     self._take_event_parts(e)
