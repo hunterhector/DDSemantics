@@ -148,11 +148,6 @@ class ArgRunner(Configurable):
                         )
                         recent_loss = 0
 
-                        if batch_count == 1000:
-                            logging.info("Debugging, stop for now.")
-                            return
-
-
             dev_loss = 0
             for batch_instance, batch_info in dev_instances:
                 loss = self._get_loss(batch_instance, batch_info)
