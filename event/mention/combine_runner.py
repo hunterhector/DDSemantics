@@ -110,9 +110,10 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
             sent_id = csr.get_sentence_by_span(span)
 
-            ent = csr.add_entity_mention(head_span, span, text, 'conll',
-                                         rich_ent.get('type', None),
-                                         sent_id, component='corenlp')
+            ent = csr.add_entity_mention(
+                head_span, span, text, 'conll', rich_ent.get('type', None),
+                sent_id, component=rich_ent.get(
+                    'component', 'opera.events.mention.tac.hector'))
 
             if 'negationWord' in rich_ent:
                 ent.add_modifier('NEG', rich_ent['negationWord'])
@@ -121,9 +122,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 ent_by_id[eid] = ent
             else:
                 if len(text) > 20:
-                    print("Entity mention {} rejected.".format(eid))
+                    print("Argument mention {} rejected.".format(eid))
                 else:
-                    print("Entity mention {}:{} rejected.".format(eid, text))
+                    print("Argument mention {}:{} rejected.".format(eid, text))
 
         evm_by_id = {}
         for mention in rich_event_info['eventMentions']:
@@ -360,17 +361,17 @@ def add_entity_salience(csr, entity_salience_info):
 
         if not entity:
             if len(data['text']) > 20:
-                logging.info("Entity mention [{}] rejected.".format(span))
+                logging.info("Wikified mention [{}] rejected.".format(span))
             else:
                 logging.info(
-                    "Entity mention [{}:{}] rejected.".format(
+                    "Wikified mention [{}:{}] rejected.".format(
                         span, data['text'])
                 )
 
         if entity:
             entity.add_salience(data['salience'])
             entity.add_linking(data['mid'], data['wiki'], data['link_score'],
-                               component='tagme')
+                               component='wikifier')
 
 
 def add_event_salience(csr, event_salience_info):
