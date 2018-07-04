@@ -563,11 +563,10 @@ class CSR:
         self.current_doc.num_sentences += 1
         sent_text = text if text else ""
         sent = Sentence(sent_id, docid, docid, span[0], span[1] - span[0],
-                        text=sent_text,
-                        component=component)
+                        text=sent_text, component=component)
         self._frame_map[self.sent_key][sent_id] = sent
 
-        return sent_id
+        return sent
 
     def set_sentence_text(self, sent_id, text):
         self._frame_map[self.sent_key][sent_id].text = text
@@ -580,12 +579,18 @@ class CSR:
         end = span[1] - sent.span.begin
         span_text = sent_text[begin: end]
 
+
         if not span_text == text:
+            print("Was ", span)
+            print("Becomes ", begin, end)
+            print(sent_text)
+
             logging.warning(
                 "Span text: [{}] not matching given text [{}]"
                 ", at span [{}] at sent [{}]".format(
                     span_text, text, span, sent_id)
             )
+            input('wait')
             return False
 
         return True

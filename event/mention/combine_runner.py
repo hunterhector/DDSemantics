@@ -21,6 +21,8 @@ from event.io.ontology import (
     OntologyLoader,
     MappingLoader,
 )
+from event import resources
+import nltk
 
 
 def add_edl_entities(edl_file, csr):
@@ -291,10 +293,22 @@ def load_salience(salience_folder):
     return scored_entities, scored_events
 
 
+def analyze_sentence(text):
+    words = nltk.word_tokenize(text)
+
+    negations = []
+    for w in words:
+        if w in resources.negative_words:
+            negations.append(w)
+
+    return negations
+
+
 def read_source(source_folder, output_dir, language, aida_ontology,
                 onto_mapper):
     for source_text_path in glob.glob(source_folder + '/*.txt'):
-        with open(source_text_path) as text_in:
+        # Use the empty newline to handle different newline format.
+        with open(source_text_path, newline='') as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
             csr = CSR('Frames_hector_combined', 1,
                       os.path.join(output_dir, docid + '.csr.json'), 'data',
@@ -309,7 +323,13 @@ def read_source(source_folder, output_dir, language, aida_ontology,
                 with open(sent_path) as sent_in:
                     for span_str in sent_in:
                         span = [int(s) for s in span_str.split(' ')]
-                        csr.add_sentence(span, text=text[span[0]: span[1]])
+                        sent_text = text[span[0]: span[1]]
+                        sent = csr.add_sentence(span, text=sent_text)
+
+                        negations = analyze_sentence(sent_text)
+                        for neg in negations:
+                            sent.add_modifier('NEG', neg)
+
                         sent_index += 1
             else:
                 begin = 0
@@ -319,9 +339,15 @@ def read_source(source_folder, output_dir, language, aida_ontology,
                 sent_lengths = [len(t) for t in sent_texts]
                 for sent_text, l in zip(sent_texts, sent_lengths):
                     if sent_text.strip():
-                        csr.add_sentence((begin, begin + l), text=sent_text)
+                        sent = csr.add_sentence((begin, begin + l),
+                                                text=sent_text)
+                        negations = analyze_sentence(sent_text)
+                        for neg in negations:
+                            sent.add_modifier('NEG', neg)
+
                     begin += (l + 1)
                     sent_index += 1
+
             yield csr, docid
 
 
@@ -432,6 +458,7 @@ def main(config):
     for csr, docid in read_source(config.source_folder, config.csr_output,
                                   config.language, aida_ontology, onto_mapper):
         logging.info('Working with docid: {}'.format(docid))
+
         if config.edl_json and not ignore_edl:
             edl_file = find_by_id(config.edl_json, docid)
             if edl_file:
