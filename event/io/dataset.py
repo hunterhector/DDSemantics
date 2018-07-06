@@ -40,12 +40,31 @@ class Annotation:
         else:
             self.span = None
 
-    def validate(self, source_text, anno_text):
-        if not source_text[self.span.begin: self.span.end] == anno_text:
-            print("Invalid mention [%s] at [%s]." % (
-                self.span, anno_text))
+    def validate(self, source_text):
+        source_anno = source_text[
+                      self.span.begin: self.span.end].replace('\n', ' ')
+        if not source_anno == self.text:
+            logging.warning(
+                "Invalid mention at [%s] because not match between source "
+                "[%s] and target [%s]" % (self.span, self.text, source_anno))
             return False
         return True
+
+    def fix_spaces(self, source_text):
+        source_anno = source_text[
+                      self.span.begin: self.span.end].replace('\n', ' ')
+
+        if not source_anno == self.text:
+            if source_anno.strip() == self.text:
+                leadings = len(source_anno) - len(source_anno.lstrip())
+                trailings = len(source_anno) - len(source_anno.rstrip())
+
+                begin, end = self.span.begin, self.span.end
+                self.span = Span(begin + leadings, end - trailings)
+
+                logging.warning(
+                    "Fixing space only mismatch from [{}:{}] to "
+                    "[{}]".format(begin, end, self.span))
 
     def to_json(self):
         data = {
@@ -254,23 +273,27 @@ class DEDocument:
             entity_type = ent.object_type
 
         em = EntityMention(eid, offset, length, text, noun_type, entity_type)
+
+        em.fix_spaces(self.text)
+
         if text:
-            if em.validate(self.text, text):
+            if em.validate(self.text):
                 ent.add_mention(em)
                 return em
 
     def add_event_mention(self, hopper, eid, offset, length, text,
                           event_type=None, realis=None):
-        evm = EventMention(eid, offset, length, event_type, realis)
+
+        evm = EventMention(eid, offset, length, text, event_type, realis)
         if text:
-            if evm.validate(self.text, text):
+            if evm.validate(self.text):
                 hopper.add_mention(evm)
                 return evm
 
     def add_filler(self, eid, offset, length, text, filler_type=None):
         filler = Filler(eid, offset, length, text, filler_type)
         if text:
-            if filler.validate(self.text, text):
+            if filler.validate(self.text):
                 self.fillers.append(filler)
 
     def add_relation(self, rid, relation_type=None):
@@ -462,7 +485,8 @@ if __name__ == '__main__':
         handlers=[stdout_handler]
     )
 
-    # TODO: Add fix to some span problem
+    # TODO: Fix quote problem
+    # LDC2015E29 and LDC2015E68 annotate quotes.
 
     read_rich_ere_collection(
         args.source, args.ere, args.out, args.source_ext, args.target_ext,
