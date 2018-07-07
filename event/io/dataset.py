@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ElementTree
 import logging
 import json
 from collections import defaultdict
+import re
 
 
 class Span:
@@ -214,8 +215,7 @@ class Relation:
 
 
 class DEDocument:
-    def __init__(self, text, ranges, docid=None):
-        self.docid = docid
+    def __init__(self, text, ranges, ignore_quote=False):
         # self.event_mentions = []
         # self.entity_mentions = []
         self.entities = []
@@ -225,6 +225,34 @@ class DEDocument:
         self.ranges = ranges
         self.text = text
         self.doc_type = None
+
+        if ignore_quote:
+            self.remove_quote()
+
+    def remove_quote(self):
+        lqs = []
+        lqe = []
+
+        origin_len = len(self.text)
+
+        for stuff in re.finditer(r'<quote', self.text):
+            lqs.append((stuff.start(), stuff.end()))
+
+        for stuff in re.finditer(r'</quote>', self.text):
+            lqe.append((stuff.start(), stuff.end()))
+
+        if len(lqs) == len(lqe):
+            quoted = zip([e for s, e in lqs], [s for s, e in lqe])
+            for s, e in quoted:
+                self.text = self.text[:s] + '>' + '_' * (e - s - 1) \
+                            + self.text[e:]
+        else:
+            logging.warning("Unbalanced quoted region.")
+            input('Checking.')
+
+        new_len = len(self.text)
+
+        assert origin_len == new_len
 
     def filter_text(self, text):
         curr = 0
@@ -418,10 +446,11 @@ def parse_ere(ere_file, doc):
             relation.add_mention(rel_mention)
 
 
-def read_rich_ere(source_path, l_ere_path, ranges):
+def read_rich_ere(source_path, l_ere_path, ranges, ignore_quote=False):
     with open(source_path) as source:
         text = source.read()
-        doc = DEDocument(text, ranges)
+        print(source_path)
+        doc = DEDocument(text, ranges, ignore_quote)
         for ere_path in l_ere_path:
             with open(ere_path) as ere:
                 logging.info("Processing :" + ere_path)
@@ -430,17 +459,18 @@ def read_rich_ere(source_path, l_ere_path, ranges):
 
 
 def read_rich_ere_collection(source_dir, ere_dir, output_dir, src_ext='.txt',
-                             ere_ext='.rich_ere.xml', ere_split=False):
+                             ere_ext='.rich_ere.xml', ere_split=False,
+                             ignore_quote=False):
     sources = {}
     eres = defaultdict(list)
-    annota_ranges = defaultdict(list)
+    annotate_ranges = defaultdict(list)
 
     for fn in os.listdir(ere_dir):
         basename = fn.replace(ere_ext, '')
         if ere_split:
             parts = basename.split('_')
             r = [int(p) for p in parts[-1].split('-')]
-            annota_ranges[basename].append(r)
+            annotate_ranges[basename].append(r)
             basename = '_'.join(parts[:-1])
 
         ere_fn = os.path.join(ere_dir, fn)
@@ -456,8 +486,8 @@ def read_rich_ere_collection(source_dir, ere_dir, output_dir, src_ext='.txt',
 
     for basename, source in sources.items():
         l_ere = eres[basename]
-        ranges = annota_ranges[basename]
-        doc = read_rich_ere(source, l_ere, ranges)
+        ranges = annotate_ranges[basename]
+        doc = read_rich_ere(source, l_ere, ranges, ignore_quote)
         with open(os.path.join(output_dir, basename + '.json'), 'w') as out:
             out.write(doc.dump(indent=2))
 
@@ -474,6 +504,7 @@ if __name__ == '__main__':
     parser.add_argument('--source_ext', default='.xml')
     parser.add_argument('--target_ext', default='.rich_ere.xml')
     parser.add_argument('--ere_split', action="store_true")
+    parser.add_argument('--ignore_quote', action="store_true")
 
     args = parser.parse_args()
 
@@ -485,10 +516,7 @@ if __name__ == '__main__':
         handlers=[stdout_handler]
     )
 
-    # TODO: Fix quote problem
-    # LDC2015E29 and LDC2015E68 annotate quotes.
-
     read_rich_ere_collection(
         args.source, args.ere, args.out, args.source_ext, args.target_ext,
-        args.ere_split
+        args.ere_split, args.ignore_quote
     )
