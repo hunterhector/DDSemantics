@@ -73,6 +73,9 @@ class ArgRunner(Configurable):
             raise NotImplementedError
 
     def _get_loss(self, batch_instance, batch_info):
+        print(batch_instance.keys())
+        print(batch_info.keys())
+
         correct_coh = self.model(
             batch_instance['gold'],
             batch_info,
@@ -123,6 +126,8 @@ class ArgRunner(Configurable):
 
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
+                # for batch_instance, batch_info in self.reader.read_cloze_batch(
+                #         train_data):
                 for batch_instance, batch_info in self.reader.read_cloze_batch(
                         train_data):
                     loss = self._get_loss(batch_instance, batch_info)

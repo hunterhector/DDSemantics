@@ -9,6 +9,7 @@ import json
 from collections import Counter
 from event.arguments import consts
 import torch.nn.functional as F
+from event.io.io_utils import pad_2d_list
 
 
 class HashedClozeReader:
@@ -51,41 +52,62 @@ class HashedClozeReader:
         # Fix seed to generate the same instances.
         random.seed(17)
 
+    def create_batch(self, b_common_data, b_instance_data,
+                     max_context_size, max_instance_size):
+        instance_data = defaultdict(dict)
+        common_data = {}
+
+        for key, value in b_common_data.items():
+            if key == 'context':
+                padded = [pad_2d_list(v, max_context_size) for v in value]
+                common_data['context'] = self._batch_combine(padded)
+            else:
+                padded = [pad_2d_list(v, max_instance_size) for v in value]
+                common_data[key] = self._batch_combine(padded)
+
+        for ins_type, ins_data in b_instance_data.items():
+            for key, value in ins_data.items():
+                padded = [pad_2d_list(v, max_instance_size) for v in value]
+                instance_data[ins_type][key] = self._batch_combine(padded)
+        yield instance_data, common_data
+
     def read_cloze_batch(self, data_in):
-        clozes = defaultdict(list)
+        b_common_data = defaultdict(list)
+        b_instance_data = defaultdict(defaultdict(list))
 
         max_context_size = 0
-
+        max_instance_size = 0
         cloze_count = 0
-        for cloze_task in self.read_clozes(data_in):
-            for key, value in cloze_task.items():
-                clozes[key].append(value)
 
-            if len(cloze_task['context']) > max_context_size:
-                max_context_size = len(cloze_task['context'])
+        for instance_data, common_data in self.read_clozes(data_in):
+            for key, value in common_data.items():
+                b_common_data[key].append(value)
+                if key == 'context':
+                    if len(value) > max_context_size:
+                        max_context_size = len(value)
+
+                if key == 'event_indices':
+                    if len(value) > max_instance_size:
+                        max_instance_size = len(value)
+
+            for ins_type, ins_data in instance_data.items():
+                for key, value in ins_data.items():
+                    b_instance_data[ins_type][key].append(value)
 
             cloze_count += 1
 
             if cloze_count == self.batch_size:
-                cloze_count = 0
-                instance_data = defaultdict(dict)
-                common_data = {}
-                for key, value in clozes.items():
-                    if '_' in key:
-                        inst_type, inst_key = key.split('_')
-                        instance_data[inst_type][inst_key] = \
-                            self._batch_combine(value)
-                    elif key == 'context':
-                        padded = [self._pad_context(v, max_context_size) for v
-                                  in value]
-                        context = self._batch_combine(padded)
-                        common_data[key] = context
-                    else:
-                        common_data[key] = self._batch_combine(value)
+                # Merging cloze tasks to batch.
 
-                yield instance_data, common_data
-                clozes = defaultdict(list)
+                yield self.create_batch(b_common_data, b_instance_data,
+                                        max_context_size, max_instance_size)
+
+                # Reset counts.
+                b_common_data = defaultdict(list)
+                b_instance_data = defaultdict(defaultdict(list))
+                cloze_count = 0
                 max_context_size = 0
+                max_instance_size = 0
 
     def _batch_combine(self, l_data):
         data = torch.cat(
@@ -164,6 +186,8 @@ class HashedClozeReader:
             gold_event_data = {'rep': [], 'distance': [], 'features': []}
             cross_event_data = {'rep': [], 'distance': [], 'features': []}
             inside_event_data = {'rep': [], 'distance': [], 'features': []}
+            cloze_event_indices = []
+            cloze_slot_indices = []
 
             for evm_index, event in enumerate(doc_info['events']):
                 if evm_index == self.max_events:
@@ -176,6 +200,9 @@ class HashedClozeReader:
                     # We re-count for resolvable, because we may filter events,
                     # which will change the resolvable attribute.
                     if eid_count[correct_id] > 1:
+                        cloze_event_indices.append(evm_index)
+                        cloze_slot_indices.append(slot_index)
+
                         correct_id = arg['entity_id']
                         current_sent = arg['sentence_id']
 
@@ -256,12 +283,19 @@ class HashedClozeReader:
                         #     cloze[key] = self.to_torch(key, value)
                         # cloze['context'] = context_data
 
-            yield {
-                'context': all_event_reps,
+            instance_data = {
                 'gold': gold_event_data,
                 'cross': cross_event_data,
                 'inside': inside_event_data,
             }
+
+            common_data = {
+                'context': all_event_reps,
+                'event_indices': cloze_event_indices,
+                'slot_indices': cloze_slot_indices,
+            }
+
+            yield instance_data, common_data
 
     def to_torch(self, key, data):
         return torch.from_numpy(np.asarray(data, self.__data_types[key]))
