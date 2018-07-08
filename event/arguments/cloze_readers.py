@@ -111,6 +111,8 @@ class HashedClozeReader:
     def read_clozes(self, data_in):
         for line in data_in:
             doc_info = json.loads(line)
+
+            # Collect all features.
             features_by_eid = {}
             entity_heads = {}
             for eid, content in doc_info['entities'].items():
@@ -122,15 +124,15 @@ class HashedClozeReader:
             event_args = defaultdict(dict)
             entity_mentions = defaultdict(list)
             arg_entities = set()
-
             eid_count = Counter()
+
+            all_event_reps = []
 
             for evm_index, event in enumerate(doc_info['events']):
                 if evm_index == self.max_events:
                     break
 
                 for slot, arg in event['args'].items():
-                    # print(arg)
                     # Argument for nth event, at slot position 'slot'.
                     eid = arg['entity_id']
                     event_args[evm_index][slot] = (eid, arg['dep'])
@@ -143,11 +145,25 @@ class HashedClozeReader:
                         arg_entities.add((evm_index, eid))
                         eid_count[eid] += 1
 
-                event_data.append(
-                    self.get_event_info(doc_info, evm_index,
-                                        event_args[evm_index]))
+                event_info = self.get_event_info(
+                    doc_info, evm_index, event_args[evm_index])
+                event_rep = self._take_event_parts(event_info)
+
+                all_event_reps.append(event_rep)
+
+                event_data.append(event_info)
 
             arg_entities = list(arg_entities)
+
+            # A better learning strategy is to select one
+            # cross instance that is difficult. We can have two
+            # strategies here:
+            # 1. Use unigram distribution to sample items.
+            # 2. Select items based on classifier output.
+
+            gold_event_data = {'rep': [], 'distance': [], 'features': []}
+            cross_event_data = {'rep': [], 'distance': [], 'features': []}
+            inside_event_data = {'rep': [], 'distance': [], 'features': []}
 
             for evm_index, event in enumerate(doc_info['events']):
                 if evm_index == self.max_events:
@@ -163,83 +179,89 @@ class HashedClozeReader:
                         correct_id = arg['entity_id']
                         current_sent = arg['sentence_id']
 
-                        gold_info = event_data[evm_index]
+                        event_info = event_data[evm_index]
+                        gold_rep = self._take_event_parts(event_info)
+                        gold_features = features_by_eid[correct_id]
+                        gold_distances = self.compute_distances(
+                            evm_index, entity_mentions, event_info,
+                            current_sent,
+                        )
+                        gold_event_data['rep'].append(gold_rep)
+                        gold_event_data['features'].append(gold_features)
+                        gold_event_data['distance'].append(gold_distances)
 
-                        cross_instance, cross_filler_id = self.cross_cloze(
+                        cross_event, cross_filler_id = self.cross_cloze(
                             event_args, arg_entities, evm_index, slot,
                             correct_id)
-
-                        inside_instance, inside_filler_id = self.inside_cloze(
-                            event_args, evm_index, slot, correct_id)
-
-                        # A better learning strategy is to select one
-                        # cross instance that is difficult. We can have two
-                        # strategies here:
-                        # 1. Use unigram distribution to sample items.
-                        # 2. Select items based on classifier output.
                         cross_info = self.get_event_info(doc_info, evm_index,
-                                                         cross_instance)
-
-                        inside_info = self.get_event_info(doc_info, evm_index,
-                                                          inside_instance)
-
+                                                         cross_event)
+                        cross_rep = self._take_event_parts(cross_info)
                         cross_features = features_by_eid[cross_filler_id]
-                        inside_features = features_by_eid[inside_filler_id]
-                        gold_features = features_by_eid[correct_id]
-
-                        origin_distances = self.compute_distances(
-                            evm_index, entity_mentions, gold_info, current_sent,
-                        )
-
                         cross_distances = self.compute_distances(
                             evm_index, entity_mentions, cross_info,
                             current_sent,
                         )
+                        cross_event_data['rep'].append(cross_rep)
+                        cross_event_data['features'].append(cross_features)
+                        cross_event_data['distance'].append(cross_distances)
 
+                        inside_event, inside_filler_id = self.inside_cloze(
+                            event_args, evm_index, slot, correct_id)
+                        inside_info = self.get_event_info(doc_info, evm_index,
+                                                          inside_event)
+                        inside_rep = self._take_event_parts(inside_info)
+                        inside_features = features_by_eid[inside_filler_id]
                         inside_distances = self.compute_distances(
                             evm_index, entity_mentions, inside_info,
                             current_sent,
                         )
+                        inside_event_data['rep'].append(inside_rep)
+                        inside_event_data['features'].append(inside_features)
+                        inside_event_data['distance'].append(inside_distances)
 
-                        # Events are represented as a list of "event words" now.
-                        if not self.multi_context:
-                            l_context = np.asarray(
-                                [
-                                    self._take_event_parts(
-                                        self.sample_ignore_index(
-                                            event_data, evm_index)
-                                    )
-                                ]
-                            )
-                        else:
-                            # TODO take 32.91 % time.
-                            l_context = [
-                                np.asarray(
-                                    self._take_event_parts(e)
-                                ) for (i, e) in enumerate(event_data) if
-                                not i == evm_index
-                            ]
+                        # # Events are represented as a list of "event words" now.
+                        # if not self.multi_context:
+                        #     l_context = np.asarray(
+                        #         [
+                        #             self._take_event_parts(
+                        #                 self.sample_ignore_index(
+                        #                     event_data, evm_index)
+                        #             )
+                        #         ]
+                        #     )
+                        # else:
+                        #     l_context = [
+                        #         np.asarray(
+                        #             self._take_event_parts(e)
+                        #         ) for (i, e) in enumerate(event_data) if
+                        #         not i == evm_index
+                        #     ]
+                        #
+                        # context_data = torch.from_numpy(np.stack(l_context))
 
-                        context_data = torch.from_numpy(np.stack(l_context))
+                        # cloze = {
+                        #     'gold_event': self._take_event_parts(event_info),
+                        #     'gold_distances': gold_distances,
+                        #     'gold_features': gold_features,
+                        #     'cross_event': self._take_event_parts(cross_info),
+                        #     'cross_distances': cross_distances,
+                        #     'cross_features': cross_features,
+                        #     'inside_event': self._take_event_parts(inside_info),
+                        #     'inside_distances': inside_distances,
+                        #     'inside_features': inside_features,
+                        #     'slot': [slot_index],
+                        # }
 
-                        cloze = {
-                            'gold_event': self._take_event_parts(gold_info),
-                            'gold_distances': origin_distances,
-                            'gold_features': gold_features,
-                            'cross_event': self._take_event_parts(cross_info),
-                            'cross_distances': cross_distances,
-                            'cross_features': cross_features,
-                            'inside_event': self._take_event_parts(inside_info),
-                            'inside_distances': inside_distances,
-                            'inside_features': inside_features,
-                            'slot': [slot_index],
-                        }
+                        # for key, value in cloze.items():
+                        #     cloze[key] = self.to_torch(key, value)
+                        # cloze['context'] = context_data
 
-                        for key, value in cloze.items():
-                            cloze[key] = self.to_torch(key, value)
-                        cloze['context'] = context_data
-
-                        yield cloze
+            yield {
+                'context': all_event_reps,
+                'gold': gold_event_data,
+                'cross': cross_event_data,
+                'inside': inside_event_data,
+            }
 
     def to_torch(self, key, data):
         return torch.from_numpy(np.asarray(data, self.__data_types[key]))
@@ -272,7 +294,7 @@ class HashedClozeReader:
 
         for slot, (eid, _) in arguments.items():
             if eid == -1:
-                # This is an empty slot. Using
+                # This is an empty slot. Using pad.
                 pad = len(self.event_vocab)
                 fe = pad
                 arg_role = pad
@@ -354,7 +376,7 @@ class HashedClozeReader:
         """
         A negative cloze instance that use arguments from other events.
         :param event_args: List of all origin event arguments.
-        :param arg_entities: Map from argument to entities.
+        :param arg_entities: List of argument entities.
         :param current_evm: The event id.
         :param current_slot: The slot id.
         :param correct_id: Correct entity id.
