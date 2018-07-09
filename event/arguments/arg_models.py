@@ -139,9 +139,16 @@ class EventPairCompositionModel(ArgCompatibleModel):
         :param distances:
         :return:
         """
+
+        print("Event embedding size")
+        print(event_emb.shape)
+
         # Encode with a event dependent kernel
         # May be we should not update the predicates embedding here.
-        predicates = event_emb[:, 1, :]
+        predicates = event_emb[:, :, 1, :]
+
+        print("Predicate size")
+        print(predicates.shape)
 
         # d = num_distance_feature
 
@@ -154,7 +161,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
         #  in the fully connected layer (not learn from the predicates).
         variances = F.softplus(self.event_to_var_layer(predicates.detach()))
 
+        print("variance size")
+        print(variances.shape)
+
         kernel_value = torch.exp(- dist_sq / variances)
+
+        print("distance kernel values")
+        print(kernel_value.shape)
 
         return kernel_value
 
@@ -175,6 +188,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
         :param event_emb:
         :param context_emb:
         :param batch_slots:
+        :param self_avoid_mask: mask of shape event_size x context_size, each
+        row is contain only one zero that indicate which context should not be
+        used.
         :return:
         """
         nom_event_emb = F.normalize(event_emb, 2, -1)
@@ -191,6 +207,11 @@ class EventPairCompositionModel(ArgCompatibleModel):
             raise ValueError(
                 'Unknown vote computation method {}'.format(self._vote_method)
             )
+
+        print("Event context similarity:")
+        print(trans.shape)
+
+        print("Filter with selecting matrix")
 
         if self._vote_pool_type == 'kernel':
             pooled_value = self._kp(trans)
@@ -224,37 +245,44 @@ class EventPairCompositionModel(ArgCompatibleModel):
         print("context shape")
         print(batch_context.shape)
 
-        print("event related shape")
+        print("input batched event shape")
         print(batch_event_rep.shape)
         print(batch_distances.shape)
         print(batch_features.shape)
         print(batch_slots.shape)
         print(batch_event_indices.shape)
 
-        input('before embedding.')
-
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
         distance_emb = self._encode_distance(event_emb, batch_distances)
-        extracted_features = torch.cat([distance_emb, batch_features], 1)
+        extracted_features = torch.cat([distance_emb, batch_features], -1)
 
+        print("Embedded shapes")
         print(context_emb.shape)
         print(event_emb.shape)
         print(distance_emb.shape)
         print(extracted_features.shape)
 
-        input('embedding shapes')
-
         event_repr = self._event_repr(event_emb)
         context_repr = self._event_repr(context_emb)
 
+        print("Event and context repr")
         print(event_repr.shape)
         print(context_repr.shape)
-        input('event repr')
 
         # Now compute the coherent features with all context events.
         coh_features = self.coh(event_repr, context_repr, batch_slots)
+
+        print("Create the selecting matrix")
+        selector = batch_event_indices.unsqueeze(-1)
+        print(selector.shape)
+
+        one_zeros = torch.ones_like(coh_features)
+        one_zeros.scatter_(-1, selector, 0)
+
+        print("One zero")
+        print(one_zeros.shape)
 
         all_features = torch.cat(
             (extracted_features.unsqueeze(1), coh_features), -1)
