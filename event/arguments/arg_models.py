@@ -143,13 +143,15 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # May be we should not update the predicates embedding here.
         predicates = event_emb[:, 1, :]
 
-        # batch x 9
+        # d = num_distance_feature
+
+        # batch x event_size x d
         dist_sq = distances * distances
 
-        # Output 9 variances (\sigma^2), each one for each distance.
+        # Output d variances (\sigma^2), each one for each distance.
         # Variances cannot be zero, so we use soft plus here.
         # We detach predicates here, force the model to learn distance operation
-        #  in the fully connected layer.
+        #  in the fully connected layer (not learn from the predicates).
         variances = F.softplus(self.event_to_var_layer(predicates.detach()))
 
         kernel_value = torch.exp(- dist_sq / variances)
@@ -211,24 +213,45 @@ class EventPairCompositionModel(ArgCompatibleModel):
         return self._mlp(self.arg_compositions_layers, flatten_event_emb)
 
     def forward(self, batch_event_data, batch_info):
-        batch_event = batch_event_data['event']
-        batch_features = batch_event_data['features']
+        batch_event_rep = batch_event_data['rep']
         batch_distances = batch_event_data['distances']
+        batch_features = batch_event_data['features']
 
         batch_context = batch_info['context']
-        batch_slots = batch_info['slot']
+        batch_slots = batch_info['slot_indices']
+        batch_event_indices = batch_info['event_indices']
+
+        print("context shape")
+        print(batch_context.shape)
+
+        print("event related shape")
+        print(batch_event_rep.shape)
+        print(batch_distances.shape)
+        print(batch_features.shape)
+        print(batch_slots.shape)
+        print(batch_event_indices.shape)
+
+        input('before embedding.')
 
         context_emb = self.event_embedding(batch_context)
-        event_emb = self.event_embedding(batch_event)
+        event_emb = self.event_embedding(batch_event_rep)
 
-        # The first element in each event is the predicate.
         distance_emb = self._encode_distance(event_emb, batch_distances)
-
         extracted_features = torch.cat([distance_emb, batch_features], 1)
 
-        event_repr = self._event_repr(event_emb)
+        print(context_emb.shape)
+        print(event_emb.shape)
+        print(distance_emb.shape)
+        print(extracted_features.shape)
 
+        input('embedding shapes')
+
+        event_repr = self._event_repr(event_emb)
         context_repr = self._event_repr(context_emb)
+
+        print(event_repr.shape)
+        print(context_repr.shape)
+        input('event repr')
 
         # Now compute the coherent features with all context events.
         coh_features = self.coh(event_repr, context_repr, batch_slots)

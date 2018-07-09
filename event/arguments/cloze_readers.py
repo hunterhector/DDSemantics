@@ -10,6 +10,7 @@ from collections import Counter
 from event.arguments import consts
 import torch.nn.functional as F
 from event.io.io_utils import pad_2d_list
+from event.arguments.util import (batch_combine, to_torch)
 
 
 class HashedClozeReader:
@@ -34,23 +35,39 @@ class HashedClozeReader:
         self.slot_names = ['subj', 'obj', 'prep', ]
 
         self.__data_types = {
-            'gold_event': np.int64,
-            'gold_distances': np.float32,
-            'gold_features': np.float32,
-            'cross_event': np.int64,
-            'cross_distances': np.float32,
-            'cross_features': np.float32,
-            'inside_event': np.int64,
-            'inside_distances': np.float32,
-            'inside_features': np.float32,
-            'slot': np.int64
+            'context': np.int64,
+            'event_indices': np.int64,
+            'slot_indices': np.int64,
+            'rep': np.int64,
+            'distances': np.float32,
+            'features': np.float32,
+        }
+
+        self.__data_dim = {
+            'context': 2,
+            'event_indices': 1,
+            'slot_indices': 1,
+            'rep': 2,
+            'distances': 2,
+            'features': 2,
         }
 
         self.device = torch.device(
-            "cuda" if gpu and torch.cuda.is_available() else "cpu")
+            "cuda" if gpu and torch.cuda.is_available() else "cpu"
+        )
 
         # Fix seed to generate the same instances.
         random.seed(17)
+
+    def __batch_pad(self, key, data, pad_size):
+        dim = self.__data_dim[key]
+
+        if dim == 2:
+            return [pad_2d_list(v, pad_size) for v in data]
+        elif dim == 1:
+            return pad_2d_list(data, pad_size, dim=1)
+        else:
+            raise ValueError("Dimension unsupported %d" % dim)
 
     def create_batch(self, b_common_data, b_instance_data,
                      max_context_size, max_instance_size):
@@ -59,21 +76,28 @@ class HashedClozeReader:
 
         for key, value in b_common_data.items():
             if key == 'context':
-                padded = [pad_2d_list(v, max_context_size) for v in value]
-                common_data['context'] = self._batch_combine(padded)
+                padded = self.__batch_pad(key, value, max_context_size)
+                vectorized = to_torch(padded, self.__data_types[key])
+                common_data['context'] = batch_combine(
+                    vectorized, self.device
+                )
             else:
-                padded = [pad_2d_list(v, max_instance_size) for v in value]
-                common_data[key] = self._batch_combine(padded)
+                padded = self.__batch_pad(key, value, max_instance_size)
+                vectorized = to_torch(padded, self.__data_types[key])
+                common_data[key] = batch_combine(vectorized, self.device)
 
         for ins_type, ins_data in b_instance_data.items():
             for key, value in ins_data.items():
-                padded = [pad_2d_list(v, max_instance_size) for v in value]
-                instance_data[ins_type][key] = self._batch_combine(padded)
-        yield instance_data, common_data
+                padded = self.__batch_pad(key, value, max_instance_size)
+                vectorized = to_torch(padded, self.__data_types[key])
+                instance_data[ins_type][key] = batch_combine(
+                    vectorized, self.device
+                )
+        return instance_data, common_data
 
     def read_cloze_batch(self, data_in):
         b_common_data = defaultdict(list)
-        b_instance_data = defaultdict(defaultdict(list))
+        b_instance_data = defaultdict(lambda: defaultdict(list))
 
         max_context_size = 0
         max_instance_size = 0
@@ -98,27 +122,15 @@ class HashedClozeReader:
 
             if cloze_count == self.batch_size:
                 # Merging cloze tasks to batch.
-
                 yield self.create_batch(b_common_data, b_instance_data,
                                         max_context_size, max_instance_size)
 
                 # Reset counts.
                 b_common_data = defaultdict(list)
-                b_instance_data = defaultdict(defaultdict(list))
+                b_instance_data = defaultdict(lambda: defaultdict(list))
                 cloze_count = 0
                 max_context_size = 0
                 max_instance_size = 0
-
-    def _batch_combine(self, l_data):
-        data = torch.cat(
-            [torch.unsqueeze(d, 0) for d in l_data], dim=0
-        ).to(self.device)
-        return data
-
-    def _pad_context(self, context, pad_to_length):
-        pad_len = pad_to_length - context.shape[0]
-        padded = F.pad(context, (0, 0, 0, pad_len), 'constant', 0)
-        return padded
 
     def _take_event_parts(self, event_info):
         event_components = [event_info['predicate'], event_info['frame']]
@@ -183,9 +195,9 @@ class HashedClozeReader:
             # 1. Use unigram distribution to sample items.
             # 2. Select items based on classifier output.
 
-            gold_event_data = {'rep': [], 'distance': [], 'features': []}
-            cross_event_data = {'rep': [], 'distance': [], 'features': []}
-            inside_event_data = {'rep': [], 'distance': [], 'features': []}
+            gold_event_data = {'rep': [], 'distances': [], 'features': []}
+            cross_event_data = {'rep': [], 'distances': [], 'features': []}
+            inside_event_data = {'rep': [], 'distances': [], 'features': []}
             cloze_event_indices = []
             cloze_slot_indices = []
 
@@ -215,7 +227,7 @@ class HashedClozeReader:
                         )
                         gold_event_data['rep'].append(gold_rep)
                         gold_event_data['features'].append(gold_features)
-                        gold_event_data['distance'].append(gold_distances)
+                        gold_event_data['distances'].append(gold_distances)
 
                         cross_event, cross_filler_id = self.cross_cloze(
                             event_args, arg_entities, evm_index, slot,
@@ -230,7 +242,7 @@ class HashedClozeReader:
                         )
                         cross_event_data['rep'].append(cross_rep)
                         cross_event_data['features'].append(cross_features)
-                        cross_event_data['distance'].append(cross_distances)
+                        cross_event_data['distances'].append(cross_distances)
 
                         inside_event, inside_filler_id = self.inside_cloze(
                             event_args, evm_index, slot, correct_id)
@@ -244,44 +256,11 @@ class HashedClozeReader:
                         )
                         inside_event_data['rep'].append(inside_rep)
                         inside_event_data['features'].append(inside_features)
-                        inside_event_data['distance'].append(inside_distances)
+                        inside_event_data['distances'].append(inside_distances)
 
-                        # # Events are represented as a list of "event words" now.
-                        # if not self.multi_context:
-                        #     l_context = np.asarray(
-                        #         [
-                        #             self._take_event_parts(
-                        #                 self.sample_ignore_index(
-                        #                     event_data, evm_index)
-                        #             )
-                        #         ]
-                        #     )
-                        # else:
-                        #     l_context = [
-                        #         np.asarray(
-                        #             self._take_event_parts(e)
-                        #         ) for (i, e) in enumerate(event_data) if
-                        #         not i == evm_index
-                        #     ]
-                        #
-                        # context_data = torch.from_numpy(np.stack(l_context))
-
-                        # cloze = {
-                        #     'gold_event': self._take_event_parts(event_info),
-                        #     'gold_distances': gold_distances,
-                        #     'gold_features': gold_features,
-                        #     'cross_event': self._take_event_parts(cross_info),
-                        #     'cross_distances': cross_distances,
-                        #     'cross_features': cross_features,
-                        #     'inside_event': self._take_event_parts(inside_info),
-                        #     'inside_distances': inside_distances,
-                        #     'inside_features': inside_features,
-                        #     'slot': [slot_index],
-                        # }
-
-                        # for key, value in cloze.items():
-                        #     cloze[key] = self.to_torch(key, value)
-                        # cloze['context'] = context_data
+            if len(cloze_slot_indices) == 0:
+                # This document do not contains training instance.
+                continue
 
             instance_data = {
                 'gold': gold_event_data,
@@ -296,9 +275,6 @@ class HashedClozeReader:
             }
 
             yield instance_data, common_data
-
-    def to_torch(self, key, data):
-        return torch.from_numpy(np.asarray(data, self.__data_types[key]))
 
     def sample_ignore_item(self, data, ignored_item):
         if len(data) <= 1:
