@@ -80,7 +80,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # Output 9 different var, each corresponding to one distance measure.
         self.event_to_var_layer = nn.Linear(self.para.event_embedding_dim, 9)
 
-        feature_size = self.para.num_extracted_features + 9
+        # Number of extracted features, 9 variance features, and 1 slot feature.
+        feature_size = self.para.num_extracted_features + 9 + 1
 
         # Config feature size.
         self._vote_pool_type = para.vote_pooling
@@ -114,6 +115,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
             "cuda" if gpu and torch.cuda.is_available() else "cpu"
         )
 
+        self.__debug = False
+
     def _full_event_embedding_size(self):
         return self.para.num_event_components * self.para.event_embedding_dim
 
@@ -145,15 +148,17 @@ class EventPairCompositionModel(ArgCompatibleModel):
         :return:
         """
 
-        print("Event embedding size")
-        print(event_emb.shape)
+        if self.__debug:
+            print("Event embedding size")
+            print(event_emb.shape)
 
         # Encode with a event dependent kernel
         # May be we should not update the predicates embedding here.
         predicates = event_emb[:, :, 1, :]
 
-        print("Predicate size")
-        print(predicates.shape)
+        if self.__debug:
+            print("Predicate size")
+            print(predicates.shape)
 
         # d = num_distance_feature
 
@@ -166,13 +171,15 @@ class EventPairCompositionModel(ArgCompatibleModel):
         #  in the fully connected layer (not learn from the predicates).
         variances = F.softplus(self.event_to_var_layer(predicates.detach()))
 
-        print("variance size")
-        print(variances.shape)
+        if self.__debug:
+            print("variance size")
+            print(variances.shape)
 
         kernel_value = torch.exp(- dist_sq / variances)
 
-        print("distance kernel values")
-        print(kernel_value.shape)
+        if self.__debug:
+            print("distance kernel values")
+            print(kernel_value.shape)
 
         return kernel_value
 
@@ -201,11 +208,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
 
-        print("Before trans")
-        # torch_util.memReport()
-        # torch_util.cpuStats()
-        # torch_util.gpuMemReport()
-
         # First compute the trans matrix between events and the context.
         if self._vote_method == 'cosine':
             trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
@@ -218,34 +220,26 @@ class EventPairCompositionModel(ArgCompatibleModel):
                 'Unknown vote computation method {}'.format(self._vote_method)
             )
 
-        print("Computed trans")
-        # torch_util.memReport()
-        # torch_util.cpuStats()
-        # torch_util.gpuMemReport()
+        if self.__debug:
+            print("Event context similarity:")
+            print(trans.shape)
 
-        print("Event context similarity:")
-        print(trans.shape)
+            print("Avoidance mask:")
+            print(self_avoid_mask.shape)
+            print(self_avoid_mask.dtype)
 
-        print("Avoidance mask:")
-        print(self_avoid_mask.shape)
-        print(self_avoid_mask.dtype)
+            print("Using the mask")
 
-        print("Using the mask")
-        # torch_util.memReport()
-        torch_util.cpuStats()
-        torch_util.gpuMemReport()
+            print(trans.shape)
+            print(self_avoid_mask.shape)
 
-        print(trans.shape)
-        print(self_avoid_mask.shape)
+            print("Filter with selecting matrix")
 
-        print(trans.type())
-        print(self_avoid_mask.type())
+        # index_select and masked_select does not work here.
+        # trans = torch.index_select(trans, -1, self_avoid_mask)
 
-        input("Before the selecting mask")
-
-        print("Filter with selecting matrix")
-        # TODO index_select and masked_select does not work here.
-        trans = torch.index_select(trans, -1, self_avoid_mask)
+        # Make the self score zero.
+        trans = trans * self_avoid_mask
 
         if self._vote_pool_type == 'kernel':
             pooled_value = self._kp(trans)
@@ -276,18 +270,19 @@ class EventPairCompositionModel(ArgCompatibleModel):
         batch_slots = batch_info['slot_indices']
         batch_event_indices = batch_info['event_indices']
 
-        print("context shape")
-        print(batch_context.shape)
+        if self.__debug:
+            print("context shape")
+            print(batch_context.shape)
 
-        print("input batched event shape")
-        print(batch_event_rep.shape)
-        print(batch_distances.shape)
-        print(batch_features.shape)
-        print(batch_slots.shape)
-        print(batch_event_indices.shape)
+            print("input batched event shape")
+            print(batch_event_rep.shape)
+            print(batch_distances.shape)
+            print(batch_features.shape)
+            print(batch_slots.shape)
+            print(batch_event_indices.shape)
 
-        print("Showing batch slots")
-        print(batch_slots)
+            print("Showing batch slots")
+            print(batch_slots)
 
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
@@ -297,39 +292,46 @@ class EventPairCompositionModel(ArgCompatibleModel):
         extracted_features = torch.cat(
             [distance_emb, batch_features, batch_slots.unsqueeze(-1)], -1)
 
-        print("Embedded shapes")
-        print(context_emb.shape)
-        print(event_emb.shape)
-        print(distance_emb.shape)
-        print(extracted_features.shape)
+        if self.__debug:
+            print("Embedded shapes")
+            print(context_emb.shape)
+            print(event_emb.shape)
+            print(distance_emb.shape)
+            print(extracted_features.shape)
 
         event_repr = self._event_repr(event_emb)
         context_repr = self._event_repr(context_emb)
 
-        print("Event and context repr")
-        print(event_repr.shape)
-        print(context_repr.shape)
+        if self.__debug:
+            print("Event and context repr")
+            print(event_repr.shape)
+            print(context_repr.shape)
 
         bs, event_size, event_repr_dim = event_repr.shape
         bs, context_size, event_repr_dim = context_repr.shape
 
-        print("Create the selecting matrix")
         selector = batch_event_indices.unsqueeze(-1)
-        print(selector.shape)
+
+        if self.__debug:
+            print("Create the selecting matrix")
+            print(selector.shape)
 
         one_zeros = torch.ones(
-            bs, event_size, context_size, dtype=torch.long
+            bs, event_size, context_size, dtype=torch.float32,
         ).to(self.device)
         one_zeros.scatter_(-1, selector, 0)
 
-        print("One zero")
-        print(one_zeros.shape)
-
         # Now compute the coherent features with all context events.
-        coh_features = self.coh(event_repr, context_repr, batch_event_indices)
+        coh_features = self.coh(event_repr, context_repr, one_zeros)
+        all_features = torch.cat((extracted_features, coh_features), -1)
 
-        all_features = torch.cat(
-            (extracted_features.unsqueeze(1), coh_features), -1)
+        if self.__debug:
+            print("One zero")
+            print(one_zeros.shape)
+            print("Coh features")
+            print(coh_features.shape)
+            print("all feature")
+            print(all_features.shape)
 
         scores = self._linear_combine(all_features).squeeze(-1)
 
