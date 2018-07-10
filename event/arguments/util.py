@@ -15,7 +15,7 @@ def to_torch(data, data_type):
 
 
 def remove_neg(raw_predicate):
-    # Frames of verb with or withour negation should be the same.
+    # Frames of verb with or without negation should be the same.
 
     neg = 'not_'
     if raw_predicate.startswith(neg):

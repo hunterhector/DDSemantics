@@ -69,3 +69,4 @@ tbl = dict.fromkeys(
 
 def remove_punctuation(text):
     return text.translate(tbl)
+

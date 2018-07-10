@@ -4,6 +4,7 @@ import torch
 import logging
 from event.nn.models import KernelPooling
 from torch.nn.parameter import Parameter
+from event import torch_util
 
 
 class ArgCompatibleModel(nn.Module):
@@ -57,7 +58,7 @@ class ArgCompatibleModel(nn.Module):
 
 
 class EventPairCompositionModel(ArgCompatibleModel):
-    def __init__(self, para, resources):
+    def __init__(self, para, resources, gpu=True):
         super(EventPairCompositionModel, self).__init__(para, resources)
         logging.info("Pair composition network started, with %d "
                      "extracted features and %d distance features." % (
@@ -108,6 +109,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
             self.normalize_score = True
         else:
             self.normalize_score = False
+
+        self.device = torch.device(
+            "cuda" if gpu and torch.cuda.is_available() else "cpu"
+        )
 
     def _full_event_embedding_size(self):
         return self.para.num_event_components * self.para.event_embedding_dim
@@ -181,13 +186,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
         """
         raise NotImplementedError
 
-    def _attentive_contextual_score(self, event_emb, context_emb, batch_slots):
+    def _attentive_contextual_score(self, event_emb, context_emb,
+                                    self_avoid_mask):
         """
         Compute the contextual scores in the attentive way, i.e., computing
         dot products between the embeddings, and then apply pooling.
         :param event_emb:
         :param context_emb:
-        :param batch_slots:
         :param self_avoid_mask: mask of shape event_size x context_size, each
         row is contain only one zero that indicate which context should not be
         used.
@@ -195,6 +200,11 @@ class EventPairCompositionModel(ArgCompatibleModel):
         """
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
+
+        print("Before trans")
+        # torch_util.memReport()
+        # torch_util.cpuStats()
+        # torch_util.gpuMemReport()
 
         # First compute the trans matrix between events and the context.
         if self._vote_method == 'cosine':
@@ -208,10 +218,34 @@ class EventPairCompositionModel(ArgCompatibleModel):
                 'Unknown vote computation method {}'.format(self._vote_method)
             )
 
+        print("Computed trans")
+        # torch_util.memReport()
+        # torch_util.cpuStats()
+        # torch_util.gpuMemReport()
+
         print("Event context similarity:")
         print(trans.shape)
 
+        print("Avoidance mask:")
+        print(self_avoid_mask.shape)
+        print(self_avoid_mask.dtype)
+
+        print("Using the mask")
+        # torch_util.memReport()
+        torch_util.cpuStats()
+        torch_util.gpuMemReport()
+
+        print(trans.shape)
+        print(self_avoid_mask.shape)
+
+        print(trans.type())
+        print(self_avoid_mask.type())
+
+        input("Before the selecting mask")
+
         print("Filter with selecting matrix")
+        # TODO index_select and masked_select does not work here.
+        trans = torch.index_select(trans, -1, self_avoid_mask)
 
         if self._vote_pool_type == 'kernel':
             pooled_value = self._kp(trans)
@@ -252,11 +286,16 @@ class EventPairCompositionModel(ArgCompatibleModel):
         print(batch_slots.shape)
         print(batch_event_indices.shape)
 
+        print("Showing batch slots")
+        print(batch_slots)
+
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
         distance_emb = self._encode_distance(event_emb, batch_distances)
-        extracted_features = torch.cat([distance_emb, batch_features], -1)
+
+        extracted_features = torch.cat(
+            [distance_emb, batch_features, batch_slots.unsqueeze(-1)], -1)
 
         print("Embedded shapes")
         print(context_emb.shape)
@@ -271,18 +310,23 @@ class EventPairCompositionModel(ArgCompatibleModel):
         print(event_repr.shape)
         print(context_repr.shape)
 
-        # Now compute the coherent features with all context events.
-        coh_features = self.coh(event_repr, context_repr, batch_slots)
+        bs, event_size, event_repr_dim = event_repr.shape
+        bs, context_size, event_repr_dim = context_repr.shape
 
         print("Create the selecting matrix")
         selector = batch_event_indices.unsqueeze(-1)
         print(selector.shape)
 
-        one_zeros = torch.ones_like(coh_features)
+        one_zeros = torch.ones(
+            bs, event_size, context_size, dtype=torch.long
+        ).to(self.device)
         one_zeros.scatter_(-1, selector, 0)
 
         print("One zero")
         print(one_zeros.shape)
+
+        # Now compute the coherent features with all context events.
+        coh_features = self.coh(event_repr, context_repr, batch_event_indices)
 
         all_features = torch.cat(
             (extracted_features.unsqueeze(1), coh_features), -1)

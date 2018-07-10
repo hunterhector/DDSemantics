@@ -37,7 +37,7 @@ class HashedClozeReader:
         self.__data_types = {
             'context': np.int64,
             'event_indices': np.int64,
-            'slot_indices': np.int64,
+            'slot_indices': np.float32,
             'rep': np.int64,
             'distances': np.float32,
             'features': np.float32,
