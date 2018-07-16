@@ -310,7 +310,7 @@ class DEDocument:
                 return em
 
     def add_event_mention(self, hopper, eid, offset, length, text,
-                          event_type=None, realis=None):
+                          event_type, realis):
 
         evm = EventMention(eid, offset, length, text, event_type, realis)
         if text:
@@ -449,18 +449,16 @@ def parse_ere(ere_file, doc):
 def read_rich_ere(source_path, l_ere_path, ranges, ignore_quote=False):
     with open(source_path) as source:
         text = source.read()
-        print(source_path)
         doc = DEDocument(text, ranges, ignore_quote)
         for ere_path in l_ere_path:
             with open(ere_path) as ere:
-                logging.info("Processing :" + ere_path)
+                logging.info("Processing: " + os.path.basename(ere_path))
                 parse_ere(ere, doc)
                 return doc
 
 
-def read_rich_ere_collection(source_dir, ere_dir, output_dir, src_ext='.txt',
-                             ere_ext='.rich_ere.xml', ere_split=False,
-                             ignore_quote=False):
+def read_rich_ere_collection(source_dir, ere_dir, output_dir, src_ext,
+                             ere_ext, ere_split=False, ignore_quote=False):
     sources = {}
     eres = defaultdict(list)
     annotate_ranges = defaultdict(list)

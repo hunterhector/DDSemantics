@@ -66,6 +66,14 @@ class ArgRunner(Configurable):
                 else:
                     gold = torch.zeros(scores.shape).to(self.device)
 
+                ones = torch.ones(scores.shape).to(self.device)
+                zeros = torch.zeros(scores.shape).to(self.device)
+
+                if not ((scores <= ones) & (scores >= zeros)).all():
+                    logging.error("Scores not in [0,1] range")
+                    print(scores)
+
+                # TODO: got error, Assertion `input >= 0. && input <= 1.` failed
                 v_loss = F.binary_cross_entropy(scores, gold)
                 total_loss += v_loss
             return total_loss
@@ -126,8 +134,6 @@ class ArgRunner(Configurable):
                 for batch_instance, batch_info in self.reader.read_cloze_batch(
                         train_data):
                     loss = self._get_loss(batch_instance, batch_info)
-
-                    print("Loss ", loss)
 
                     loss_val = loss.item()
                     total_loss += loss_val

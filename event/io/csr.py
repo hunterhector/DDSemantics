@@ -579,7 +579,6 @@ class CSR:
         end = span[1] - sent.span.begin
         span_text = sent_text[begin: end]
 
-
         if not span_text == text:
             print("Was ", span)
             print("Becomes ", begin, end)
@@ -590,7 +589,6 @@ class CSR:
                 ", at span [{}] at sent [{}]".format(
                     span_text, text, span, sent_id)
             )
-            input('wait')
             return False
 
         return True

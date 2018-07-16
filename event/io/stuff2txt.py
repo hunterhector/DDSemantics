@@ -19,6 +19,23 @@ def conllu2txt(in_file, out_dir):
                 parts = line.split('\t')
                 lemma = parts[2]
 
+
+def validate_sent(seg):
+    unk = 0
+    all = 0
+    for token in seg:
+        if token.tag == 'TOKEN':
+            if token.attrib['pos'] == 'unknown':
+                unk += 1
+            all += 1
+
+    if 1.0 * unk / all > 0.3:
+        # print("Too many unknown tokens, maybe a dirty sentence.")
+        return False
+
+    return True
+
+
 def ltf2txt(in_dir, out_dir):
     lemmatizer = WordNetLemmatizer()
 
@@ -49,6 +66,8 @@ def ltf2txt(in_dir, out_dir):
                         )
                     )
 
+                    is_valid = validate_sent(seg)
+
                     for token in seg:
                         if token.tag == 'TOKEN':
                             begin = int(token.attrib['start_char']) - 1
@@ -61,7 +80,10 @@ def ltf2txt(in_dir, out_dir):
                             else:
                                 text += (' ' * (begin - len(text)))
 
-                            text += token.text
+                            if is_valid:
+                                text += token.text
+                            else:
+                                text += ' ' * (len(token.text))
 
                             bad_ending = not token.attrib['pos'] == 'punct'
                             new_sent = False
