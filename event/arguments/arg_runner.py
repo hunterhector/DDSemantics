@@ -17,6 +17,7 @@ from event.util import smart_open
 from event.arguments.resources import Resources
 import math
 import os
+from event import torch_util
 
 
 class ArgRunner(Configurable):
@@ -40,14 +41,10 @@ class ArgRunner(Configurable):
 
         self.nb_epochs = self.para.nb_epochs
 
-        self.reader = HashedClozeReader(
-            self.resources.event_vocab,
-            self.resources.lookups,
-            self.resources.oovs,
-            self.para.batch_size,
-            self.para.multi_context,
-            self.para.max_events,
-        )
+        self.reader = HashedClozeReader(self.resources,
+                                        self.para.batch_size,
+                                        self.para.multi_context,
+                                        self.para.max_events)
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -66,12 +63,12 @@ class ArgRunner(Configurable):
                 else:
                     gold = torch.zeros(scores.shape).to(self.device)
 
-                ones = torch.ones(scores.shape).to(self.device)
-                zeros = torch.zeros(scores.shape).to(self.device)
+                # ones = torch.ones(scores.shape).to(self.device)
+                # zeros = torch.zeros(scores.shape).to(self.device)
 
-                if not ((scores <= ones) & (scores >= zeros)).all():
-                    logging.error("Scores not in [0,1] range")
-                    print(scores)
+                # if not ((scores <= ones) & (scores >= zeros)).all():
+                #     logging.error("Scores not in [0,1] range")
+                #     print(scores)
 
                 # TODO: got error, Assertion `input >= 0. && input <= 1.` failed
                 v_loss = F.binary_cross_entropy(scores, gold)
@@ -81,14 +78,21 @@ class ArgRunner(Configurable):
             raise NotImplementedError
 
     def _get_loss(self, batch_instance, batch_info):
+        # print("Before loss")
+        # torch_util.show_tensors()
+        # torch_util.gpu_mem_report()
+
+        # print("Compute gold")
         correct_coh = self.model(
             batch_instance['gold'],
             batch_info,
         )
+        # print("Compute cross")
         cross_coh = self.model(
             batch_instance['cross'],
             batch_info
         )
+        # print("Compute inside")
         inside_coh = self.model(
             batch_instance['inside'],
             batch_info
@@ -96,7 +100,13 @@ class ArgRunner(Configurable):
 
         outputs = [correct_coh, cross_coh, inside_coh]
         labels = [1, 0, 0]
+
         loss = self.__loss(labels, outputs)
+
+        # print("After loss")
+        # torch_util.show_tensors()
+        # torch_util.gpu_mem_report()
+
         return loss
 
     def __check_point(self, check_point_out):
@@ -123,6 +133,8 @@ class ArgRunner(Configurable):
         previous_dev_loss = math.inf
         worse = 0
 
+        log_freq = 10
+
         with smart_open(validation_in) as dev_data:
             for data in self.reader.read_cloze_batch(dev_data):
                 dev_instances.append(data)
@@ -145,15 +157,16 @@ class ArgRunner(Configurable):
 
                     batch_count += 1
 
-                    if not batch_count % 100:
+                    if not batch_count % log_freq:
                         logging.info(
                             "Batch {} ({} instances), "
                             "recent avg. loss {}, overall avg. loss {:.5f}".
                                 format(batch_count,
                                        batch_count * self.reader.batch_size,
-                                       recent_loss / 100,
+                                       recent_loss / log_freq,
                                        total_loss / batch_count)
                         )
+                        torch_util.gpu_mem_report()
                         recent_loss = 0
 
             dev_loss = 0

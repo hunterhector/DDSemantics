@@ -26,10 +26,12 @@ class Resources(Configurable):
         self.event_embedding = np.load(self.event_embedding_path)
         self.word_embedding = np.load(self.word_embedding_path)
 
-        self.event_vocab = self.__read_vocab(self.event_vocab_path)
+        self.event_vocab, self.event_count = self.__read_vocab(
+            self.event_vocab_path)
         logging.info("%d events in vocabulary." % len(self.event_vocab))
 
-        self.word_vocab = self.__read_vocab(self.word_vocab_path)
+        self.word_vocab, self.word_count = self.__read_vocab(
+            self.word_vocab_path)
         logging.info("%d words in vocabulary." % len(self.word_vocab))
 
         self.lookups, self.oovs = load_vocab(self.raw_lookup_path)
@@ -37,10 +39,12 @@ class Resources(Configurable):
 
     def __read_vocab(self, vocab_file):
         vocab = {}
+        counts = []
         with open(vocab_file) as din:
             index = 0
             for line in din:
                 word, count = line.split()
                 vocab[word] = index
+                counts.append(count)
                 index += 1
-        return vocab
+        return vocab, counts

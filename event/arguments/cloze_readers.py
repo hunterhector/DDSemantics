@@ -8,29 +8,34 @@ import random
 import json
 from collections import Counter
 from event.arguments import consts
-import torch.nn.functional as F
 from event.io.io_utils import pad_2d_list
 from event.arguments.util import (batch_combine, to_torch)
+import event.arguments.prepare.event_vocab as vocab_util
 
 
 class HashedClozeReader:
-    def __init__(self, event_vocab, lookups, oovs, batch_size,
-                 multi_context=False, max_events=200, gpu=True):
+    def __init__(self, resources, batch_size, multi_context=False,
+                 max_events=200, gpu=True):
         """
         Reading the hashed dataset into cloze tasks.
-        :param event_vocab: Event token vocabulary.
+        :param resources: Resources containing vocabulary and more.
         :param batch_size: Number of cloze tasks per batch.
         :param multi_context: Whether to use multiple events as context.
         :param max_events: Number of events to keep per document.
+        :param gpu: Whethere to run on gpu.
         """
         self.batch_size = batch_size
         self.multi_context = multi_context
         self.max_events = max_events
-        self.event_vocab = event_vocab
-        self.lookups = lookups
-        self.oovs = oovs
+        self.event_vocab = resources.event_vocab
+        self.event_count = resources.event_count
 
-        self.event_padding = len(event_vocab)
+        # self.lookups = resources.lookups
+        # self.oovs = resources.oovs
+
+        self.event_inverted = self.__inverse_vocab(self.event_vocab)
+
+        self.event_padding = len(self.event_vocab)
 
         self.slot_names = ['subj', 'obj', 'prep', ]
 
@@ -58,6 +63,12 @@ class HashedClozeReader:
 
         # Fix seed to generate the same instances.
         random.seed(17)
+
+    def __inverse_vocab(self, vocab):
+        inverted = [0] * len(vocab)
+        for w, index in vocab.items():
+            inverted[index] = w
+        return inverted
 
     def __batch_pad(self, key, data, pad_size):
         dim = self.__data_dim[key]
@@ -103,7 +114,18 @@ class HashedClozeReader:
         max_instance_size = 0
         cloze_count = 0
 
+        batch_predicates = []
+
         for instance_data, common_data in self.read_clozes(data_in):
+            gold_event_data = instance_data['gold']
+            predicate_text = []
+            for gold_rep in gold_event_data['rep']:
+                eid = gold_rep[0]
+                if not eid == len(self.event_inverted):
+                    text = self.event_inverted[eid]
+                    predicate_text.append(text)
+            batch_predicates.append(predicate_text)
+
             for key, value in common_data.items():
                 b_common_data[key].append(value)
                 if key == 'context':
@@ -122,8 +144,15 @@ class HashedClozeReader:
 
             if cloze_count == self.batch_size:
                 # Merging cloze tasks to batch.
+                # import operator
+                # print('max', max([(len(l), l) for l in batch_predicates],
+                #                  key=operator.itemgetter(0)))
+                # input("==========")
+
                 yield self.create_batch(b_common_data, b_instance_data,
                                         max_context_size, max_instance_size)
+
+                batch_predicates = []
 
                 # Reset counts.
                 b_common_data = defaultdict(list)
@@ -205,6 +234,16 @@ class HashedClozeReader:
                 if evm_index == self.max_events:
                     break
 
+                event_info = event_data[evm_index]
+
+                pred = event_info['predicate']
+                if pred == self.event_vocab[consts.unk_predicate]:
+                    continue
+
+                pred_tf = self.event_count[pred]
+                print(self.event_inverted[pred], pred_tf)
+                input('-----')
+
                 for slot_index, slot in enumerate(self.slot_names):
                     arg = event['args'][slot]
                     correct_id = arg['entity_id']
@@ -218,7 +257,6 @@ class HashedClozeReader:
                         correct_id = arg['entity_id']
                         current_sent = arg['sentence_id']
 
-                        event_info = event_data[evm_index]
                         gold_rep = self._take_event_parts(event_info)
                         gold_features = features_by_eid[correct_id]
                         gold_distances = self.compute_distances(
@@ -273,6 +311,11 @@ class HashedClozeReader:
                 'event_indices': cloze_event_indices,
                 'slot_indices': cloze_slot_indices,
             }
+
+            if len(gold_event_data['rep']) > len(all_event_reps):
+                print(doc_info['docid'])
+                print(len(all_event_reps), len(gold_event_data['rep']))
+                input('===========')
 
             yield instance_data, common_data
 

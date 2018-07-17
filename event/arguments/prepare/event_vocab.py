@@ -77,8 +77,8 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                         sentence.append(arg_text + "-" + syn_role)
 
                     if include_frame and not fe == 'NA':
-                        fe_name = get_word(make_fe(frame_name, fe),
-                                           'fe', lookups, oovs)
+                        fe_name = get_word(
+                            make_fe(frame_name, fe), 'fe', lookups, oovs)
                         sentence.append(fe_name)
 
             doc_count += 1

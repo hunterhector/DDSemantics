@@ -44,7 +44,7 @@ class ArgCompatibleModel(nn.Module):
             )
             zeros = torch.zeros(1, self.para.word_embedding_dim)
             self.word_embedding.weight = nn.Parameter(
-                torch.cat((word_embed, zeros))
+                torch.cat((zeros, word_embed))
             )
 
         if resources.event_embedding_path is not None:
@@ -53,7 +53,7 @@ class ArgCompatibleModel(nn.Module):
             )
             zeros = torch.zeros(1, self.para.event_embedding_dim)
             self.event_embedding.weight = nn.Parameter(
-                torch.cat((event_emb, zeros))
+                torch.cat((zeros, event_emb))
             )
 
 
@@ -115,7 +115,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
             "cuda" if gpu and torch.cuda.is_available() else "cpu"
         )
 
-        self.__debug = False
+        self.__debug_show_shapes = False
 
     def _full_event_embedding_size(self):
         return self.para.num_event_components * self.para.event_embedding_dim
@@ -148,7 +148,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         :return:
         """
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("Event embedding size")
             print(event_emb.shape)
 
@@ -156,7 +156,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # May be we should not update the predicates embedding here.
         predicates = event_emb[:, :, 1, :]
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("Predicate size")
             print(predicates.shape)
 
@@ -171,13 +171,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
         #  in the fully connected layer (not learn from the predicates).
         variances = F.softplus(self.event_to_var_layer(predicates.detach()))
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("variance size")
             print(variances.shape)
 
         kernel_value = torch.exp(- dist_sq / variances)
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("distance kernel values")
             print(kernel_value.shape)
 
@@ -220,7 +220,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
                 'Unknown vote computation method {}'.format(self._vote_method)
             )
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("Event context similarity:")
             print(trans.shape)
 
@@ -252,6 +252,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
                 'Unknown pool type {}'.format(self._vote_pool_type)
             )
 
+        # print("During COH")
+        # torch_util.show_tensors()
+        # torch_util.gpu_mem_report()
+
         return pooled_value
 
     def _event_repr(self, event_emb):
@@ -262,15 +266,24 @@ class EventPairCompositionModel(ArgCompatibleModel):
         return self._mlp(self.arg_compositions_layers, flatten_event_emb)
 
     def forward(self, batch_event_data, batch_info):
+        # batch x instance_size x event_component
         batch_event_rep = batch_event_data['rep']
+        # batch x instance_size x n_distance_features
         batch_distances = batch_event_data['distances']
+        # batch x instance_size x n_features
         batch_features = batch_event_data['features']
 
+        # batch x context_size x event_component
         batch_context = batch_info['context']
+        # batch x instance_size
         batch_slots = batch_info['slot_indices']
+        # batch x instance_size
         batch_event_indices = batch_info['event_indices']
 
-        if self.__debug:
+        # print(batch_event_rep.shape)
+        # print(batch_context.shape)
+
+        if self.__debug_show_shapes:
             print("context shape")
             print(batch_context.shape)
 
@@ -281,9 +294,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print(batch_slots.shape)
             print(batch_event_indices.shape)
 
-            print("Showing batch slots")
-            print(batch_slots)
-
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
@@ -292,7 +302,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         extracted_features = torch.cat(
             [distance_emb, batch_features, batch_slots.unsqueeze(-1)], -1)
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("Embedded shapes")
             print(context_emb.shape)
             print(event_emb.shape)
@@ -302,7 +312,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         event_repr = self._event_repr(event_emb)
         context_repr = self._event_repr(context_emb)
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("Event and context repr")
             print(event_repr.shape)
             print(context_repr.shape)
@@ -312,7 +322,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         selector = batch_event_indices.unsqueeze(-1)
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("Create the selecting matrix")
             print(selector.shape)
 
@@ -325,7 +335,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         coh_features = self.coh(event_repr, context_repr, one_zeros)
         all_features = torch.cat((extracted_features, coh_features), -1)
 
-        if self.__debug:
+        if self.__debug_show_shapes:
             print("One zero")
             print(one_zeros.shape)
             print("Coh features")
