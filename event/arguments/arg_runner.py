@@ -2,7 +2,8 @@ from traitlets.config import Configurable
 from event.arguments.params import ModelPara
 from event.arguments.arg_models import EventPairCompositionModel
 from traitlets import (
-    Unicode
+    Unicode,
+    Integer
 )
 from traitlets.config.loader import PyFileConfigLoader
 import torch
@@ -44,7 +45,8 @@ class ArgRunner(Configurable):
         self.reader = HashedClozeReader(self.resources,
                                         self.para.batch_size,
                                         self.para.multi_context,
-                                        self.para.max_events)
+                                        self.para.max_events,
+                                        self.para.max_cloze)
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -116,9 +118,34 @@ class ArgRunner(Configurable):
     def __resume(self, check_point_out):
         self.model.load_state_dict(torch.load(check_point_out))
 
-    def train(self, train_in, validation_in=None, model_out_dir=None):
+    def validation(self, generator):
+        dev_loss = 0
+        num_batches = 0
+        for batch_instance, batch_info in generator:
+            loss = self._get_loss(batch_instance, batch_info)
+            dev_loss += loss.item()
+            num_batches += 1
+
+        logging.info("Validate with [%d] batches." % num_batches)
+
+        return dev_loss
+
+    def train(self, train_in, validation_size=None, validation_in=None,
+              model_out_dir=None):
         logging.info("Training with data [%s]", train_in)
-        logging.info("Validation with data [%s]", validation_in)
+
+        if validation_in:
+            logging.info("Validation with data [%s]", validation_in)
+        elif validation_size:
+            logging.info(
+                "Will use first few [%d] for validation." % validation_size)
+        else:
+            logging.error("No validaiton!")
+
+        if model_out_dir:
+            logging.info("Model out directory is [%s]", model_out_dir)
+            if not os.path.exists(model_out_dir):
+                os.makedirs(model_out_dir)
         self.model.train()
 
         optimizer = torch.optim.Adam(self.model.parameters())
@@ -133,18 +160,31 @@ class ArgRunner(Configurable):
         previous_dev_loss = math.inf
         worse = 0
 
-        log_freq = 10
+        log_freq = 100
 
-        with smart_open(validation_in) as dev_data:
-            for data in self.reader.read_cloze_batch(dev_data):
-                dev_instances.append(data)
-        logging.info(
-            "Loaded {} validation batches".format(len(dev_instances)))
+        # logging.info("Loading validation data.")
+        # if validation_in:
+        #     with smart_open(validation_in) as dev_data:
+        #         for data in self.reader.read_cloze_batch(dev_data):
+        #             dev_instances.append(data)
+        #     logging.info(
+        #         "Loaded {} validation batches".format(len(dev_instances)))
+        #
+        # if validation_size:
+        #     with smart_open(train_in) as train_data:
+        #         for data in self.reader.read_cloze_batch(
+        #                 train_data, until_line=validation_size):
+        #             dev_instances.append(data)
+        #         logging.info(
+        #             "Loaded {} validation batches".format(len(dev_instances)))
+        #
+        # print("After loading development.")
+        # torch_util.gpu_mem_report()
 
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
                 for batch_instance, batch_info in self.reader.read_cloze_batch(
-                        train_data):
+                        train_data, from_line=validation_size):
                     loss = self._get_loss(batch_instance, batch_info)
 
                     loss_val = loss.item()
@@ -166,13 +206,21 @@ class ArgRunner(Configurable):
                                        recent_loss / log_freq,
                                        total_loss / batch_count)
                         )
-                        torch_util.gpu_mem_report()
+                        # torch_util.gpu_mem_report()
                         recent_loss = 0
 
-            dev_loss = 0
-            for batch_instance, batch_info in dev_instances:
-                loss = self._get_loss(batch_instance, batch_info)
-                dev_loss += loss.item()
+            logging.info("Conducting validation.")
+            dev_generator = None
+            if validation_in:
+                with smart_open(validation_in) as dev_data:
+                    dev_generator = self.reader.read_cloze_batch(dev_data)
+
+            if validation_size:
+                with smart_open(train_in) as train_data:
+                    dev_generator = self.reader.read_cloze_batch(
+                        train_data, until_line=validation_size)
+
+            dev_loss = self.validation(dev_generator)
 
             logging.info(
                 "Finished epoch {epoch:d}, avg. training loss {loss:.4f}, "
@@ -203,7 +251,8 @@ if __name__ == '__main__':
         test_in = Unicode(help='testing data').tag(config=True)
         test_out = Unicode(help='test res').tag(config=True)
         valid_in = Unicode(help='validation in').tag(config=True)
-        model_out = Unicode(help='model output directory').tag(config=True)
+        validation_size = Integer(help='validation size').tag(config=True)
+        model_name = Unicode(help='model name').tag(config=True)
 
 
     from event.util import set_basic_log
@@ -226,13 +275,17 @@ if __name__ == '__main__':
 
     model = ArgRunner(config=conf)
 
-    import cProfile
+    # import cProfile
+    #
+    # pr = cProfile.Profile()
+    # pr.enable()
 
-    pr = cProfile.Profile()
-    pr.enable()
+    base = os.environ['implicit_corpus']
+    model_out = os.path.join(base, 'models', basic_para.model_name)
 
-    model.train(basic_para.train_in, basic_para.valid_in, basic_para.model_out)
+    model.train(basic_para.train_in, basic_para.validation_size,
+                basic_para.valid_in, model_out)
 
-    pr.disable()
-    pr.dump_stats('../profile.dump')
-    pr.print_stats(sort='time')
+    # pr.disable()
+    # pr.dump_stats('../profile.dump')
+    # pr.print_stats(sort='time')

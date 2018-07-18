@@ -36,6 +36,9 @@ class ModelPara(Configurable):
     max_events = Int(
         help='Maximum number of events allowed per document',
         default_value=200).tag(config=True)
+    max_cloze = Int(
+        help='Maximum number of cloze to extract per document',
+        default_value=150).tag(config=True)
 
     # Model architecture related parameters.
     loss = Unicode(

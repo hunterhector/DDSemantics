@@ -11,24 +11,28 @@ from event.arguments import consts
 from event.io.io_utils import pad_2d_list
 from event.arguments.util import (batch_combine, to_torch)
 import event.arguments.prepare.event_vocab as vocab_util
+import math
 
 
 class HashedClozeReader:
     def __init__(self, resources, batch_size, multi_context=False,
-                 max_events=200, gpu=True):
+                 max_events=200, max_cloze=150, gpu=True):
         """
         Reading the hashed dataset into cloze tasks.
         :param resources: Resources containing vocabulary and more.
         :param batch_size: Number of cloze tasks per batch.
         :param multi_context: Whether to use multiple events as context.
         :param max_events: Number of events to keep per document.
+        :param max_cloze: Max cloze to keep per document.
         :param gpu: Whethere to run on gpu.
         """
         self.batch_size = batch_size
         self.multi_context = multi_context
         self.max_events = max_events
+        self.max_instance = max_cloze
         self.event_vocab = resources.event_vocab
-        self.event_count = resources.event_count
+        self.event_count = resources.term_freq
+        self.pred_counts = resources.typed_count['predicate']
 
         # self.lookups = resources.lookups
         # self.oovs = resources.oovs
@@ -106,17 +110,18 @@ class HashedClozeReader:
                 )
         return instance_data, common_data
 
-    def read_cloze_batch(self, data_in):
+    def read_cloze_batch(self, data_in, from_line=None, until_line=None):
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
 
         max_context_size = 0
         max_instance_size = 0
-        cloze_count = 0
+        doc_count = 0
 
         batch_predicates = []
 
-        for instance_data, common_data in self.read_clozes(data_in):
+        for instance_data, common_data in self.parse_docs(
+                data_in, from_line, until_line):
             gold_event_data = instance_data['gold']
             predicate_text = []
             for gold_rep in gold_event_data['rep']:
@@ -140,9 +145,11 @@ class HashedClozeReader:
                 for key, value in ins_data.items():
                     b_instance_data[ins_type][key].append(value)
 
-            cloze_count += 1
+            doc_count += 1
 
-            if cloze_count == self.batch_size:
+            # Each document is a full instance since we do multiple product at
+            # once.
+            if doc_count == self.batch_size:
                 # Merging cloze tasks to batch.
                 # import operator
                 # print('max', max([(len(l), l) for l in batch_predicates],
@@ -157,9 +164,13 @@ class HashedClozeReader:
                 # Reset counts.
                 b_common_data = defaultdict(list)
                 b_instance_data = defaultdict(lambda: defaultdict(list))
-                cloze_count = 0
+                doc_count = 0
                 max_context_size = 0
                 max_instance_size = 0
+
+        # Yield the remaining data.
+        yield self.create_batch(b_common_data, b_instance_data,
+                                max_context_size, max_instance_size)
 
     def _take_event_parts(self, event_info):
         event_components = [event_info['predicate'], event_info['frame']]
@@ -171,8 +182,28 @@ class HashedClozeReader:
 
         return [c if c > 0 else self.event_padding for c in event_components]
 
-    def read_clozes(self, data_in):
+    def subsample_pred(self, pred):
+        pred_tf = self.event_count[pred]
+        freq = 1.0 * pred_tf / self.pred_counts
+
+        if freq > consts.sample_pred_threshold:
+            if pred_tf > consts.sample_pred_threshold:
+                rate = consts.sample_pred_threshold / freq
+                if random.random() < 1 - rate - math.sqrt(rate):
+                    return False
+        return True
+
+    def parse_docs(self, data_in, from_line=None, until_line=None):
+        linenum = 0
         for line in data_in:
+            if from_line and linenum < from_line:
+                continue
+
+            if until_line and linenum >= until_line:
+                break
+
+            linenum += 1
+
             doc_info = json.loads(line)
 
             # Collect all features.
@@ -204,7 +235,9 @@ class HashedClozeReader:
                         ((evm_index, slot), arg['sentence_id'])
                     )
 
-                    if eid > 0:
+                    # We re-count for resolvable, because we may filter events,
+                    # which will change the resolvable attribute.
+                    if eid >= 0:
                         arg_entities.add((evm_index, eid))
                         eid_count[eid] += 1
 
@@ -218,10 +251,11 @@ class HashedClozeReader:
 
             arg_entities = list(arg_entities)
 
+            # We current sample the predicate based on unigram distribution.
             # A better learning strategy is to select one
             # cross instance that is difficult. We can have two
             # strategies here:
-            # 1. Use unigram distribution to sample items.
+            # 1. Again use unigram distribution to sample items.
             # 2. Select items based on classifier output.
 
             gold_event_data = {'rep': [], 'distances': [], 'features': []}
@@ -230,6 +264,7 @@ class HashedClozeReader:
             cloze_event_indices = []
             cloze_slot_indices = []
 
+            # print(doc_info['docid'])
             for evm_index, event in enumerate(doc_info['events']):
                 if evm_index == self.max_events:
                     break
@@ -238,63 +273,82 @@ class HashedClozeReader:
 
                 pred = event_info['predicate']
                 if pred == self.event_vocab[consts.unk_predicate]:
+                    # print("Skip unk pred")
                     continue
 
-                pred_tf = self.event_count[pred]
-                print(self.event_inverted[pred], pred_tf)
-                input('-----')
+                keep_pred = self.subsample_pred(pred)
+
+                if not keep_pred:
+                    # Too frequent word will be ignore.
+                    # print("Skip", self.event_inverted[pred])
+                    continue
 
                 for slot_index, slot in enumerate(self.slot_names):
                     arg = event['args'][slot]
                     correct_id = arg['entity_id']
 
-                    # We re-count for resolvable, because we may filter events,
-                    # which will change the resolvable attribute.
-                    if eid_count[correct_id] > 1:
-                        cloze_event_indices.append(evm_index)
-                        cloze_slot_indices.append(slot_index)
+                    # Apparently, singleton and unks are not resolvable.
+                    if correct_id < 0:
+                        # print("skip empty arg")
+                        continue
 
-                        correct_id = arg['entity_id']
-                        current_sent = arg['sentence_id']
+                    if eid_count[correct_id] <= 1:
+                        # print("Skip singleton")
+                        continue
 
-                        gold_rep = self._take_event_parts(event_info)
-                        gold_features = features_by_eid[correct_id]
-                        gold_distances = self.compute_distances(
-                            evm_index, entity_mentions, event_info,
-                            current_sent,
-                        )
-                        gold_event_data['rep'].append(gold_rep)
-                        gold_event_data['features'].append(gold_features)
-                        gold_event_data['distances'].append(gold_distances)
+                    if entity_heads[correct_id] == consts.unk_arg_word:
+                        # print("Skip unk arg")
+                        continue
 
-                        cross_event, cross_filler_id = self.cross_cloze(
-                            event_args, arg_entities, evm_index, slot,
-                            correct_id)
-                        cross_info = self.get_event_info(doc_info, evm_index,
-                                                         cross_event)
-                        cross_rep = self._take_event_parts(cross_info)
-                        cross_features = features_by_eid[cross_filler_id]
-                        cross_distances = self.compute_distances(
-                            evm_index, entity_mentions, cross_info,
-                            current_sent,
-                        )
-                        cross_event_data['rep'].append(cross_rep)
-                        cross_event_data['features'].append(cross_features)
-                        cross_event_data['distances'].append(cross_distances)
+                    cloze_event_indices.append(evm_index)
+                    cloze_slot_indices.append(slot_index)
 
-                        inside_event, inside_filler_id = self.inside_cloze(
-                            event_args, evm_index, slot, correct_id)
-                        inside_info = self.get_event_info(doc_info, evm_index,
-                                                          inside_event)
-                        inside_rep = self._take_event_parts(inside_info)
-                        inside_features = features_by_eid[inside_filler_id]
-                        inside_distances = self.compute_distances(
-                            evm_index, entity_mentions, inside_info,
-                            current_sent,
-                        )
-                        inside_event_data['rep'].append(inside_rep)
-                        inside_event_data['features'].append(inside_features)
-                        inside_event_data['distances'].append(inside_distances)
+                    correct_id = arg['entity_id']
+                    current_sent = arg['sentence_id']
+
+                    # print("Event is", pred, self.event_inverted[pred])
+                    # print("Correct entity id is", correct_id)
+                    # print("Entity head is", entity_heads[correct_id])
+                    # print("Eid count", eid_count[correct_id])
+
+                    gold_rep = self._take_event_parts(event_info)
+                    gold_features = features_by_eid[correct_id]
+                    gold_distances = self.compute_distances(
+                        evm_index, entity_mentions, event_info,
+                        current_sent,
+                    )
+                    gold_event_data['rep'].append(gold_rep)
+                    gold_event_data['features'].append(gold_features)
+                    gold_event_data['distances'].append(gold_distances)
+
+                    cross_event, cross_filler_id = self.cross_cloze(
+                        event_args, arg_entities, evm_index, slot,
+                        correct_id)
+                    cross_info = self.get_event_info(doc_info, evm_index,
+                                                     cross_event)
+                    cross_rep = self._take_event_parts(cross_info)
+                    cross_features = features_by_eid[cross_filler_id]
+                    cross_distances = self.compute_distances(
+                        evm_index, entity_mentions, cross_info,
+                        current_sent,
+                    )
+                    cross_event_data['rep'].append(cross_rep)
+                    cross_event_data['features'].append(cross_features)
+                    cross_event_data['distances'].append(cross_distances)
+
+                    inside_event, inside_filler_id = self.inside_cloze(
+                        event_args, evm_index, slot, correct_id)
+                    inside_info = self.get_event_info(doc_info, evm_index,
+                                                      inside_event)
+                    inside_rep = self._take_event_parts(inside_info)
+                    inside_features = features_by_eid[inside_filler_id]
+                    inside_distances = self.compute_distances(
+                        evm_index, entity_mentions, inside_info,
+                        current_sent,
+                    )
+                    inside_event_data['rep'].append(inside_rep)
+                    inside_event_data['features'].append(inside_features)
+                    inside_event_data['distances'].append(inside_distances)
 
             if len(cloze_slot_indices) == 0:
                 # This document do not contains training instance.
@@ -312,10 +366,13 @@ class HashedClozeReader:
                 'slot_indices': cloze_slot_indices,
             }
 
-            if len(gold_event_data['rep']) > len(all_event_reps):
-                print(doc_info['docid'])
-                print(len(all_event_reps), len(gold_event_data['rep']))
-                input('===========')
+            # if len(gold_event_data['rep']) > len(all_event_reps):
+            #     print(doc_info['docid'])
+            #     print(len(all_event_reps), len(gold_event_data['rep']))
+            #     input('===========')
+
+            # print(len(all_event_reps), len(gold_event_data['rep']))
+            # input('===========')
 
             yield instance_data, common_data
 
