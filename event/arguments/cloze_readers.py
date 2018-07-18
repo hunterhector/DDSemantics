@@ -12,6 +12,7 @@ from event.io.io_utils import pad_2d_list
 from event.arguments.util import (batch_combine, to_torch)
 import event.arguments.prepare.event_vocab as vocab_util
 import math
+from event import torch_util
 
 
 class HashedClozeReader:
@@ -151,19 +152,22 @@ class HashedClozeReader:
             # once.
             if doc_count == self.batch_size:
                 # Merging cloze tasks to batch.
+
                 # import operator
                 # print('max', max([(len(l), l) for l in batch_predicates],
                 #                  key=operator.itemgetter(0)))
+                # torch_util.show_tensors()
+                # torch_util.gpu_mem_report()
                 # input("==========")
 
                 yield self.create_batch(b_common_data, b_instance_data,
                                         max_context_size, max_instance_size)
 
-                batch_predicates = []
-
                 # Reset counts.
-                b_common_data = defaultdict(list)
-                b_instance_data = defaultdict(lambda: defaultdict(list))
+                batch_predicates.clear()
+
+                b_common_data.clear()
+                b_instance_data.clear()
                 doc_count = 0
                 max_context_size = 0
                 max_instance_size = 0
@@ -196,13 +200,13 @@ class HashedClozeReader:
     def parse_docs(self, data_in, from_line=None, until_line=None):
         linenum = 0
         for line in data_in:
-            if from_line and linenum < from_line:
+            linenum += 1
+
+            if from_line and linenum <= from_line:
                 continue
 
-            if until_line and linenum >= until_line:
+            if until_line and linenum > until_line:
                 break
-
-            linenum += 1
 
             doc_info = json.loads(line)
 

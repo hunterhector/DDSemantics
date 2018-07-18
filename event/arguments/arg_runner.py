@@ -177,7 +177,6 @@ class ArgRunner(Configurable):
         #             dev_instances.append(data)
         #         logging.info(
         #             "Loaded {} validation batches".format(len(dev_instances)))
-        #
         # print("After loading development.")
         # torch_util.gpu_mem_report()
 
