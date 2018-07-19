@@ -247,6 +247,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
             pooled_value, _ = trans.max(2, keepdim=True)
         elif self._vote_pool_type == 'average':
             pooled_value = trans.mean(2, keepdim=True)
+        elif self._vote_pool_type == 'topk':
+            # TODO add a top k pooling for comparison
+            pass
         else:
             raise ValueError(
                 'Unknown pool type {}'.format(self._vote_pool_type)
@@ -333,6 +336,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         # Now compute the coherent features with all context events.
         coh_features = self.coh(event_repr, context_repr, one_zeros)
+
         all_features = torch.cat((extracted_features, coh_features), -1)
 
         if self.__debug_show_shapes:
@@ -343,8 +347,20 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print("all feature")
             print(all_features.shape)
 
+        print(all_features)
         scores = self._linear_combine(all_features).squeeze(-1)
+
+        # print(scores)
+        # print(scores.max(dim=-1))
+        # print(scores.sum())
 
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
+
+        print(scores)
+        print(scores.max(dim=-1))
+        print(scores.sum())
+        print(scores.shape)
+        input('------------------')
+
         return scores

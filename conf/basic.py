@@ -15,6 +15,8 @@ c.ModelPara.max_events = 200
 c.ModelPara.batch_size = 128
 # Model parameters that changes the architectures
 c.ModelPara.loss = 'cross_entropy'
+c.ModelPara.vote_method = 'cosine'
+c.ModelPara.vote_pooling = 'kernel'
 
 # Resources
 # c.Resources.base = '/home/zhengzhl/workspace/implicit/gigaword_corpus/'
@@ -37,3 +39,4 @@ c.Basic.train_in = os.path.join(base, 'hashed', 'hashed_shuffled_events.json')
 # c.Basic.train_until = 1946546
 c.Basic.validation_size = 64000
 # c.Basic.valid_in = os.path.join(base, 'hashed', 'hashed_events_dev.json')
+c.Basic.debug_dir = os.path.join(base, 'debug')

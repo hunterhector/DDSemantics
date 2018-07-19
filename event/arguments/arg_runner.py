@@ -19,6 +19,7 @@ from event.arguments.resources import Resources
 import math
 import os
 from event import torch_util
+import pickle
 
 
 class ArgRunner(Configurable):
@@ -28,6 +29,8 @@ class ArgRunner(Configurable):
 
         self.para = ModelPara(**kwargs)
         self.resources = Resources(**kwargs)
+
+        self.debug_dir = kwargs['debug_dir']
 
         self.device = torch.device(
             "cuda" if self.para.use_gpu and torch.cuda.is_available()
@@ -47,6 +50,10 @@ class ArgRunner(Configurable):
                                         self.para.multi_context,
                                         self.para.max_events,
                                         self.para.max_cloze)
+
+    def __dump_bug(self, key, obj):
+        with open(os.path.join(self.debug_dir, key + '.pickle')) as out:
+            pickle.dump(out, obj)
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -68,9 +75,13 @@ class ArgRunner(Configurable):
                 # ones = torch.ones(scores.shape).to(self.device)
                 # zeros = torch.zeros(scores.shape).to(self.device)
 
-                # if not ((scores <= ones) & (scores >= zeros)).all():
-                #     logging.error("Scores not in [0,1] range")
-                #     print(scores)
+                ones = torch.ones(1).to(self.device)
+                zeros = torch.zeros(1).to(self.device)
+
+                if not ((scores <= ones) & (scores >= zeros)).all():
+                    logging.error("Scores not in [0,1] range")
+                    print(scores)
+                    return None
 
                 # TODO: got error, Assertion `input >= 0. && input <= 1.` failed
                 v_loss = F.binary_cross_entropy(scores, gold)
@@ -84,20 +95,20 @@ class ArgRunner(Configurable):
         # torch_util.show_tensors()
         # torch_util.gpu_mem_report()
 
-        # print("Compute gold")
+        print("Compute gold")
         correct_coh = self.model(
             batch_instance['gold'],
             batch_info,
         )
-        # print("Compute cross")
+        print("Compute cross")
         cross_coh = self.model(
             batch_instance['cross'],
-            batch_info
+            batch_info,
         )
-        # print("Compute inside")
+        print("Compute inside")
         inside_coh = self.model(
             batch_instance['inside'],
-            batch_info
+            batch_info,
         )
 
         outputs = [correct_coh, cross_coh, inside_coh]
@@ -123,6 +134,8 @@ class ArgRunner(Configurable):
         num_batches = 0
         for batch_instance, batch_info in generator:
             loss = self._get_loss(batch_instance, batch_info)
+            if not loss:
+                raise ValueError('Error in computing loss.')
             dev_loss += loss.item()
             num_batches += 1
 
@@ -131,7 +144,7 @@ class ArgRunner(Configurable):
         return dev_loss
 
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None):
+              model_out_dir=None, debug_out=None):
         logging.info("Training with data [%s]", train_in)
 
         if validation_in:
@@ -162,29 +175,31 @@ class ArgRunner(Configurable):
 
         log_freq = 100
 
-        # logging.info("Loading validation data.")
-        # if validation_in:
-        #     with smart_open(validation_in) as dev_data:
-        #         for data in self.reader.read_cloze_batch(dev_data):
-        #             dev_instances.append(data)
-        #     logging.info(
-        #         "Loaded {} validation batches".format(len(dev_instances)))
-        #
-        # if validation_size:
-        #     with smart_open(train_in) as train_data:
-        #         for data in self.reader.read_cloze_batch(
-        #                 train_data, until_line=validation_size):
-        #             dev_instances.append(data)
-        #         logging.info(
-        #             "Loaded {} validation batches".format(len(dev_instances)))
-        # print("After loading development.")
-        # torch_util.gpu_mem_report()
-
         for epoch in range(self.nb_epochs):
             with smart_open(train_in) as train_data:
                 for batch_instance, batch_info in self.reader.read_cloze_batch(
                         train_data, from_line=validation_size):
+
                     loss = self._get_loss(batch_instance, batch_info)
+                    if not loss:
+                        # with open(
+                        #         os.path.join(
+                        #             debug_out,
+                        #             'batch_instance.pickle')) as instace_bug:
+                        #     pickle.dump(instace_bug, batch_instance)
+                        # with open(
+                        #     os.path.join(
+                        #         debug_out,
+                        #         os.path.join(debug_out, 'batch_info.pickle')
+                        #     ) as info_bug:
+                        #
+                        # ):
+                        #     pickle.dumps(
+                        #         os.path.join(debug_out, 'batch_info.pickle'),
+                        #         batch_info)
+                        self.__dump_bug('batch_instance', batch_instance)
+                        self.__dump_bug('batcH_info', batch_info)
+                        raise ValueError('Error in computing loss.')
 
                     loss_val = loss.item()
                     total_loss += loss_val
@@ -252,6 +267,7 @@ if __name__ == '__main__':
         valid_in = Unicode(help='validation in').tag(config=True)
         validation_size = Integer(help='validation size').tag(config=True)
         model_name = Unicode(help='model name').tag(config=True)
+        debug_dir = Unicode(help='Debug output').tag(config=True)
 
 
     from event.util import set_basic_log
@@ -269,18 +285,17 @@ if __name__ == '__main__':
 
     cl_conf = load_command_line_config(sys.argv[2:])
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
+    conf.merge(cl_conf)
 
     basic_para = Basic(config=conf)
 
-    model = ArgRunner(config=conf)
-
-    # import cProfile
-    #
-    # pr = cProfile.Profile()
-    # pr.enable()
+    model = ArgRunner(config=conf, debug_dir=basic_para.debug_dir)
 
     base = os.environ['implicit_corpus']
     model_out = os.path.join(base, 'models', basic_para.model_name)
+
+    if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
+        os.makedirs(basic_para.debug_dir)
 
     model.train(basic_para.train_in, basic_para.validation_size,
                 basic_para.valid_in, model_out)
