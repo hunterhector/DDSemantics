@@ -5,6 +5,7 @@ import logging
 from event.nn.models import KernelPooling
 from torch.nn.parameter import Parameter
 from event import torch_util
+from torch.nn.modules.linear import Bilinear
 
 
 class ArgCompatibleModel(nn.Module):
@@ -94,9 +95,15 @@ class EventPairCompositionModel(ArgCompatibleModel):
         self._vote_method = para.vote_method
 
         if self._vote_method == 'biaffine':
-            self.mtx_vote_comp = Parameter(
-                torch.Tensor(self.para.event_embedding_dim,
-                             self.para.event_embedding_dim)
+            # The biaffine composition matrix.
+            # self.mtx_bilinear_comp = Parameter(
+            #     torch.Tensor(self.para.event_embedding_dim + 1,
+            #                  self.para.event_embedding_dim)
+            # )
+            self.bilinear_layer = Bilinear(
+                self.para.event_embedding_dim,
+                self.para.event_embedding_dim,
+                1
             )
 
         self._linear_combine = nn.Linear(feature_size, 1)
@@ -162,6 +169,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         # d = num_distance_feature
 
+        # Our max distance maybe to large which cause overflow, maybe clamp
+        # before usage
+
         # batch x event_size x d
         dist_sq = distances * distances
 
@@ -176,6 +186,16 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print(variances.shape)
 
         kernel_value = torch.exp(- dist_sq / variances)
+
+        # print("Debugging distance encoding")
+        # print(distances.shape)
+        # print(torch.max(distances))
+        # print(dist_sq.shape)
+        # print(torch.max(dist_sq))
+        # print(variances.shape)
+        # print(torch.max(variances))
+        # print(kernel_value)
+        # input('----------------------------')
 
         if self.__debug_show_shapes:
             print("distance kernel values")
@@ -197,7 +217,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
                                     self_avoid_mask):
         """
         Compute the contextual scores in the attentive way, i.e., computing
-        dot products between the embeddings, and then apply pooling.
+        some cross scores between the two representations.
         :param event_emb:
         :param context_emb:
         :param self_avoid_mask: mask of shape event_size x context_size, each
@@ -212,9 +232,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
         if self._vote_method == 'cosine':
             trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
         elif self._vote_method == 'biaffine':
-            # TODO finish the bi-linear implementation.
-            trans = torch.bmm(nom_event_emb, self.mtx_vote_comp)
-            trans = torch.bmm(trans, nom_context_emb)
+            # TODO handle the batch size here.
+            trans = self.bilinear_layer(nom_event_emb, nom_context_emb)
         else:
             raise ValueError(
                 'Unknown vote computation method {}'.format(self._vote_method)
@@ -347,9 +366,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print("all feature")
             print(all_features.shape)
 
-        print(all_features)
         scores = self._linear_combine(all_features).squeeze(-1)
 
+        # print(all_features)
         # print(scores)
         # print(scores.max(dim=-1))
         # print(scores.sum())
@@ -357,10 +376,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
 
-        print(scores)
-        print(scores.max(dim=-1))
-        print(scores.sum())
-        print(scores.shape)
-        input('------------------')
+        # print(scores)
+        # print(scores.max(dim=-1))
+        # print(scores.sum())
+        # print(scores.shape)
+        # input('------------------')
 
         return scores

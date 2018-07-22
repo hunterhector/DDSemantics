@@ -40,3 +40,5 @@ c.Basic.train_in = os.path.join(base, 'hashed', 'hashed_shuffled_events.json')
 c.Basic.validation_size = 64000
 # c.Basic.valid_in = os.path.join(base, 'hashed', 'hashed_events_dev.json')
 c.Basic.debug_dir = os.path.join(base, 'debug')
+c.Basic.model_name = 'basic'
+c.Basic.model_dir = os.path.join(base, 'models', c.Basic.model_name)

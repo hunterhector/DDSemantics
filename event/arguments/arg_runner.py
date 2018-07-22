@@ -20,6 +20,7 @@ import math
 import os
 from event import torch_util
 import pickle
+import shutil
 
 
 class ArgRunner(Configurable):
@@ -30,7 +31,10 @@ class ArgRunner(Configurable):
         self.para = ModelPara(**kwargs)
         self.resources = Resources(**kwargs)
 
+        self.model_dir = kwargs['model_dir']
         self.debug_dir = kwargs['debug_dir']
+
+        self.checkpoint_name = 'checkpoint.pth'
 
         self.device = torch.device(
             "cuda" if self.para.use_gpu and torch.cuda.is_available()
@@ -51,10 +55,6 @@ class ArgRunner(Configurable):
                                         self.para.max_events,
                                         self.para.max_cloze)
 
-    def __dump_bug(self, key, obj):
-        with open(os.path.join(self.debug_dir, key + '.pickle')) as out:
-            pickle.dump(out, obj)
-
     def _assert(self):
         if self.resources.word_embedding:
             assert self.para.word_vocab_size == \
@@ -72,18 +72,12 @@ class ArgRunner(Configurable):
                 else:
                     gold = torch.zeros(scores.shape).to(self.device)
 
-                # ones = torch.ones(scores.shape).to(self.device)
-                # zeros = torch.zeros(scores.shape).to(self.device)
-
-                ones = torch.ones(1).to(self.device)
-                zeros = torch.zeros(1).to(self.device)
-
-                if not ((scores <= ones) & (scores >= zeros)).all():
-                    logging.error("Scores not in [0,1] range")
+                # TODO: Got NaN in scores
+                if torch.isnan(scores).any():
+                    logging.error("NaN in scores")
                     print(scores)
                     return None
 
-                # TODO: got error, Assertion `input >= 0. && input <= 1.` failed
                 v_loss = F.binary_cross_entropy(scores, gold)
                 total_loss += v_loss
             return total_loss
@@ -95,17 +89,15 @@ class ArgRunner(Configurable):
         # torch_util.show_tensors()
         # torch_util.gpu_mem_report()
 
-        print("Compute gold")
         correct_coh = self.model(
             batch_instance['gold'],
             batch_info,
         )
-        print("Compute cross")
         cross_coh = self.model(
             batch_instance['cross'],
             batch_info,
         )
-        print("Compute inside")
+
         inside_coh = self.model(
             batch_instance['inside'],
             batch_info,
@@ -116,18 +108,28 @@ class ArgRunner(Configurable):
 
         loss = self.__loss(labels, outputs)
 
-        # print("After loss")
-        # torch_util.show_tensors()
-        # torch_util.gpu_mem_report()
-
         return loss
 
-    def __check_point(self, check_point_out):
-        logging.info("Dumping to checkpoint: {}".format(check_point_out))
-        torch.save(self.model.state_dict(), check_point_out)
+    def __dump_stuff(self, key, obj):
+        logging.info("Saving object: {}.".format(key))
+        with open(os.path.join(self.debug_dir, key + '.pickle'), 'wb') as out:
+            pickle.dump(obj, out)
 
-    def __resume(self, check_point_out):
-        self.model.load_state_dict(torch.load(check_point_out))
+    def __load_stuff(self, key):
+        logging.info("Loading object: {}.".format(key))
+        with open(os.path.join(self.debug_dir, key + '.pickle'), 'rb') as fin:
+            return pickle.load(fin)
+
+    def __save_checkpoint(self, state, is_best):
+        check_path = os.path.join(self.model_dir, self.checkpoint_name)
+        best_path = os.path.join(self.model_dir, 'model_best.pth')
+
+        logging.info("Saving model at {}".format(check_path))
+        torch.save(state, check_path)
+
+        if is_best:
+            logging.info("Saving model as best {}".format(best_path))
+            shutil.copyfile(check_path, best_path)
 
     def validation(self, generator):
         dev_loss = 0
@@ -143,8 +145,29 @@ class ArgRunner(Configurable):
 
         return dev_loss
 
+    def debug(self):
+        checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
+        if os.path.isfile(checkpoint_path):
+            logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+            checkpoint = torch.load(checkpoint_path)
+
+            start_epoch = checkpoint['epoch']
+            best_loss = checkpoint['best_loss']
+            self.model.load_state_dict(checkpoint['state_dict'])
+
+        for name, param in self.model.named_parameters():
+            if torch.isnan(param).any():
+                print(param)
+                print(name)
+                print("NaN in ", name)
+
+        batch_instance = self.__load_stuff('batch_instance')
+        batch_info = self.__load_stuff('batch_info')
+
+        self._get_loss(batch_instance, batch_info)
+
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, debug_out=None):
+              model_out_dir=None, resume=False):
         logging.info("Training with data [%s]", train_in)
 
         if validation_in:
@@ -153,7 +176,7 @@ class ArgRunner(Configurable):
             logging.info(
                 "Will use first few [%d] for validation." % validation_size)
         else:
-            logging.error("No validaiton!")
+            logging.error("No validation!")
 
         if model_out_dir:
             logging.info("Model out directory is [%s]", model_out_dir)
@@ -163,9 +186,26 @@ class ArgRunner(Configurable):
 
         optimizer = torch.optim.Adam(self.model.parameters())
 
+        start_epoch = 0
         batch_count = 0
-        total_loss = 0
+        best_loss = math.inf
 
+        if resume:
+            checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
+            if os.path.isfile(checkpoint_path):
+                logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+                checkpoint = torch.load(checkpoint_path)
+
+                start_epoch = checkpoint['epoch']
+                best_loss = checkpoint['best_loss']
+                self.model.load_state_dict(checkpoint['state_dict'])
+            else:
+                logging.info(
+                    "No model to resume at '{}', starting from scratch.".format(
+                        checkpoint_path)
+                )
+
+        total_loss = 0
         recent_loss = 0
 
         dev_instances = []
@@ -175,30 +215,23 @@ class ArgRunner(Configurable):
 
         log_freq = 100
 
-        for epoch in range(self.nb_epochs):
+        for epoch in range(start_epoch, self.nb_epochs):
+            logging.info("Starting epoch {}.".format(epoch))
             with smart_open(train_in) as train_data:
                 for batch_instance, batch_info in self.reader.read_cloze_batch(
                         train_data, from_line=validation_size):
 
                     loss = self._get_loss(batch_instance, batch_info)
                     if not loss:
-                        # with open(
-                        #         os.path.join(
-                        #             debug_out,
-                        #             'batch_instance.pickle')) as instace_bug:
-                        #     pickle.dump(instace_bug, batch_instance)
-                        # with open(
-                        #     os.path.join(
-                        #         debug_out,
-                        #         os.path.join(debug_out, 'batch_info.pickle')
-                        #     ) as info_bug:
-                        #
-                        # ):
-                        #     pickle.dumps(
-                        #         os.path.join(debug_out, 'batch_info.pickle'),
-                        #         batch_info)
-                        self.__dump_bug('batch_instance', batch_instance)
-                        self.__dump_bug('batcH_info', batch_info)
+                        self.__save_checkpoint({
+                            'epoch': epoch + 1,
+                            'state_dict': self.model.state_dict(),
+                            'best_loss': best_loss,
+                            'optimizer': optimizer.state_dict(),
+                        }, False)
+                        self.__dump_stuff('batch_instance', batch_instance)
+                        self.__dump_stuff('batch_info', batch_info)
+
                         raise ValueError('Error in computing loss.')
 
                     loss_val = loss.item()
@@ -213,14 +246,20 @@ class ArgRunner(Configurable):
 
                     if not batch_count % log_freq:
                         logging.info(
-                            "Batch {} ({} instances), "
+                            "Epoch {}, Batch {} ({} instances), "
                             "recent avg. loss {}, overall avg. loss {:.5f}".
-                                format(batch_count,
+                                format(epoch, batch_count,
                                        batch_count * self.reader.batch_size,
                                        recent_loss / log_freq,
                                        total_loss / batch_count)
                         )
-                        # torch_util.gpu_mem_report()
+
+                        for name, weight in self.model.named_parameters():
+                            if name.startswith('event_to_var_layer'):
+                                print(name, weight)
+
+                        input("----------")
+
                         recent_loss = 0
 
             logging.info("Conducting validation.")
@@ -236,19 +275,29 @@ class ArgRunner(Configurable):
 
             dev_loss = self.validation(dev_generator)
 
+            is_best = False
+            if not best_loss or dev_loss < best_loss:
+                best_loss = dev_loss
+                is_best = True
+
             logging.info(
                 "Finished epoch {epoch:d}, avg. training loss {loss:.4f}, "
-                "validation loss {dev_loss:.4f}".format(
+                "validation loss {dev_loss:.4f}{best:s}".format(
                     epoch=epoch, loss=total_loss / batch_count,
-                    dev_loss=dev_loss / len(dev_instances)
+                    dev_loss=dev_loss / len(dev_instances),
+                    best=', is current best.' if is_best else '.'
                 ))
 
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
                 worse = 0
-                self.__check_point(
-                    os.path.join(model_out_dir, 'current_best.model')
-                )
+                self.__save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': self.model.state_dict(),
+                    'best_loss': best_loss,
+                    'optimizer': optimizer.state_dict(),
+                }, is_best)
+
             else:
                 worse += 1
                 if worse == self.para.early_stop_patience:
@@ -266,8 +315,10 @@ if __name__ == '__main__':
         test_out = Unicode(help='test res').tag(config=True)
         valid_in = Unicode(help='validation in').tag(config=True)
         validation_size = Integer(help='validation size').tag(config=True)
-        model_name = Unicode(help='model name').tag(config=True)
         debug_dir = Unicode(help='Debug output').tag(config=True)
+        model_name = Unicode(help='model name', default_value='basic').tag(
+            config=True)
+        model_dir = Unicode(help='model directory').tag(config=True)
 
 
     from event.util import set_basic_log
@@ -289,17 +340,20 @@ if __name__ == '__main__':
 
     basic_para = Basic(config=conf)
 
-    model = ArgRunner(config=conf, debug_dir=basic_para.debug_dir)
-
-    base = os.environ['implicit_corpus']
-    model_out = os.path.join(base, 'models', basic_para.model_name)
+    model = ArgRunner(
+        config=conf,
+        model_dir=basic_para.model_dir,
+        debug_dir=basic_para.debug_dir
+    )
 
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
         os.makedirs(basic_para.debug_dir)
 
-    model.train(basic_para.train_in, basic_para.validation_size,
-                basic_para.valid_in, model_out)
+    # model.debug()
 
-    # pr.disable()
-    # pr.dump_stats('../profile.dump')
-    # pr.print_stats(sort='time')
+    model.train(
+        basic_para.train_in,
+        validation_size=basic_para.valid_in,
+        validation_in=basic_para.validation_size,
+        resume=True
+    )
