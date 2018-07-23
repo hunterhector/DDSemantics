@@ -78,11 +78,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
             para.event_composition_layer_sizes
         )
 
-        # Output 9 different var, each corresponding to one distance measure.
-        self.event_to_var_layer = nn.Linear(self.para.event_embedding_dim, 9)
-
-        # Number of extracted features, 9 variance features, and 1 slot feature.
-        feature_size = self.para.num_extracted_features + 9 + 1
+        # Number of extracted features, and 1 slot position feature.
+        feature_size = self.para.num_extracted_features + 1
 
         # Config feature size.
         self._vote_pool_type = para.vote_pooling
@@ -91,6 +88,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
             feature_size += self._kp.K
         elif self._vote_pool_type == 'average' or self._vote_pool_type == 'max':
             feature_size += 1
+
+        self._use_distance = para.encode_distance
+        if self._use_distance:
+            feature_size += para.num_distance_features
+            # Output 9 different var, corresponding to 9 distance measures.
+            self.event_to_var_layer = nn.Linear(
+                self.para.event_embedding_dim, 9)
 
         self._vote_method = para.vote_method
 
@@ -176,14 +180,20 @@ class EventPairCompositionModel(ArgCompatibleModel):
         dist_sq = distances * distances
 
         # Output d variances (\sigma^2), each one for each distance.
-        # Variances cannot be zero, so we use soft plus here.
         # We detach predicates here, force the model to learn distance operation
         #  in the fully connected layer (not learn from the predicates).
-        variances = F.softplus(self.event_to_var_layer(predicates.detach()))
+        raw_var = self.event_to_var_layer(predicates.detach())
+        # Variances cannot be zero, so we use soft plus here.
+        variances = F.softplus(raw_var)
 
         if self.__debug_show_shapes:
             print("variance size")
             print(variances.shape)
+
+        print(torch.min(raw_var))
+        print(torch.min(variances))
+        print(torch.min(- dist_sq / variances))
+        print('---------------')
 
         kernel_value = torch.exp(- dist_sq / variances)
 
@@ -194,7 +204,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # print(torch.max(dist_sq))
         # print(variances.shape)
         # print(torch.max(variances))
-        # print(kernel_value)
         # input('----------------------------')
 
         if self.__debug_show_shapes:
@@ -319,10 +328,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
-        distance_emb = self._encode_distance(event_emb, batch_distances)
+        l_extracted = [batch_features, batch_slots.unsqueeze(-1)]
 
-        extracted_features = torch.cat(
-            [distance_emb, batch_features, batch_slots.unsqueeze(-1)], -1)
+        if self._use_distance:
+            distance_emb = self._encode_distance(event_emb, batch_distances)
+            l_extracted.append(distance_emb)
+
+        extracted_features = torch.cat(l_extracted, -1)
 
         if self.__debug_show_shapes:
             print("Embedded shapes")

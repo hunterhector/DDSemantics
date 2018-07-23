@@ -229,6 +229,12 @@ class ArgRunner(Configurable):
                             'best_loss': best_loss,
                             'optimizer': optimizer.state_dict(),
                         }, False)
+
+
+                        for name, weight in self.model.named_parameters():
+                            if name.startswith('event_to_var_layer'):
+                                print(name, weight)
+
                         self.__dump_stuff('batch_instance', batch_instance)
                         self.__dump_stuff('batch_info', batch_info)
 
@@ -258,7 +264,7 @@ class ArgRunner(Configurable):
                             if name.startswith('event_to_var_layer'):
                                 print(name, weight)
 
-                        input("----------")
+                        # input("----------")
 
                         recent_loss = 0
 

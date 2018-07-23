@@ -58,6 +58,10 @@ class ModelPara(Configurable):
         help='Number of components per event').tag(config=True)
     num_extracted_features = Int(help='Feature size').tag(config=True)
 
+    encode_distance = Unicode(
+        help='Method to encode distances').tag(config=True)
+    num_distance_features = Int(help='Distance features size').tag(config=True)
+
     vote_method = Unicode(
         help='Method to pool compute the votes between two events',
         default_value='cosine'

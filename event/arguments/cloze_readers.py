@@ -429,15 +429,14 @@ class HashedClozeReader:
 
         return full_info
 
-    def compute_distances(self, current_evm_id, entity_sents, event,
-                          sentence_id):
+    def compute_distances(self, current_evm_id, entity_sents, event, sent_id):
         """
         Compute the distance signature of the instance's other mentions to the
         sentence.
         :param current_evm_id:
         :param entity_sents:
         :param event:
-        :param sentence_id:
+        :param sent_id:
         :return:
         """
         distances = []
@@ -465,7 +464,7 @@ class HashedClozeReader:
                     # Do not compute mentions at the same event.
                     continue
 
-                distance = abs(sid - sentence_id)
+                distance = abs(sid - sent_id)
                 if distance < min_dist:
                     min_dist = distance
                 if distance > max_dist:

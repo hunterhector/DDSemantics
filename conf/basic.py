@@ -17,6 +17,8 @@ c.ModelPara.batch_size = 128
 c.ModelPara.loss = 'cross_entropy'
 c.ModelPara.vote_method = 'cosine'
 c.ModelPara.vote_pooling = 'kernel'
+c.ModelPara.encode_distance = 'gaussian'
+c.ModelPara.num_distance_features = 9
 
 # Resources
 # c.Resources.base = '/home/zhengzhl/workspace/implicit/gigaword_corpus/'
