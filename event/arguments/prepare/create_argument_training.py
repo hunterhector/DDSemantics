@@ -110,6 +110,7 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
 
         arg_text = get_word(content['represent'], 'argument', lookups, oovs)
         arg_role = make_arg(arg_text, dep)
+
         if arg_role in event_vocab:
             arg_id = event_vocab[arg_role]
         else:

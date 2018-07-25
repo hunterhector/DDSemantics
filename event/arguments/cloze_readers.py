@@ -19,11 +19,10 @@ class ClozeSampler:
     def __init__(self):
         pass
 
-    def sample_cross(self, data, current_arg_ent):
-        evm_id, ent_id = current_arg_ent
+    def sample_cross(self, arg_entities, evm_id, ent_id):
 
         remaining = []
-        for evm, ent in data:
+        for evm, ent in arg_entities:
             if not (evm == evm_id or ent == ent_id):
                 remaining.append((evm, ent))
 
@@ -270,13 +269,19 @@ class HashedClozeReader:
                     # Argument for nth event, at slot position 'slot'.
                     eid = arg['entity_id']
                     dep = arg['dep']
+
                     if not dep:
                         # Fall back to unspecified dep name. This does not
                         # affect "subj", "obj", but it will create "prep"
                         # without the actual prepositional word.
                         dep = slot
 
-                    event_args[evm_index][slot] = (eid, dep)
+                    event_args[evm_index][slot] = {
+                        'entity_id': eid,
+                        'arg_role': arg['arg'],
+                        'fe': arg['fe']
+                    }
+
                     # From eid to entity information.
                     entity_mentions[eid].append(
                         ((evm_index, slot), arg['sentence_id'])
@@ -386,8 +391,8 @@ class HashedClozeReader:
                     cross_event_data['features'].append(cross_features)
                     cross_event_data['distances'].append(cross_distances)
 
-                    inside_sample = self.inside_cloze(event_args[evm_index],
-                                                      slot)
+                    inside_sample = self.inside_cloze(
+                        event_args[evm_index], slot)
                     inside_args, inside_filler_id = inside_sample
                     inside_info = self.get_event_info(
                         doc_info, evm_index, inside_args)
@@ -416,14 +421,6 @@ class HashedClozeReader:
                 'slot_indices': cloze_slot_indices,
             }
 
-            # if len(gold_event_data['rep']) > len(all_event_reps):
-            #     print(doc_info['docid'])
-            #     print(len(all_event_reps), len(gold_event_data['rep']))
-            #     input('===========')
-
-            # print(len(all_event_reps), len(gold_event_data['rep']))
-            # input('===========')
-
             yield instance_data, common_data
 
     def get_event_info(self, doc_info, evm_index, arguments):
@@ -434,19 +431,17 @@ class HashedClozeReader:
             'slots': {},
         }
 
-        print("Getting event info")
-        print(arguments)
+        for slot, arg_info in arguments.items():
+            eid = arg_info['entity_id']
 
-        for slot, (eid, _) in arguments.items():
             if eid == -1:
                 # This is an empty slot. Using pad.
                 pad = len(self.event_vocab)
                 fe = pad
                 arg_role = pad
             else:
-                arg_info = event['args'][slot]
                 fe = arg_info['fe']
-                arg_role = arg_info['arg']
+                arg_role = arg_info['arg_role']
 
                 if fe == -1:
                     fe = self.event_vocab[consts.unk_fe]
@@ -457,9 +452,6 @@ class HashedClozeReader:
                 'context': event['args'][slot]['context'],
                 'eid': eid
             }
-
-        print(full_info)
-        input('------')
 
         return full_info
 
@@ -518,27 +510,38 @@ class HashedClozeReader:
         # Flatten the (argument x type) distances into a flat list.
         return [d for l in distances for d in l]
 
-    def cross_cloze(self, event_args, arg_entities, current_evm, current_slot):
+    def cross_cloze(self, event_args, arg_entities, target_evm_id, target_slot):
         """
         A negative cloze instance that use arguments from other events.
-        :param event_args: List of all origin event arguments.
-        :param arg_entities: List of argument entities.
-        :param current_evm: The event id.
-        :param current_slot: The slot id.
+        :param event_args: Dict of all origin event arguments.
+        :param arg_entities: List of original (event id, entity id) pairs.
+        :param target_evm_id: The target event id.
+        :param target_slot: The target slot name.
         :return:
         """
 
+        target_args = event_args[target_evm_id]
+        target_arg = target_args[target_slot]
+        target_eid = target_arg['entity_id']
+
         sample_res = self.sampler.sample_cross(
-            arg_entities, event_args[current_evm][current_slot]
+            arg_entities, target_evm_id, target_eid
         )
 
         if sample_res:
             wrong_evm, wrong_id = sample_res
             neg_instance = {}
-            neg_instance.update(event_args[current_evm])
-            current_eid, dep = event_args[current_evm][current_slot]
+            neg_instance.update(target_args)
 
-            neg_instance[current_slot] = (wrong_id, dep)
+            print(target_args)
+            # current_eid, dep = event_args[target_evm_id][target_slot]
+
+            neg_instance[target_slot] = (wrong_id, dep)
+
+            print(neg_instance)
+
+
+            input(neg_instance)
 
             return neg_instance, wrong_id
         else:

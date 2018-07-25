@@ -3,9 +3,9 @@ import os
 import gzip
 import json
 import pickle
-from gensim.models.word2vec import Word2Vec
 from json.decoder import JSONDecodeError
 import logging
+from event.arguments import consts
 
 
 def get_word(word, key, lookups, oovs):
@@ -23,9 +23,10 @@ def make_predicate(text):
 
 
 def make_arg(text, role):
-    if not role == 'NA':
+    if role == 'NA':
+        return text + "-" + consts.unk_dep
+    else:
         return text + "-" + role
-    return None
 
 
 def make_fe(frame, fe):
@@ -33,6 +34,9 @@ def make_fe(frame, fe):
 
 
 def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
+    if include_frame:
+        print("Adding frames to sentences.")
+
     doc_count = 0
     event_count = 0
 
@@ -64,21 +68,28 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                     sentence.append(frame)
 
                 for arg in event['arguments']:
-                    syn_role = arg['dep']
+                    dep = arg['dep']
+                    if (not include_frame) and dep == 'NA':
+                        continue
+
                     fe = arg['feName']
 
                     eid = arg['entityId']
                     text = represent_by_id.get(eid, arg['text'])
-
                     arg_text = get_word(text, 'argument', lookups, oovs)
-                    arg_role = make_arg(arg_text, syn_role)
 
-                    if arg_role is not None:
-                        sentence.append(arg_text + "-" + syn_role)
+                    if dep.startswith('prep'):
+                        dep = get_word(
+                            dep, 'preposition', lookups, oovs)
 
-                    if include_frame and not fe == 'NA':
+                    arg_role = make_arg(arg_text, dep)
+
+                    sentence.append(arg_role)
+
+                    if include_frame:
                         fe_name = get_word(
-                            make_fe(frame_name, fe), 'fe', lookups, oovs)
+                            make_fe(frame_name, fe), 'fe', lookups, oovs
+                        )
                         sentence.append(fe_name)
 
             doc_count += 1
@@ -193,23 +204,6 @@ def get_vocab_count(data_path):
     return vocab_counters
 
 
-def train_event_vectors(sentence_file, vector_out_base, window_size):
-    class Sentences():
-        def __init__(self, sent_file):
-            self.sent_file = sent_file
-
-        def __iter__(self):
-            with open(self.sent_file) as doc:
-                for line in doc:
-                    yield line.split()
-
-    model = Word2Vec(Sentences(sentence_file), workers=10, size=300,
-                     window=window_size, sample=1e-4, negative=10)
-    model.save(vector_out_base + '.pickle')
-    model.wv.save_word2vec_format(vector_out_base + '.vectors',
-                                  fvocab=vector_out_base + '.voc')
-
-
 def load_vocab(vocab_dir):
     lookups = {}
     oov_words = {}
@@ -237,15 +231,14 @@ def load_vocab(vocab_dir):
     return lookups, oov_words
 
 
-def main(event_data, vocab_dir, sent_out, embedding_dir):
-    if not os.path.exists(sent_out):
-        os.makedirs(sent_out)
-
-    event_sentence_out = os.path.join(sent_out, 'event_sentences.txt')
-    frame_sentence_out = os.path.join(sent_out, 'event_frame_sentences.txt')
-
+def main(event_data, vocab_dir, sent_out, add_frame_word):
     if not os.path.exists(vocab_dir):
         os.makedirs(vocab_dir)
+
+    sent_out_par = os.path.dirname(sent_out)
+    if not os.path.exists(sent_out_par):
+        print("Making diretory", sent_out_par)
+        os.makedirs(sent_out_par)
 
     if not os.path.exists(os.path.join(vocab_dir, 'predicate.vocab')):
         print("Counting vocabulary.")
@@ -268,29 +261,12 @@ def main(event_data, vocab_dir, sent_out, embedding_dir):
         lookups, oovs = load_vocab(vocab_dir)
         print("Done loading.")
 
-    if not os.path.exists(event_sentence_out):
-        print("Creating event sentences without frames.")
-        create_sentences(event_data, event_sentence_out, lookups, oovs)
-
-    if not os.path.exists(frame_sentence_out):
-        print("Creating event sentences with frames.")
-        create_sentences(event_data, frame_sentence_out, lookups, oovs,
-                         include_frame=True)
-
-    if not os.path.exists(embedding_dir):
-        os.makedirs(embedding_dir)
-
-    event_emb_out = os.path.join(embedding_dir, 'event_embeddings')
-    if not os.path.exists(event_emb_out + '.vectors'):
-        print("Training embedding for event sentences.")
-        train_event_vectors(event_sentence_out, event_emb_out, window_size=10)
-
-    event_frame_emb_out = os.path.join(embedding_dir, 'event_frame_embeddings')
-    if not os.path.exists(event_frame_emb_out + '.vectors'):
-        print("Training embedding for frame event sentences.")
-        # Use a larger window for longer frame sentences.
-        train_event_vectors(frame_sentence_out, event_frame_emb_out,
-                            window_size=15)
+    print("Creating event sentences")
+    if not os.path.exists(sent_out):
+        create_sentences(event_data, sent_out, lookups, oovs,
+                         include_frame=add_frame_word)
+    else:
+        print("Sentence frame file exists, skipping.")
 
 
 if __name__ == '__main__':
@@ -299,9 +275,12 @@ if __name__ == '__main__':
     parser = OptionPerLineParser(description='Event Vocabulary.',
                                  fromfile_prefix_chars='@')
     parser.add_argument('--vocab_dir', type=str, help='Vocabulary direcotry.')
-    parser.add_argument('--embedding_dir', type=str, help='Event Embedding.')
     parser.add_argument('--input_data', type=str, help='Input data.')
-    parser.add_argument('--sent_out', type=str, help='Sentence output file.')
+    parser.add_argument('--sent_out', type=str, help='Sentence out file.')
+    parser.add_argument('--add_frame_word', action='store_true',
+                        help='Add frame word.')
 
     args = parser.parse_args()
-    main(args.input_data, args.vocab_dir, args.sent_out, args.embedding_dir)
+    main(
+        args.input_data, args.vocab_dir, args.sent_out, args.add_frame_word
+    )
