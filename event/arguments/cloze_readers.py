@@ -450,6 +450,7 @@ class HashedClozeReader:
             'slots': {},
         }
 
+        # TODO: Fix this to get argument role index correctly.
         for slot, arg_info in arguments.items():
             eid = arg_info['entity_id']
 
@@ -553,7 +554,7 @@ class HashedClozeReader:
             neg_instance.update(target_args)
 
             print(target_args)
-            # current_eid, dep = event_args[target_evm_id][target_slot]
+            current_eid, dep = event_args[target_evm_id][target_slot]
 
             neg_instance[target_slot] = (wrong_id, dep)
 
