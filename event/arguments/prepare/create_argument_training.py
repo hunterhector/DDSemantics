@@ -93,6 +93,22 @@ def tiebreak_arg(tied_args, pred_start, pred_end):
     return tied_args[top_index]
 
 
+def hash_arg_role(arg_text, dep, event_vocab, oovs):
+    arg_role = make_arg(arg_text, dep)
+
+    if arg_role in event_vocab:
+        arg_id = event_vocab[arg_role]
+    else:
+        arg_role = make_arg(oovs['argument'], dep)
+        if arg_role in event_vocab:
+            arg_id = event_vocab[arg_role]
+        else:
+            arg_role = make_arg(oovs['argument'], oovs['preposition'])
+            arg_id = event_vocab[arg_role]
+
+    return arg_id
+
+
 def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
     if arg is None:
         # Empty argument case.
@@ -108,13 +124,11 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
     else:
         dep, full_fe, content, source = arg
 
+        if dep.startswith('prep'):
+            dep = get_word(dep, 'preposition', lookups, oovs)
         arg_text = get_word(content['represent'], 'argument', lookups, oovs)
-        arg_role = make_arg(arg_text, dep)
 
-        if arg_role in event_vocab:
-            arg_id = event_vocab[arg_role]
-        else:
-            arg_id = -1
+        arg_id = hash_arg_role(arg_text, dep, event_vocab, oovs)
 
         if full_fe is not None:
             frame, fe = full_fe
@@ -122,20 +136,21 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
             if fe_name in event_vocab:
                 fe_id = event_vocab[fe_name]
             else:
-                fe_id = -1
+                fe_id = event_vocab[oovs['fe']]
         else:
-            # Use padding for this later.
-            fe_id = -1
+            # Treat empty frame element as UNK.
+            fe_id = event_vocab[oovs['fe']]
 
         hashed_context = hash_context(word_vocab, content['arg_context'])
 
         return {
-            'arg': arg_id,
+            'arg_role': arg_id,
             'fe': fe_id,
             'context': hashed_context,
             'entity_id': content['entity_id'],
             'resolvable': content['resolvable'],
             'sentence_id': content['sentence_id'],
+            'text': arg_text,
             'dep': dep,
         }
 
@@ -231,6 +246,25 @@ def get_args(event, frame_args, arg_frames):
     return final_args
 
 
+def read_entity_features(entities, lookups, oovs):
+    hashed_entities = {}
+
+    for eid, entity in entities.items():
+        entity_head = get_word(
+            entity['representEntityHead'], 'argument', lookups, oovs)
+        hashed_entities[eid] = {
+            'features': entity['features'],
+            'entity_head': entity_head,
+        }
+    return hashed_entities
+
+
+def get_predicate(predicate, lookups, oovs):
+    return make_predicate(
+        get_word(predicate, 'predicate', lookups, oovs)
+    )
+
+
 def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
                  oovs, frame_args, dep_frames):
     hashed_doc = {
@@ -238,32 +272,19 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
         'events': [],
     }
 
-    hashed_entities = {}
-    for eid, entity in entities.items():
-        entity_head = get_word(entity['representEntityHead'], 'argument',
-                               lookups, oovs)
-        hashed_entities[eid] = {
-            'features': entity['features'],
-            'entity_head': entity_head,
-        }
-
-    hashed_doc['entities'] = hashed_entities
+    read_entity_features(entities, lookups, oovs)
+    hashed_doc['entities'] = read_entity_features(entities, lookups, oovs)
 
     for event in events:
-        pred = make_predicate(
-            get_word(event['predicate'], 'predicate', lookups, oovs)
-        )
-
-        pid = event_vocab[pred]
-
+        pid = event_vocab[get_predicate(event['predicate'], lookups, oovs)]
         frame_name = event.get('frame', 'NA')
         fid = event_vocab.get(frame_name, -1)
         mapped_args = get_args(event, frame_args, dep_frames)
 
         full_args = {}
-        for position, arg in mapped_args.items():
-            full_args[position] = hash_arg(arg, event_vocab, word_vocab,
-                                           lookups, oovs)
+        for slot, arg in mapped_args.items():
+            full_args[slot] = hash_arg(
+                arg, event_vocab, word_vocab, lookups, oovs)
 
         context = hash_context(word_vocab, event['predicate_context'])
 
@@ -331,7 +352,12 @@ if __name__ == '__main__':
             help='Output path of the hashed data.').tag(config=True)
 
 
+    from event.util import load_command_line_config
+
+    cl_conf = load_command_line_config(sys.argv[2:])
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
+    conf.merge(cl_conf)
+
     hash_params = HashParam(config=conf)
 
     hash_data(hash_params)

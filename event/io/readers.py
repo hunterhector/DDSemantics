@@ -1,8 +1,9 @@
 import os
 import logging
-from collections import defaultdict
+from collections import defaultdict, Counter
 import numpy as np
 import pickle
+import json
 
 
 class Vocab:
@@ -83,6 +84,115 @@ class Vocab:
                     "Loaded existing vocabulary mapping at: {}".format(path))
                 return True
         return False
+
+
+class EventReader:
+    def __init__(self):
+        self.target_roles = ['arg0', 'arg1', 'prep']
+        self.entity_info_fields = ['syntactic_role', 'mention_text',
+                                   'entity_id']
+        self.entity_equal_fields = ['entity_id', 'represent']
+
+        self.len_arg_fields = 4
+
+    def get_context(self, sentence, start, end, window_size=5):
+        right_tokens = sentence[end:].strip().split()
+        right_win = min(window_size, len(right_tokens))
+        right_context = right_tokens[:right_win]
+
+        left_tokens = sentence[:start].strip().split()
+        left_tokens.reverse()
+        left_win = min(window_size, len(left_tokens))
+
+        left_context = left_tokens[:left_win]
+        left_context.reverse()
+
+        return left_context, right_context
+
+    def read_events(self, data_in):
+        for line in data_in:
+            doc = json.loads(line)
+            docid = doc['docid']
+
+            events = []
+
+            eid_count = Counter()
+
+            entity_heads = {}
+
+            entities = {}
+
+            if 'entities' in doc:
+                for ent in doc['entities']:
+                    entity_heads[ent['entityId']] = ent['representEntityHead']
+
+                    entities[ent['entityId']] = {
+                        'features': ent['entityFeatures'],
+                        'representEntityHead': ent['representEntityHead'],
+                    }
+
+            for event_info in doc['events']:
+                sent = doc['sentences'][event_info['sentenceId']]
+
+                raw_context = self.get_context(
+                    sent,
+                    event_info['predicateStart'],
+                    event_info['predicateEnd'],
+                )
+
+                event = {
+                    'predicate': event_info['predicate'],
+                    'predicate_context': raw_context,
+                    # 'predicate_context': event_info['context'],
+                    'frame': event_info.get('frame', 'NA'),
+                    'arguments': [],
+                    'predicate_start': event_info['predicateStart'],
+                    'predicate_end': event_info['predicateEnd'],
+                }
+
+                events.append(event)
+
+                for arg_info in event_info['arguments']:
+                    if 'argStart' in arg_info:
+                        arg_context = self.get_context(
+                            sent, arg_info['argStart'], arg_info['argEnd']
+                        )
+                    else:
+                        left, right = arg_info['context'].split('___')
+                        arg_context = left.split(), right.split()
+
+                    if entity_heads:
+                        represent = entity_heads[arg_info['entityId']]
+                    else:
+                        represent = arg_info['representText']
+
+                    arg = {
+                        'dep': arg_info['dep'],
+                        'fe': arg_info['feName'],
+                        'arg_context': arg_context,
+                        'represent': represent,
+                        'entity_id': arg_info['entityId'],
+                        'resolvable': False,
+                        'arg_start': arg_info['argStart'],
+                        'arg_end': arg_info['argEnd'],
+                        'sentence_id': event_info['sentenceId']
+                    }
+
+                    eid_count[arg_info['entityId']] += 1
+                    event['arguments'].append(arg)
+
+            for event in events:
+                for arg in event['arguments']:
+                    if eid_count[arg['entity_id']] > 1:
+                        arg['resolvable'] = True
+
+            yield docid, events, entities
+
+    def _same_entity(self, ent1, ent2):
+        return any([ent1[f] == ent2[f] for f in self.entity_equal_fields])
+
+    def _entity_info(self, arg):
+        return dict([(k, arg[k]) for k in self.entity_info_fields])
 
 
 class ConllUReader:

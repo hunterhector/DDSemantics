@@ -13,6 +13,11 @@ from event.arguments.util import (batch_combine, to_torch)
 import event.arguments.prepare.event_vocab as vocab_util
 import math
 from event import torch_util
+from event.arguments.prepare.create_argument_training import (
+    hash_arg,
+    hash_context,
+    read_entity_features,
+)
 
 
 class ClozeSampler:
@@ -49,12 +54,13 @@ class ClozeSampler:
 
 
 class HashedClozeReader:
-    def __init__(self, resources, batch_size, multi_context=False,
-                 max_events=200, max_cloze=150, gpu=True):
+    def __init__(self, resources, batch_size, from_hashed=True,
+                 multi_context=False, max_events=200, max_cloze=150, gpu=True):
         """
         Reading the hashed dataset into cloze tasks.
         :param resources: Resources containing vocabulary and more.
         :param batch_size: Number of cloze tasks per batch.
+        :param from_hashed: Reading form hashed json file.
         :param multi_context: Whether to use multiple events as context.
         :param max_events: Number of events to keep per document.
         :param max_cloze: Max cloze to keep per document.
@@ -67,9 +73,10 @@ class HashedClozeReader:
         self.event_vocab = resources.event_vocab
         self.event_count = resources.term_freq
         self.pred_counts = resources.typed_count['predicate']
+        self.from_hashed = from_hashed
 
-        # self.lookups = resources.lookups
-        # self.oovs = resources.oovs
+        self.lookups = resources.lookups
+        self.oovs = resources.oovs
 
         self.event_inverted = self.__inverse_vocab(self.event_vocab)
 
@@ -232,6 +239,23 @@ class HashedClozeReader:
                     return False
         return True
 
+    def parse_hashed(self):
+        pass
+
+    def parse_origin(self):
+        pass
+
+    def collect_features(self, doc_info):
+        # Collect all features.
+        features_by_eid = {}
+        entity_heads = {}
+
+        for eid, content in doc_info['entities'].items():
+            features_by_eid[int(eid)] = content['features']
+            entity_heads[int(eid)] = content['entity_head']
+
+        return features_by_eid, entity_heads
+
     def parse_docs(self, data_in, from_line=None, until_line=None):
         linenum = 0
         for line in data_in:
@@ -245,12 +269,7 @@ class HashedClozeReader:
 
             doc_info = json.loads(line)
 
-            # Collect all features.
-            features_by_eid = {}
-            entity_heads = {}
-            for eid, content in doc_info['entities'].items():
-                features_by_eid[int(eid)] = content['features']
-                entity_heads[int(eid)] = content['entity_head']
+            features_by_eid, entity_heads = self.collect_features(doc_info)
 
             # Organize all the arguments.
             event_data = []
@@ -540,7 +559,6 @@ class HashedClozeReader:
 
             print(neg_instance)
 
-
             input(neg_instance)
 
             return neg_instance, wrong_id
@@ -577,110 +595,3 @@ class HashedClozeReader:
         return neg_instance, origin_id
 
 
-class EventReader:
-    def __init__(self):
-        self.target_roles = ['arg0', 'arg1', 'prep']
-        self.entity_info_fields = ['syntactic_role', 'mention_text',
-                                   'entity_id']
-        self.entity_equal_fields = ['entity_id', 'represent']
-
-        self.len_arg_fields = 4
-
-    def get_context(self, sentence, start, end, window_size=5):
-        right_tokens = sentence[end:].strip().split()
-        right_win = min(window_size, len(right_tokens))
-        right_context = right_tokens[:right_win]
-
-        left_tokens = sentence[:start].strip().split()
-        left_tokens.reverse()
-        left_win = min(window_size, len(left_tokens))
-
-        left_context = left_tokens[:left_win]
-        left_context.reverse()
-
-        return left_context, right_context
-
-    def read_events(self, data_in):
-        for line in data_in:
-            doc = json.loads(line)
-            docid = doc['docid']
-
-            events = []
-
-            eid_count = Counter()
-
-            entity_heads = {}
-
-            entities = {}
-
-            if 'entities' in doc:
-                for ent in doc['entities']:
-                    entity_heads[ent['entityId']] = ent['representEntityHead']
-
-                    entities[ent['entityId']] = {
-                        'features': ent['entityFeatures'],
-                        'representEntityHead': ent['representEntityHead'],
-                    }
-
-            for event_info in doc['events']:
-                sent = doc['sentences'][event_info['sentenceId']]
-
-                raw_context = self.get_context(
-                    sent,
-                    event_info['predicateStart'],
-                    event_info['predicateEnd'],
-                )
-
-                event = {
-                    'predicate': event_info['predicate'],
-                    'predicate_context': raw_context,
-                    # 'predicate_context': event_info['context'],
-                    'frame': event_info.get('frame', 'NA'),
-                    'arguments': [],
-                    'predicate_start': event_info['predicateStart'],
-                    'predicate_end': event_info['predicateEnd'],
-                }
-
-                events.append(event)
-
-                for arg_info in event_info['arguments']:
-                    if 'argStart' in arg_info:
-                        arg_context = self.get_context(
-                            sent, arg_info['argStart'], arg_info['argEnd']
-                        )
-                    else:
-                        left, right = arg_info['context'].split('___')
-                        arg_context = left.split(), right.split()
-
-                    if entity_heads:
-                        represent = entity_heads[arg_info['entityId']]
-                    else:
-                        represent = arg_info['representText']
-
-                    arg = {
-                        'dep': arg_info['dep'],
-                        'fe': arg_info['feName'],
-                        'arg_context': arg_context,
-                        'represent': represent,
-                        'entity_id': arg_info['entityId'],
-                        'resolvable': False,
-                        'arg_start': arg_info['argStart'],
-                        'arg_end': arg_info['argEnd'],
-                        'sentence_id': event_info['sentenceId']
-                    }
-
-                    eid_count[arg_info['entityId']] += 1
-                    event['arguments'].append(arg)
-
-            for event in events:
-                for arg in event['arguments']:
-                    if eid_count[arg['entity_id']] > 1:
-                        arg['resolvable'] = True
-
-            yield docid, events, entities
-
-    def _same_entity(self, ent1, ent2):
-        return any([ent1[f] == ent2[f] for f in self.entity_equal_fields])
-
-    def _entity_info(self, arg):
-        return dict([(k, arg[k]) for k in self.entity_info_fields])

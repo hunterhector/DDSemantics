@@ -355,8 +355,6 @@ if __name__ == '__main__':
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
         os.makedirs(basic_para.debug_dir)
 
-    # model.debug()
-
     model.train(
         basic_para.train_in,
         validation_size=basic_para.valid_in,

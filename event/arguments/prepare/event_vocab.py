@@ -79,8 +79,7 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
                     arg_text = get_word(text, 'argument', lookups, oovs)
 
                     if dep.startswith('prep'):
-                        dep = get_word(
-                            dep, 'preposition', lookups, oovs)
+                        dep = get_word(dep, 'preposition', lookups, oovs)
 
                     arg_role = make_arg(arg_text, dep)
 
