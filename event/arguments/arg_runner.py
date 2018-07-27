@@ -14,7 +14,7 @@ import sys
 
 from event.arguments.cloze_readers import HashedClozeReader
 
-from event.util import smart_open
+from smart_open import smart_open
 from event.arguments.resources import Resources
 import math
 import os
@@ -168,10 +168,10 @@ class ArgRunner(Configurable):
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False):
-        logging.info("Training with data [%s]", train_in)
+        logging.info("Training with data from [%s]", train_in)
 
         if validation_in:
-            logging.info("Validation with data [%s]", validation_in)
+            logging.info("Validation with data from [%s]", validation_in)
         elif validation_size:
             logging.info(
                 "Will use first few [%d] for validation." % validation_size)
@@ -215,69 +215,82 @@ class ArgRunner(Configurable):
 
         log_freq = 100
 
+        def data_gen(data_path):
+            if os.path.isdir(data_path):
+                for f in os.listdir(data_path):
+                    logging.info("Reading from {}".format(f))
+                    with smart_open(os.path.join(data_path, f)) as fin:
+                        for line in fin:
+                            yield line
+            else:
+                with smart_open(data_path) as fin:
+                    logging.info("Reading from {}".format(data_path))
+                    for line in fin:
+                        yield line
+
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
-            with smart_open(train_in) as train_data:
-                for batch_instance, batch_info in self.reader.read_cloze_batch(
-                        train_data, from_line=validation_size):
 
-                    loss = self._get_loss(batch_instance, batch_info)
-                    if not loss:
-                        self.__save_checkpoint({
-                            'epoch': epoch + 1,
-                            'state_dict': self.model.state_dict(),
-                            'best_loss': best_loss,
-                            'optimizer': optimizer.state_dict(),
-                        }, False)
+            for batch_instance, batch_info in self.reader.read_cloze_batch(
+                    data_gen(train_in), from_line=validation_size):
 
+                loss = self._get_loss(batch_instance, batch_info)
+                if not loss:
+                    self.__save_checkpoint({
+                        'epoch': epoch + 1,
+                        'state_dict': self.model.state_dict(),
+                        'best_loss': best_loss,
+                        'optimizer': optimizer.state_dict(),
+                    }, False)
 
-                        for name, weight in self.model.named_parameters():
-                            if name.startswith('event_to_var_layer'):
-                                print(name, weight)
+                    for name, weight in self.model.named_parameters():
+                        if name.startswith('event_to_var_layer'):
+                            print(name, weight)
 
-                        self.__dump_stuff('batch_instance', batch_instance)
-                        self.__dump_stuff('batch_info', batch_info)
+                    self.__dump_stuff('batch_instance', batch_instance)
+                    self.__dump_stuff('batch_info', batch_info)
 
-                        raise ValueError('Error in computing loss.')
+                    raise ValueError('Error in computing loss.')
 
-                    loss_val = loss.item()
-                    total_loss += loss_val
-                    recent_loss += loss_val
+                loss_val = loss.item()
+                total_loss += loss_val
+                recent_loss += loss_val
 
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-                    batch_count += 1
+                batch_count += 1
 
-                    if not batch_count % log_freq:
-                        logging.info(
-                            "Epoch {}, Batch {} ({} instances), "
-                            "recent avg. loss {}, overall avg. loss {:.5f}".
-                                format(epoch, batch_count,
-                                       batch_count * self.reader.batch_size,
-                                       recent_loss / log_freq,
-                                       total_loss / batch_count)
-                        )
+                if not batch_count % log_freq:
+                    logging.info(
+                        "Epoch {}, Batch {} ({} instances), "
+                        "recent avg. loss {}, overall avg. loss {:.5f}".
+                            format(epoch, batch_count,
+                                   batch_count * self.reader.batch_size,
+                                   recent_loss / log_freq,
+                                   total_loss / batch_count)
+                    )
 
-                        for name, weight in self.model.named_parameters():
-                            if name.startswith('event_to_var_layer'):
-                                print(name, weight)
+                    for name, weight in self.model.named_parameters():
+                        if name.startswith('event_to_var_layer'):
+                            print(name, weight)
 
-                        # input("----------")
+                    # input("----------")
 
-                        recent_loss = 0
+                    recent_loss = 0
 
             logging.info("Conducting validation.")
+
             dev_generator = None
+
             if validation_in:
-                with smart_open(validation_in) as dev_data:
-                    dev_generator = self.reader.read_cloze_batch(dev_data)
+                dev_generator = self.reader.read_cloze_batch(
+                    data_gen(validation_in))
 
             if validation_size:
-                with smart_open(train_in) as train_data:
-                    dev_generator = self.reader.read_cloze_batch(
-                        train_data, until_line=validation_size)
+                dev_generator = self.reader.read_dir(
+                    data_gen(train_in), until_line=validation_size)
 
             dev_loss = self.validation(dev_generator)
 
@@ -316,7 +329,7 @@ class ArgRunner(Configurable):
 
 if __name__ == '__main__':
     class Basic(Configurable):
-        train_in = Unicode(help='training data').tag(config=True)
+        train_in = Unicode(help='training data directory').tag(config=True)
         test_in = Unicode(help='testing data').tag(config=True)
         test_out = Unicode(help='test res').tag(config=True)
         valid_in = Unicode(help='validation in').tag(config=True)
@@ -357,7 +370,7 @@ if __name__ == '__main__':
 
     model.train(
         basic_para.train_in,
-        validation_size=basic_para.valid_in,
-        validation_in=basic_para.validation_size,
+        validation_size=basic_para.validation_size,
+        validation_in=basic_para.valid_in,
         resume=True
     )

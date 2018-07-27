@@ -37,10 +37,9 @@ c.Resources.word_vocab_path = os.path.join(
     base, 'embeddings/word_embeddings.voc')
 c.Resources.raw_lookup_path = os.path.join(base, 'vocab/')
 # Runner parameters
-c.Basic.train_in = os.path.join(base, 'hashed', 'hashed_shuffled_events.json')
+c.Basic.train_in = os.path.join(base, 'hashed')
 # c.Basic.train_until = 1946546
 c.Basic.validation_size = 64000
-# c.Basic.valid_in = os.path.join(base, 'hashed', 'hashed_events_dev.json')
 c.Basic.debug_dir = os.path.join(base, 'debug')
 c.Basic.model_name = 'basic'
 c.Basic.model_dir = os.path.join(base, 'models', c.Basic.model_name)

@@ -15,13 +15,6 @@ class OptionPerLineParser(argparse.ArgumentParser):
         return arg_line.split()
 
 
-def smart_open(path):
-    if path.endswith('.gz'):
-        return gzip.open(path)
-    else:
-        return open(path)
-
-
 def ensure_dir(p):
     parent = os.path.dirname(p)
     if not os.path.exists(parent):
@@ -69,4 +62,3 @@ tbl = dict.fromkeys(
 
 def remove_punctuation(text):
     return text.translate(tbl)
-

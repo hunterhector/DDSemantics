@@ -113,13 +113,13 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
     if arg is None:
         # Empty argument case.
         return {
-            'arg': -1,
-            'fe': -1,
-            'context': ([], []),
-            'entity_id': -1,
-            'resolvable': False,
-            'sentence_id': -1,
-            'dep': "",
+            # 'arg': -1,
+            # 'fe': -1,
+            # 'context': ([], []),
+            # 'entity_id': -1,
+            # 'resolvable': False,
+            # 'sentence_id': -1,
+            # 'dep': "",
         }
     else:
         dep, full_fe, content, source = arg
