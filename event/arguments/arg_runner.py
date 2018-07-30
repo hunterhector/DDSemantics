@@ -189,6 +189,7 @@ class ArgRunner(Configurable):
 
         start_epoch = 0
         batch_count = 0
+        instance_count = 0
         best_loss = math.inf
 
         if resume:
@@ -232,8 +233,10 @@ class ArgRunner(Configurable):
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
-            for batch_instance, batch_info in self.reader.read_cloze_batch(
+            for batch_data in self.reader.read_cloze_batch(
                     data_gen(train_in), from_line=validation_size):
+
+                batch_instance, batch_info, n_instance = batch_data
 
                 loss = self._get_loss(batch_instance, batch_info)
                 if not loss:
@@ -262,15 +265,15 @@ class ArgRunner(Configurable):
                 optimizer.step()
 
                 batch_count += 1
+                instance_count += n_instance
 
                 if not batch_count % log_freq:
                     logging.info(
                         "Epoch {}, Batch {} ({} instances), "
-                        "recent avg. loss {}, overall avg. loss {:.5f}".
-                            format(epoch, batch_count,
-                                   batch_count * self.reader.batch_size,
-                                   recent_loss / log_freq,
-                                   total_loss / batch_count)
+                        "recent avg. loss {}, overall avg. loss {:.5f}".format(
+                            epoch, batch_count, instance_count,
+                            recent_loss / log_freq,
+                            total_loss / batch_count)
                     )
 
                     for name, weight in self.model.named_parameters():

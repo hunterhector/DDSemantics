@@ -133,6 +133,8 @@ class HashedClozeReader:
         instance_data = defaultdict(dict)
         common_data = {}
 
+        sizes = {}
+
         for key, value in b_common_data.items():
             if key == 'context':
                 padded = self.__batch_pad(key, value, max_context_size)
@@ -145,6 +147,8 @@ class HashedClozeReader:
                 vectorized = to_torch(padded, self.__data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
 
+            sizes[key] = len(padded)
+
         for ins_type, ins_data in b_instance_data.items():
             for key, value in ins_data.items():
                 padded = self.__batch_pad(key, value, max_instance_size)
@@ -152,7 +156,14 @@ class HashedClozeReader:
                 instance_data[ins_type][key] = batch_combine(
                     vectorized, self.device
                 )
-        return instance_data, common_data
+                sizes[key] = len(padded)
+
+        b_size = sizes['context']
+
+        for key, s in sizes.items():
+            assert s == b_size
+
+        return instance_data, common_data, b_size
 
     def read_dir(self, data_in_dir, from_line=None, until_line=None):
         all_dirs = []
