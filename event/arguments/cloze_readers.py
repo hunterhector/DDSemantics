@@ -163,32 +163,29 @@ class HashedClozeReader:
     def read_cloze_batch(self, data_in, from_line=None, until_line=None):
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
+        batch_predicates = []
 
         max_context_size = 0
         max_instance_size = 0
         doc_count = 0
 
-        batch_predicates = []
-
-        def _yield():
-            global b_common_data, b_instance_data, max_context_size
-            global max_instance_size, doc_count, batch_predicates
-
-            # Merging cloze tasks to batch.
-            yield self.create_batch(b_common_data, b_instance_data,
-                                    max_context_size, max_instance_size)
+        def _clear():
+            # Clear batch data.
+            nonlocal b_common_data, b_instance_data, max_context_size
+            nonlocal max_instance_size, doc_count, batch_predicates
 
             # Reset counts.
             batch_predicates.clear()
-
             b_common_data.clear()
             b_instance_data.clear()
+
             doc_count = 0
             max_context_size = 0
             max_instance_size = 0
 
         for instance_data, common_data in self.parse_docs(
                 data_in, from_line, until_line):
+
             gold_event_data = instance_data['gold']
             predicate_text = []
             for gold_rep in gold_event_data['rep']:
@@ -208,9 +205,6 @@ class HashedClozeReader:
                     if len(value) > max_instance_size:
                         max_instance_size = len(value)
 
-            print(instance_data)
-            input('--------')
-
             for ins_type, ins_data in instance_data.items():
                 for key, value in ins_data.items():
                     b_instance_data[ins_type][key].append(value)
@@ -220,18 +214,22 @@ class HashedClozeReader:
             # Each document is a full instance since we do multiple product at
             # once.
             if doc_count == self.batch_size:
-                _yield()
+                yield self.create_batch(b_common_data, b_instance_data,
+                                        max_context_size, max_instance_size)
+                _clear()
 
         # Yield the remaining data.
-        _yield()
+        yield self.create_batch(b_common_data, b_instance_data,
+                                max_context_size, max_instance_size)
+        _clear()
 
     def _take_event_parts(self, event_info):
         event_components = [event_info['predicate'], event_info['frame']]
 
         for slot_name in self.slot_names:
-            slot = event_info['slots'][slot_name]
-            event_components.append(slot['fe'])
-            event_components.append(slot['arg'])
+            slot = event_info['args'][slot_name]
+            event_components.append(slot.get('fe', self.event_padding))
+            event_components.append(slot.get('arg_role', self.event_padding))
 
         return [c if c > 0 else self.event_padding for c in event_components]
 
@@ -264,6 +262,7 @@ class HashedClozeReader:
         return features_by_eid, entity_heads
 
     def parse_docs(self, data_in, from_line=None, until_line=None):
+
         linenum = 0
         for line in data_in:
             linenum += 1
@@ -280,8 +279,6 @@ class HashedClozeReader:
             # Organize all the arguments.
             event_data = []
 
-            # event_args = []
-
             entity_mentions = defaultdict(list)
             arg_entities = set()
             eid_count = Counter()
@@ -289,6 +286,9 @@ class HashedClozeReader:
             for evm_index, event in enumerate(doc_info['events']):
                 if evm_index == self.max_events:
                     break
+
+                event_data.append(event)
+                sentence_id = event.get('sentence_id', None)
 
                 arg_info = {}
                 for slot, arg in event['args'].items():
@@ -298,25 +298,12 @@ class HashedClozeReader:
                         # Argument for nth event, at slot position 'slot'.
                         eid = arg['entity_id']
 
-                        arg_info[slot] = {
-                            'entity_id': eid,
-                            'arg_role': arg['arg_role'],
-                            'fe': arg['fe'],
-                            'dep': arg['dep'],
-                            'text': arg['text'],
-                            'sentence_id': arg['sentence_id'],
-                        }
-
                         # From eid to entity information.
                         entity_mentions[eid].append(
-                            ((evm_index, slot), arg['sentence_id'])
+                            (evm_index, slot, sentence_id)
                         )
                         arg_entities.add((evm_index, eid, arg['text']))
                         eid_count[eid] += 1
-
-                event_data.append(
-                    self.get_event_info(doc_info, evm_index, arg_info)
-                )
 
             all_event_reps = [self._take_event_parts(e) for e in event_data]
             arg_entities = list(arg_entities)
@@ -343,89 +330,87 @@ class HashedClozeReader:
 
                 pred = event_info['predicate']
                 if pred == self.event_vocab[consts.unk_predicate]:
-                    # print("Skip unk pred")
                     continue
 
                 keep_pred = self.subsample_pred(pred)
 
                 if not keep_pred:
                     # Too frequent word will be ignore.
-                    # print("Skip", self.event_inverted[pred])
                     continue
 
-                for slot_index, slot in enumerate(self.slot_names):
-                    # arg = event['args'][slot]
-                    arg = event_info['slots'][slot]
+                # import pprint
+                # pp = pprint.PrettyPrinter(indent=2)
 
-                    correct_id = arg['eid']
+                current_sent = event_info['sentence_id']
+
+                for slot_index, slot in enumerate(self.slot_names):
+                    arg = event_info['args'][slot]
+
+                    correct_id = arg.get('entity_id', -1)
 
                     # Apparently, singleton and unks are not resolvable.
                     if correct_id < 0:
-                        # print("skip empty arg")
                         continue
 
                     if eid_count[correct_id] <= 1:
-                        # print("Skip singleton")
                         continue
 
                     if entity_heads[correct_id] == consts.unk_arg_word:
-                        # print("Skip unk arg")
                         continue
 
-                    current_sent = arg['sentence_id']
-
-                    cloze_event_indices.append(evm_index)
-                    cloze_slot_indices.append(slot_index)
-
-                    gold_rep = self._take_event_parts(event_info)
-                    gold_features = features_by_eid[correct_id]
-                    gold_distances = self.compute_distances(
-                        evm_index, entity_mentions, event_info,
-                        current_sent,
-                    )
-                    gold_event_data['rep'].append(gold_rep)
-                    gold_event_data['features'].append(gold_features)
-                    gold_event_data['distances'].append(gold_distances)
-
                     cross_sample = self.cross_cloze(
-                        event_data[evm_index]['slots'], arg_entities,
+                        event_data[evm_index]['args'], arg_entities,
                         evm_index, slot
                     )
 
                     if not cross_sample:
-                        # Simply discard the sample if there is no good cross
-                        #  cloze.
+                        continue
+
+                    inside_sample = self.inside_cloze(
+                        event_data[evm_index]['args'], slot
+                    )
+
+                    if not inside_sample:
                         continue
 
                     cross_args, cross_filler_id = cross_sample
-
-                    # TODO: Correct the following lines and merge into one function.
-                    cross_info = self.get_event_info(
+                    cross_info = self.update_arguments(
                         doc_info, evm_index, cross_args)
                     cross_rep = self._take_event_parts(cross_info)
-
                     cross_features = features_by_eid[cross_filler_id]
                     cross_distances = self.compute_distances(
                         evm_index, entity_mentions, cross_info, current_sent,
                     )
-                    cross_event_data['rep'].append(cross_rep)
-                    cross_event_data['features'].append(cross_features)
-                    cross_event_data['distances'].append(cross_distances)
 
-                    inside_sample = self.inside_cloze(
-                        event_data[evm_index]['slots'], slot
-                    )
                     inside_args, inside_filler_id = inside_sample
-                    inside_info = self.get_event_info(
+                    inside_info = self.update_arguments(
                         doc_info, evm_index, inside_args)
                     inside_rep = self._take_event_parts(inside_info)
                     inside_features = features_by_eid[inside_filler_id]
                     inside_distances = self.compute_distances(
                         evm_index, entity_mentions, inside_info, current_sent,
                     )
+
+                    gold_rep = self._take_event_parts(event_info)
+                    gold_features = features_by_eid[correct_id]
+                    gold_distances = self.compute_distances(
+                        evm_index, entity_mentions, event_info, current_sent,
+                    )
+
+                    cloze_event_indices.append(evm_index)
+                    cloze_slot_indices.append(slot_index)
+
+                    cross_event_data['rep'].append(cross_rep)
+                    cross_event_data['features'].append(cross_features)
+                    cross_event_data['distances'].append(cross_distances)
+
                     inside_event_data['rep'].append(inside_rep)
                     inside_event_data['features'].append(inside_features)
                     inside_event_data['distances'].append(inside_distances)
+
+                    gold_event_data['rep'].append(gold_rep)
+                    gold_event_data['features'].append(gold_features)
+                    gold_event_data['distances'].append(gold_distances)
 
             if len(cloze_slot_indices) == 0:
                 # This document do not contains training instance.
@@ -445,39 +430,23 @@ class HashedClozeReader:
 
             yield instance_data, common_data
 
-    def get_event_info(self, doc_info, evm_index, arguments):
+    def update_arguments(self, doc_info, evm_index, arguments):
         event = doc_info['events'][evm_index]
         full_info = {
             'predicate': event['predicate'],
             'frame': event['frame'],
-            'slots': {},
+            'args': {},
         }
 
-        pad = len(self.event_vocab)
-
-        # Set the
         for slot, arg_info in arguments.items():
-            event_arg = event['args'][slot]
-
             if not arg_info or arg_info['entity_id'] == -1:
-                # Empty slot.
-                arg_role = pad
-                eid = -1
+                full_info['args'][slot] = {}
             else:
-                # TODO arg_role need to be adjusted.
-                arg_role = arg_info['arg_role']
-                eid = arg_info['entity_id']
-
-            full_info['slots'][slot] = {
-                'arg': arg_role,
-                'fe': event_arg.get('fe', pad),
-                'context': event_arg.get('context', ''),
-                'eid': eid,
-                'sentence_id': event_arg.get('sentence_id', ''),
-                'dep': event_arg.get('dep', ''),
-                'text': event_arg.get('text', ''),
-            }
-
+                full_info['args'][slot] = {
+                    'arg_role': arg_info['arg_role'],
+                    'fe': arg_info['fe'],
+                    'entity_id': arg_info['entity_id'],
+                }
         return full_info
 
     def compute_distances(self, current_evm_id, entity_sents, event, sent_id):
@@ -497,8 +466,8 @@ class HashedClozeReader:
         # Arbitrarily use 1000 since most document is shorter than this.
         inf = 1000.0
 
-        for current_slot, event_info in event['slots'].items():
-            entity_id = event_info['eid']
+        for current_slot, slot_info in event['args'].items():
+            entity_id = slot_info.get('entity_id', -1)
 
             if entity_id == -1:
                 # This is an empty slot.
@@ -510,7 +479,7 @@ class HashedClozeReader:
             total_dist = 0.0
             total_pair = 0.0
 
-            for (evm_id, slot), sid in entity_sents[entity_id]:
+            for evm_id, slot, sid in entity_sents[entity_id]:
                 if evm_id == current_evm_id:
                     # Do not compute mentions at the same event.
                     continue
@@ -535,6 +504,24 @@ class HashedClozeReader:
         # Flatten the (argument x type) distances into a flat list.
         return [d for l in distances for d in l]
 
+    def replace_slot(self, instance, slot, new_eid, new_text, fe=None):
+        slot_info = instance[slot]
+
+        # Fall back from specific dep label.
+        dep = slot_info.get('dep', slot)
+
+        new_arg_role = hash_arg_role(
+            new_text, dep, self.event_vocab, self.oovs)
+
+        slot_info['arg_role'] = new_arg_role
+        slot_info['entity_id'] = new_eid
+        slot_info['text'] = new_text
+
+        if fe is not None:
+            slot_info['fe'] = fe
+
+        slot_info['context'] = slot_info.get('context', [[], []])
+
     def cross_cloze(self, args, arg_entities, target_evm_id, target_slot):
         """
         A negative cloze instance that use arguments from other events.
@@ -545,31 +532,29 @@ class HashedClozeReader:
         :return:
         """
         target_arg = args[target_slot]
-        target_eid = target_arg['eid']
+        target_eid = target_arg['entity_id']
 
         sample_res = self.sampler.sample_cross(
             arg_entities, target_evm_id, target_eid
         )
 
-        if sample_res:
-            wrong_evm, wrong_id, wrong_text = sample_res
-
-            neg_instance = {}
-            neg_instance.update(args)
-
-            dep = target_arg['dep']
-
-            arg_role = hash_arg_role(wrong_text, dep, self.event_vocab,
-                                     self.oovs)
-
-            neg_instance[target_slot]['eid'] = wrong_id
-            neg_instance[target_slot]['arg'] = arg_role
-            neg_instance[target_slot]['text'] = wrong_text
-
-            return neg_instance, wrong_id
-        else:
-            logging.warning("Cross cloze not generating item.")
+        if not sample_res:
             return None
+
+        wrong_evm, wrong_id, wrong_text = sample_res
+
+        # print("Sampled {}:{} from {} for slot {}".format(
+        #     wrong_id, wrong_text, wrong_evm, target_slot))
+
+        neg_instance = {}
+        for slot, content in args.items():
+            neg_instance[slot] = {}
+            neg_instance[slot].update(content)
+
+        # When taking entity from another slot, we don't take its FE,
+        # because the FE from another sentence will not make sense here.
+        self.replace_slot(neg_instance, target_slot, wrong_id, wrong_text)
+        return neg_instance, wrong_id
 
     def inside_cloze(self, origin_event_args, target_slot):
         """
@@ -579,29 +564,37 @@ class HashedClozeReader:
         :return:
         """
         neg_instance = {}
-        neg_instance.update(origin_event_args)
 
-        print(neg_instance)
+        for slot, content in origin_event_args.items():
+            neg_instance[slot] = {}
+            neg_instance[slot].update(content)
 
-        swapping_slot = self.sampler.sample_ignore_item(
+        swap_slot = self.sampler.sample_ignore_item(
             list(origin_event_args.keys()), target_slot
         )
-        if not swapping_slot:
+        if not swap_slot:
             logging.warning("Inside cloze not generating item.")
             return None
 
-        print(swapping_slot)
+        target_slot_info = origin_event_args[target_slot]
+        swap_slot_info = origin_event_args[swap_slot]
 
-        origin_id, origin_dep = origin_event_args[target_slot]
-        swap_id, swapping_dep = origin_event_args[swapping_slot]
+        # When swapping the two slots, we also swap the FEs
+        # this help us learn the correct slot for a FE.
+        if swap_slot_info:
+            self.replace_slot(
+                neg_instance, target_slot, swap_slot_info['entity_id'],
+                swap_slot_info['text'], swap_slot_info['fe'])
+        else:
+            neg_instance[target_slot] = {}
 
-        # Swap the two slots, this may create:
-        # 1. instance with slot argument swapped
-        # 2. instance with a frame moved to another empty slot
-        neg_instance[swapping_slot] = (origin_id, swapping_dep)
-        neg_instance[target_slot] = (swap_id, origin_dep)
+        if target_slot_info:
+            self.replace_slot(
+                neg_instance, swap_slot, target_slot_info['entity_id'],
+                target_slot_info['text'], target_slot_info['fe'])
+        else:
+            neg_instance[swap_slot] = {}
 
-        print(neg_instance)
-        input('check inside cloze')
+        # print("Swapping {} and {}".format(target_slot, swap_slot))
 
-        return neg_instance, origin_id
+        return neg_instance, target_slot_info['entity_id']

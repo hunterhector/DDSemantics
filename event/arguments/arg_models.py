@@ -190,10 +190,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print("variance size")
             print(variances.shape)
 
-        print(torch.min(raw_var))
-        print(torch.min(variances))
-        print(torch.min(- dist_sq / variances))
-        print('---------------')
+        # print(torch.min(raw_var))
+        # print(torch.min(variances))
+        # print(torch.min(- dist_sq / variances))
+        # input('---------------')
 
         kernel_value = torch.exp(- dist_sq / variances)
 

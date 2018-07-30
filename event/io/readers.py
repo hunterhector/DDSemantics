@@ -143,11 +143,11 @@ class EventReader:
                 event = {
                     'predicate': event_info['predicate'],
                     'predicate_context': raw_context,
-                    # 'predicate_context': event_info['context'],
                     'frame': event_info.get('frame', 'NA'),
                     'arguments': [],
                     'predicate_start': event_info['predicateStart'],
                     'predicate_end': event_info['predicateEnd'],
+                    'sentence_id': event_info['sentenceId'],
                 }
 
                 events.append(event)
@@ -175,7 +175,6 @@ class EventReader:
                         'resolvable': False,
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
-                        'sentence_id': event_info['sentenceId']
                     }
 
                     eid_count[arg_info['entityId']] += 1

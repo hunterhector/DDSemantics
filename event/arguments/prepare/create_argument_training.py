@@ -59,6 +59,7 @@ def get_arg_content(arg_info):
     for k, v in arg_info.items():
         if not (k == 'dep' or k == 'fe'):
             content[k] = v
+
     return content
 
 
@@ -113,13 +114,6 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
     if arg is None:
         # Empty argument case.
         return {
-            # 'arg': -1,
-            # 'fe': -1,
-            # 'context': ([], []),
-            # 'entity_id': -1,
-            # 'resolvable': False,
-            # 'sentence_id': -1,
-            # 'dep': "",
         }
     else:
         dep, full_fe, content, source = arg
@@ -149,7 +143,6 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
             'context': hashed_context,
             'entity_id': content['entity_id'],
             'resolvable': content['resolvable'],
-            'sentence_id': content['sentence_id'],
             'text': arg_text,
             'dep': dep,
         }
@@ -292,6 +285,7 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
             'predicate': pid,
             'frame': fid,
             'context': context,
+            'sentence_id': event['sentence_id'],
             'args': full_args,
         })
     return hashed_doc

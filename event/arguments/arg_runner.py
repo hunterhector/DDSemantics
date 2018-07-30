@@ -182,6 +182,7 @@ class ArgRunner(Configurable):
             logging.info("Model out directory is [%s]", model_out_dir)
             if not os.path.exists(model_out_dir):
                 os.makedirs(model_out_dir)
+
         self.model.train()
 
         optimizer = torch.optim.Adam(self.model.parameters())
@@ -275,8 +276,6 @@ class ArgRunner(Configurable):
                     for name, weight in self.model.named_parameters():
                         if name.startswith('event_to_var_layer'):
                             print(name, weight)
-
-                    # input("----------")
 
                     recent_loss = 0
 

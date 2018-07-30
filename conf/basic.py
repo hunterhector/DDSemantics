@@ -17,7 +17,7 @@ c.ModelPara.batch_size = 128
 c.ModelPara.loss = 'cross_entropy'
 c.ModelPara.vote_method = 'cosine'
 c.ModelPara.vote_pooling = 'kernel'
-c.ModelPara.encode_distance = 'gaussian'
+# c.ModelPara.encode_distance = 'gaussian'
 c.ModelPara.num_distance_features = 9
 
 # Resources
@@ -39,7 +39,7 @@ c.Resources.raw_lookup_path = os.path.join(base, 'vocab/')
 # Runner parameters
 c.Basic.train_in = os.path.join(base, 'hashed')
 # c.Basic.train_until = 1946546
-c.Basic.validation_size = 64000
+c.Basic.validation_size = 1
 c.Basic.debug_dir = os.path.join(base, 'debug')
 c.Basic.model_name = 'basic'
 c.Basic.model_dir = os.path.join(base, 'models', c.Basic.model_name)
