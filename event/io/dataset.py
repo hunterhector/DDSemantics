@@ -4,6 +4,15 @@ import logging
 import json
 from collections import defaultdict
 import re
+from traitlets.config import Configurable
+from event.arguments.params import ModelPara
+from event.arguments.arg_models import EventPairCompositionModel
+from traitlets import (
+    Unicode,
+    Integer,
+    Bool,
+)
+from traitlets.config.loader import PyFileConfigLoader
 
 
 class Span:
@@ -341,180 +350,191 @@ class DEDocument:
         return json.dumps(doc, indent=indent)
 
 
-def parse_ere(ere_file, doc):
-    root = ElementTree.parse(ere_file).getroot()
+class RichERE:
+    def __init__(self, params):
+        self.params = params
 
-    doc_info = root.attrib
+    def parse_ere(self, ere_file, doc):
+        root = ElementTree.parse(ere_file).getroot()
 
-    doc.set_id = doc_info['doc_id']
-    doc.set_doc_type = doc_info['source_type']
+        doc_info = root.attrib
 
-    for entity_node in root.find('entities'):
-        entity_ids = []
+        doc.set_id = doc_info['doc_id']
+        doc.set_doc_type = doc_info['source_type']
 
-        ent = doc.add_entity(entity_node.attrib['id'],
-                             entity_node.attrib['type'])
+        for entity_node in root.find('entities'):
+            entity_ids = []
 
-        for entity_mention in entity_node.findall('entity_mention'):
-            ent_info = entity_mention.attrib
-            entity_ids.append(ent_info['id'])
+            ent = doc.add_entity(entity_node.attrib['id'],
+                                 entity_node.attrib['type'])
 
-            entity_text = entity_mention.find('mention_text').text
+            for entity_mention in entity_node.findall('entity_mention'):
+                ent_info = entity_mention.attrib
+                entity_ids.append(ent_info['id'])
 
-            doc.add_entity_mention(
-                ent, ent_info['id'], ent_info['offset'], ent_info['length'],
-                text=entity_text,
-                noun_type=ent_info['noun_type'],
-                entity_type=ent_info.get('type', None),
-            )
+                entity_text = entity_mention.find('mention_text').text
 
-    for event_node in root.find('hoppers'):
-        evm_ids = []
+                doc.add_entity_mention(
+                    ent, ent_info['id'], ent_info['offset'], ent_info['length'],
+                    text=entity_text,
+                    noun_type=ent_info['noun_type'],
+                    entity_type=ent_info.get('type', None),
+                )
 
-        event = doc.add_hopper(event_node.attrib['id'])
+        for event_node in root.find('hoppers'):
+            evm_ids = []
 
-        for event_mention in event_node.findall('event_mention'):
-            evm_info = event_mention.attrib
-            evm_ids.append(evm_info['id'])
+            event = doc.add_hopper(event_node.attrib['id'])
 
-            trigger = event_mention.find('trigger')
-            trigger_text = trigger.text
-            offset = trigger.attrib['offset']
-            length = trigger.attrib['length']
+            for event_mention in event_node.findall('event_mention'):
+                evm_info = event_mention.attrib
+                evm_ids.append(evm_info['id'])
 
-            evm = doc.add_event_mention(
-                event, evm_info['id'], offset, length, text=trigger_text,
-                event_type=evm_info['type'] + '_' + evm_info['subtype'],
-                realis=evm_info['realis'],
-            )
-
-            for em_arg in event_mention.findall('em_arg'):
-                arg_info = em_arg.attrib
-
-                arg_ent_mention = None
-                if 'entity_mention_id' in arg_info:
-                    arg_ent_mention = arg_info['entity_mention_id']
-                if 'filler_id' in arg_info:
-                    arg_ent_mention = arg_info['filler_id']
-
-                role = arg_info['role']
-
-                evm.add_arg(role, arg_ent_mention)
-
-    for filler in root.find('fillers'):
-        filler_info = filler.attrib
-        doc.add_filler(filler_info['id'], filler_info['offset'],
-                       filler_info['length'], filler.text, filler_info['type'])
-
-    for relation_node in root.find('relations'):
-        relation_info = relation_node.attrib
-        relation = doc.add_relation(
-            relation_info['id'],
-            relation_type=relation_info['type'] + '_' + relation_info['subtype']
-        )
-
-        for rel_mention_node in relation_node.findall('relation_mention'):
-            rel_mention_id = rel_mention_node.attrib['id']
-            rel_realis = rel_mention_node.attrib['realis']
-
-            args = {}
-            for mention_part in rel_mention_node:
-                if mention_part.tag.startswith('rel_arg'):
-                    if 'entity_mention_id' in mention_part.attrib:
-                        ent_id = mention_part.attrib['entity_mention_id']
-                    else:
-                        ent_id = mention_part.attrib['filler_id']
-
-                    role = mention_part.attrib['role']
-                    args[role] = ent_id
-
-            trigger = rel_mention_node.find('trigger')
-            if trigger is not None:
+                trigger = event_mention.find('trigger')
                 trigger_text = trigger.text
-                trigger_begin = trigger.attrib['offset']
-                trigger_len = trigger.attrib['length']
-            else:
-                trigger_text = ''
-                trigger_begin = None
-                trigger_len = None
+                offset = trigger.attrib['offset']
+                length = trigger.attrib['length']
 
-            rel_mention = RelationMention(rel_mention_id, trigger_begin,
-                                          trigger_len, trigger_text, rel_realis)
-            for role, ent in args.items():
-                rel_mention.add_arg(role, ent)
+                evm = doc.add_event_mention(
+                    event, evm_info['id'], offset, length, text=trigger_text,
+                    event_type=evm_info['type'] + '_' + evm_info['subtype'],
+                    realis=evm_info['realis'],
+                )
 
-            relation.add_mention(rel_mention)
+                for em_arg in event_mention.findall('em_arg'):
+                    arg_info = em_arg.attrib
 
+                    arg_ent_mention = None
+                    if 'entity_mention_id' in arg_info:
+                        arg_ent_mention = arg_info['entity_mention_id']
+                    if 'filler_id' in arg_info:
+                        arg_ent_mention = arg_info['filler_id']
 
-def read_rich_ere(source_path, l_ere_path, ranges, ignore_quote=False):
-    with open(source_path) as source:
-        text = source.read()
-        doc = DEDocument(text, ranges, ignore_quote)
-        for ere_path in l_ere_path:
-            with open(ere_path) as ere:
-                logging.info("Processing: " + os.path.basename(ere_path))
-                parse_ere(ere, doc)
-                return doc
+                    role = arg_info['role']
 
+                    evm.add_arg(role, arg_ent_mention)
 
-def read_rich_ere_collection(source_dir, ere_dir, output_dir, src_ext,
-                             ere_ext, ere_split=False, ignore_quote=False):
-    sources = {}
-    eres = defaultdict(list)
-    annotate_ranges = defaultdict(list)
+        for filler in root.find('fillers'):
+            filler_info = filler.attrib
+            doc.add_filler(filler_info['id'], filler_info['offset'],
+                           filler_info['length'], filler.text,
+                           filler_info['type'])
 
-    for fn in os.listdir(ere_dir):
-        basename = fn.replace(ere_ext, '')
-        if ere_split:
-            parts = basename.split('_')
-            r = [int(p) for p in parts[-1].split('-')]
-            annotate_ranges[basename].append(r)
-            basename = '_'.join(parts[:-1])
+        for relation_node in root.find('relations'):
+            relation_info = relation_node.attrib
+            relation = doc.add_relation(
+                relation_info['id'],
+                relation_type=relation_info['type'] + '_' + relation_info[
+                    'subtype']
+            )
 
-        ere_fn = os.path.join(ere_dir, fn)
-        eres[basename].append(ere_fn)
+            for rel_mention_node in relation_node.findall('relation_mention'):
+                rel_mention_id = rel_mention_node.attrib['id']
+                rel_realis = rel_mention_node.attrib['realis']
 
-    for fn in os.listdir(source_dir):
-        txt_base = fn.replace(src_ext, '')
-        if txt_base in eres:
-            sources[txt_base] = os.path.join(source_dir, fn)
+                args = {}
+                for mention_part in rel_mention_node:
+                    if mention_part.tag.startswith('rel_arg'):
+                        if 'entity_mention_id' in mention_part.attrib:
+                            ent_id = mention_part.attrib['entity_mention_id']
+                        else:
+                            ent_id = mention_part.attrib['filler_id']
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+                        role = mention_part.attrib['role']
+                        args[role] = ent_id
 
-    for basename, source in sources.items():
-        l_ere = eres[basename]
-        ranges = annotate_ranges[basename]
-        doc = read_rich_ere(source, l_ere, ranges, ignore_quote)
-        with open(os.path.join(output_dir, basename + '.json'), 'w') as out:
-            out.write(doc.dump(indent=2))
+                trigger = rel_mention_node.find('trigger')
+                if trigger is not None:
+                    trigger_text = trigger.text
+                    trigger_begin = trigger.attrib['offset']
+                    trigger_len = trigger.attrib['length']
+                else:
+                    trigger_text = ''
+                    trigger_begin = None
+                    trigger_len = None
+
+                rel_mention = RelationMention(rel_mention_id, trigger_begin,
+                                              trigger_len, trigger_text,
+                                              rel_realis)
+                for role, ent in args.items():
+                    rel_mention.add_arg(role, ent)
+
+                relation.add_mention(rel_mention)
+
+    def read_rich_ere(self, source_path, l_ere_path, ranges):
+        with open(source_path) as source:
+            text = source.read()
+            doc = DEDocument(text, ranges, self.params.ignore_quote)
+            for ere_path in l_ere_path:
+                with open(ere_path) as ere:
+                    logging.info("Processing: " + os.path.basename(ere_path))
+                    self.parse_ere(ere, doc)
+                    return doc
+
+    def read_rich_ere_collection(self):
+        sources = {}
+        eres = defaultdict(list)
+        annotate_ranges = defaultdict(list)
+
+        for fn in os.listdir(self.params.ere):
+            basename = fn.replace(self.params.ere_ext, '')
+            if self.params.ere_split:
+                parts = basename.split('_')
+                r = [int(p) for p in parts[-1].split('-')]
+                annotate_ranges[basename].append(r)
+                basename = '_'.join(parts[:-1])
+
+            ere_fn = os.path.join(self.params.ere, fn)
+            eres[basename].append(ere_fn)
+
+        for fn in os.listdir(self.params.source):
+            txt_base = fn.replace(self.params.src_ext, '')
+            if txt_base in eres:
+                sources[txt_base] = os.path.join(self.params.source, fn)
+
+        if not os.path.exists(self.params.out_dir):
+            os.makedirs(self.params.out_dir)
+
+        for basename, source in sources.items():
+            l_ere = eres[basename]
+            ranges = annotate_ranges[basename]
+            doc = self.read_rich_ere(source, l_ere, ranges)
+            with open(os.path.join(
+                    self.params.out_dir, basename + '.json'), 'w') as out:
+                out.write(doc.dump(indent=2))
 
 
 if __name__ == '__main__':
+    from event.util import basic_console_log
+    from event.util import load_command_line_config
     import sys
-    import argparse
 
-    parser = argparse.ArgumentParser(description='Parse ERE into JSON.')
 
-    parser.add_argument('--source', action="store")
-    parser.add_argument('--ere', action="store")
-    parser.add_argument('--out', action="store")
-    parser.add_argument('--source_ext', default='.xml')
-    parser.add_argument('--target_ext', default='.rich_ere.xml')
-    parser.add_argument('--ere_split', action="store_true")
-    parser.add_argument('--ignore_quote', action="store_true")
+    class EreConf(Configurable):
+        source = Unicode(help='Plain source input directory').tag(config=True)
+        ere = Unicode(help='ERE input data').tag(config=True)
+        out_dir = Unicode(help='Output directory').tag(config=True)
+        src_ext = Unicode(help='Source file extension',
+                          default_value='.xml').tag(config=True)
+        ere_ext = Unicode(help='Ere file extension',
+                          default_value='.rich_ere.xml').tag(config=True)
+        ere_split = Bool(help='Whether split ere based on the file names').tag(
+            config=True)
+        ignore_quote = Bool(help='model name', default_value=False).tag(
+            config=True)
 
-    args = parser.parse_args()
 
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s] {%(filename)s:%(lineno)d} '
-               '%(levelname)s - %(message)s',
-        handlers=[stdout_handler]
-    )
+    class FrameNet(Configurable):
+        source = Unicode(help='Plain source input directory').tag(config=True)
 
-    read_rich_ere_collection(
-        args.source, args.ere, args.out, args.source_ext, args.target_ext,
-        args.ere_split, args.ignore_quote
-    )
+
+    basic_console_log()
+    data_format = sys.argv[1]
+    cl_conf = load_command_line_config(sys.argv[2:])
+
+    if data_format == 'rich_ere':
+        basic_para = EreConf(config=cl_conf)
+        parser = RichERE(basic_para)
+        parser.read_rich_ere_collection()
+    elif data_format == 'framenet':
+        basic_para = FrameNet(config=cl_conf)

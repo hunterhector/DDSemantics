@@ -49,6 +49,15 @@ def set_basic_log(log_level=logging.INFO):
     logging.basicConfig(level=log_level, format=log_format)
 
 
+def basic_console_log(log_level=logging.INFO):
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    ch = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+
+
 def load_command_line_config(args):
     cl_loader = KeyValueConfigLoader()
     return cl_loader.load_config(args)

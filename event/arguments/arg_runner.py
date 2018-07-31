@@ -342,16 +342,10 @@ if __name__ == '__main__':
         model_dir = Unicode(help='model directory').tag(config=True)
 
 
-    from event.util import set_basic_log
+    from event.util import basic_console_log
     from event.util import load_command_line_config
 
-    set_basic_log()
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    ch = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
+    basic_console_log()
 
     logging.info("Started the runner.")
 
