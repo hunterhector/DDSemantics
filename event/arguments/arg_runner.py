@@ -134,7 +134,9 @@ class ArgRunner(Configurable):
     def validation(self, generator):
         dev_loss = 0
         num_batches = 0
-        for batch_instance, batch_info in generator:
+
+        for batch_data in generator:
+            batch_instance, batch_info, n_instance = batch_data
             loss = self._get_loss(batch_instance, batch_info)
             if not loss:
                 raise ValueError('Error in computing loss.')
@@ -291,7 +293,7 @@ class ArgRunner(Configurable):
                     data_gen(validation_in))
 
             if validation_size:
-                dev_generator = self.reader.read_dir(
+                dev_generator = self.reader.read_cloze_batch(
                     data_gen(train_in), until_line=validation_size)
 
             dev_loss = self.validation(dev_generator)

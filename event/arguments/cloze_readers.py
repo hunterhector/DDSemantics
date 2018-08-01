@@ -165,12 +165,6 @@ class HashedClozeReader:
 
         return instance_data, common_data, b_size
 
-    def read_dir(self, data_in_dir, from_line=None, until_line=None):
-        all_dirs = []
-        for fname in os.listdir(data_in_dir):
-            with open(data_in_dir, fname) as fin:
-                all_dirs.append(fin)
-
     def read_cloze_batch(self, data_in, from_line=None, until_line=None):
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
