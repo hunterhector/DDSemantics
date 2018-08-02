@@ -134,6 +134,7 @@ class ArgRunner(Configurable):
     def validation(self, generator):
         dev_loss = 0
         num_batches = 0
+        num_instances = 0
 
         for batch_data in generator:
             batch_instance, batch_info, n_instance = batch_data
@@ -142,10 +143,12 @@ class ArgRunner(Configurable):
                 raise ValueError('Error in computing loss.')
             dev_loss += loss.item()
             num_batches += 1
+            num_instances += 1
 
-        logging.info("Validate with [%d] batches." % num_batches)
+        logging.info("Validate with [%d] batches, [%d] instances." % (
+            num_batches, num_instances))
 
-        return dev_loss
+        return dev_loss, num_batches, num_instances
 
     def debug(self):
         checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
@@ -296,7 +299,8 @@ class ArgRunner(Configurable):
                 dev_generator = self.reader.read_cloze_batch(
                     data_gen(train_in), until_line=validation_size)
 
-            dev_loss = self.validation(dev_generator)
+            dev_loss, num_dev_batches, num_instances = self.validation(
+                dev_generator)
 
             is_best = False
             if not best_loss or dev_loss < best_loss:
@@ -304,10 +308,10 @@ class ArgRunner(Configurable):
                 is_best = True
 
             logging.info(
-                "Finished epoch {epoch:d}, avg. training loss {loss:.4f}, "
+                "Finished epoch {epoch:d}, avg. loss {loss:.4f}, "
                 "validation loss {dev_loss:.4f}{best:s}".format(
                     epoch=epoch, loss=total_loss / batch_count,
-                    dev_loss=dev_loss / len(dev_instances),
+                    dev_loss=dev_loss / num_dev_batches,
                     best=', is current best.' if is_best else '.'
                 ))
 

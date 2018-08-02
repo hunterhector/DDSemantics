@@ -37,7 +37,7 @@ c.Resources.word_vocab_path = os.path.join(
     base, 'embeddings/word_embeddings.voc')
 c.Resources.raw_lookup_path = os.path.join(base, 'vocab/')
 # Runner parameters
-c.Basic.train_in = os.path.join(base, 'hashed')
+c.Basic.train_in = os.path.join(base, 'hashed/partaa.gz')
 # c.Basic.train_until = 1946546
 c.Basic.validation_size = 1
 c.Basic.debug_dir = os.path.join(base, 'debug')
