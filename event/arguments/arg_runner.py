@@ -215,8 +215,6 @@ class ArgRunner(Configurable):
         total_loss = 0
         recent_loss = 0
 
-        dev_instances = []
-
         previous_dev_loss = math.inf
         worse = 0
 
@@ -324,14 +322,16 @@ class ArgRunner(Configurable):
                     'best_loss': best_loss,
                     'optimizer': optimizer.state_dict(),
                 }, is_best)
-
             else:
                 worse += 1
                 if worse == self.para.early_stop_patience:
                     logging.info(
-                        "Dev loss increase from {pre:.4f} to {curr:.4f}, "
-                        "stop at Epoch {epoch:d}"
-                    ).format(pre=previous_dev_loss, curr=dev_loss, epoch=epoch)
+                        (
+                            "Dev loss increase from {pre:.4f} to {curr:.4f}, "
+                            "stop at Epoch {epoch:d}"
+                        ).format(pre=previous_dev_loss, curr=dev_loss,
+                                 epoch=epoch)
+                    )
                     break
 
 
