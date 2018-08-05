@@ -13,6 +13,9 @@ from traitlets import (
     Bool,
 )
 from traitlets.config.loader import PyFileConfigLoader
+import glob
+
+from collections import Counter
 
 
 class Span:
@@ -45,7 +48,7 @@ class Annotation:
         self.text = text
         self.anno_type = anno_type
 
-        if begin and length:
+        if begin is not None and length is not None:
             self.span = Span(int(begin), int(begin) + int(length))
         else:
             self.span = None
@@ -92,11 +95,11 @@ class Annotation:
         return data
 
 
-class EventMention(Annotation):
-    def __init__(self, eid, begin, length, text, event_type=None, realis=None):
-        super().__init__(eid, 'EventMention', text, begin, length)
+class Predicate(Annotation):
+    def __init__(self, eid, begin, length, text, frame_type=None, realis=None):
+        super().__init__(eid, 'Predicate', text, begin, length)
         self.arguments = {}
-        self.event_type = event_type
+        self.frame_type = frame_type
         self.realis = realis
 
     def add_arg(self, arg_type, ent):
@@ -105,7 +108,7 @@ class EventMention(Annotation):
     def to_json(self):
         data = super().to_json()
         more = {
-            'type': self.event_type,
+            'type': self.frame_type,
             'realis': self.realis,
             'arguments': {},
         }
@@ -117,7 +120,7 @@ class EventMention(Annotation):
         return data
 
 
-class EntityMention(Annotation):
+class Argument(Annotation):
     def __init__(self, eid, begin, length, text, noun_type=None,
                  entity_type=None):
         super().__init__(eid, 'EntityMention', text, begin, length)
@@ -224,9 +227,7 @@ class Relation:
 
 
 class DEDocument:
-    def __init__(self, text, ranges, ignore_quote=False):
-        # self.event_mentions = []
-        # self.entity_mentions = []
+    def __init__(self, text=None, ranges=None, ignore_quote=False):
         self.entities = []
         self.events = []
         self.fillers = []
@@ -234,6 +235,8 @@ class DEDocument:
         self.ranges = ranges
         self.text = text
         self.doc_type = None
+
+        self.indices = Counter()
 
         if ignore_quote:
             self.remove_quote()
@@ -294,44 +297,75 @@ class DEDocument:
     def set_text(self, text):
         self.text = text
 
-    def add_entity(self, eid, entity_type):
+    def add_entity(self, entity_type=None, eid=None):
+        if eid is None:
+            eid = 'ent-%d' % self.indices['entity']
+            self.indices['entity'] += 1
+
+        if entity_type is None:
+            entity_type = 'Entity'
+
         ent = Entity(eid, entity_type)
         self.entities.append(ent)
         return ent
 
-    def add_hopper(self, eid):
+    def add_hopper(self, eid=None):
+        if eid is None:
+            eid = 'h-%d' % self.indices['event']
+            self.indices['event'] += 1
+
         event = Event(eid)
         self.events.append(event)
         return event
 
-    def add_entity_mention(self, ent, eid, offset, length, text, noun_type=None,
-                           entity_type=None):
-        if not entity_type:
+    def add_entity_mention(self, ent, offset, length, text=None,
+                           eid=None, noun_type=None, entity_type=None):
+        if entity_type is None:
             entity_type = ent.object_type
 
-        em = EntityMention(eid, offset, length, text, noun_type, entity_type)
+        if not eid:
+            eid = 'em-%d' % self.indices['entity_mention']
+            self.indices['entity_mention'] += 1
+
+        em = Argument(eid, offset, length, text, noun_type, entity_type)
 
         em.fix_spaces(self.text)
 
+        is_valid = True
         if text:
-            if em.validate(self.text):
-                ent.add_mention(em)
-                return em
+            is_valid = em.validate(self.text)
 
-    def add_event_mention(self, hopper, eid, offset, length, text,
-                          event_type, realis):
+        if is_valid:
+            ent.add_mention(em)
+            return em
 
-        evm = EventMention(eid, offset, length, text, event_type, realis)
+    def add_predicate(self, hopper, offset, length, text=None,
+                      eid=None, frame_type=None, realis=None):
+        if eid is None:
+            eid = 'evm-%d' % self.indices['event_mention']
+            self.indices['event_mention'] += 1
+
+        evm = Predicate(eid, offset, length, text, frame_type, realis)
+
+        is_valid = True
         if text:
-            if evm.validate(self.text):
-                hopper.add_mention(evm)
-                return evm
+            is_valid = evm.validate(self.text)
 
-    def add_filler(self, eid, offset, length, text, filler_type=None):
+        if is_valid:
+            hopper.add_mention(evm)
+            return evm
+
+    def add_filler(self, offset, length, text, eid=None, filler_type=None):
+        if eid is None:
+            eid = 'em-%d' % self.indices['entity_mention']
+            self.indices['entity_mention'] += 1
+
         filler = Filler(eid, offset, length, text, filler_type)
         if text:
             if filler.validate(self.text):
                 self.fillers.append(filler)
+
+        return filler
 
     def add_relation(self, rid, relation_type=None):
         relation = Relation(rid, relation_type=relation_type)
@@ -341,8 +375,8 @@ class DEDocument:
     def dump(self, indent=None):
         doc = {
             'text': self.text,
-            'entities': [e.to_json() for e in self.entities],
             'events': [e.to_json() for e in self.events],
+            'entities': [e.to_json() for e in self.entities],
             'fillers': [e.to_json() for e in self.fillers],
             'relations': [e.to_json() for e in self.relations],
         }
@@ -365,8 +399,8 @@ class RichERE:
         for entity_node in root.find('entities'):
             entity_ids = []
 
-            ent = doc.add_entity(entity_node.attrib['id'],
-                                 entity_node.attrib['type'])
+            ent = doc.add_entity(entity_node.attrib['type'],
+                                 entity_node.attrib['id'])
 
             for entity_mention in entity_node.findall('entity_mention'):
                 ent_info = entity_mention.attrib
@@ -375,8 +409,8 @@ class RichERE:
                 entity_text = entity_mention.find('mention_text').text
 
                 doc.add_entity_mention(
-                    ent, ent_info['id'], ent_info['offset'], ent_info['length'],
-                    text=entity_text,
+                    ent, ent_info['offset'], ent_info['length'], entity_text,
+                    ent_info['id'],
                     noun_type=ent_info['noun_type'],
                     entity_type=ent_info.get('type', None),
                 )
@@ -395,11 +429,10 @@ class RichERE:
                 offset = trigger.attrib['offset']
                 length = trigger.attrib['length']
 
-                evm = doc.add_event_mention(
-                    event, evm_info['id'], offset, length, text=trigger_text,
-                    event_type=evm_info['type'] + '_' + evm_info['subtype'],
-                    realis=evm_info['realis'],
-                )
+                evm = doc.add_predicate(
+                    event, offset, length, trigger_text, eid=evm_info['id'],
+                    frame_type=evm_info['type'] + '_' + evm_info['subtype'],
+                    realis=evm_info['realis'])
 
                 for em_arg in event_mention.findall('em_arg'):
                     arg_info = em_arg.attrib
@@ -416,9 +449,9 @@ class RichERE:
 
         for filler in root.find('fillers'):
             filler_info = filler.attrib
-            doc.add_filler(filler_info['id'], filler_info['offset'],
-                           filler_info['length'], filler.text,
-                           filler_info['type'])
+            doc.add_filler(
+                filler_info['offset'], filler_info['length'], filler.text,
+                eid=filler_info['id'], filler_type=filler_info['type'])
 
         for relation_node in root.find('relations'):
             relation_info = relation_node.attrib
@@ -504,6 +537,110 @@ class RichERE:
                 out.write(doc.dump(indent=2))
 
 
+class FrameNet:
+    def __init__(self, params):
+        self.params = params
+        self.ns = {
+            'icsi': 'http://framenet.icsi.berkeley.edu',
+        }
+
+    def parse_full_text(self, full_text_file, doc):
+        print(full_text_file)
+
+        root = ElementTree.parse(full_text_file).getroot()
+
+        header = root.find('icsi:header', self.ns)
+
+        corpus = header.find('icsi:corpus', self.ns).attrib['name']
+
+        full_text = ''
+        offset = 0
+
+        annotations = []
+
+        for sent in root.findall('icsi:sentence', self.ns):
+            sent_text = sent.find('icsi:text', self.ns).text
+
+            full_text += sent_text
+            full_text += '\n'
+
+            for anno_set in sent.findall('icsi:annotationSet', self.ns):
+                targets = []
+                fes = []
+
+                if not 'frameName' in anno_set.attrib:
+                    continue
+
+                frame_name = anno_set.attrib['frameName']
+
+                for layer in anno_set.findall('icsi:layer', self.ns):
+                    layer_type = layer.attrib['name']
+
+                    if layer_type == 'Target':
+                        label = layer.find('icsi:label', self.ns)
+
+                        if label is not None:
+                            s = int(label.attrib['start'])
+                            e = int(label.attrib['end']) + 1
+                            text = sent_text[s: e]
+                            targets.append((s + offset, e + offset, text))
+                    elif layer_type == 'FE':
+                        for label in layer.findall('icsi:label', self.ns):
+                            label_name = label.attrib['name']
+
+                            if 'itype' in label.attrib:
+                                # Null instantiation.
+                                pass
+                            else:
+                                s = int(label.attrib['start'])
+                                e = int(label.attrib['end']) + 1
+                                text = sent_text[s: e]
+                                fes.append(
+                                    (s + offset, e + offset, text, label_name)
+                                )
+
+                if targets:
+                    max_len = 0
+                    target = None
+                    for i, (s, e, text) in enumerate(targets):
+                        if e - s > max_len:
+                            max_len = e - s
+                            target = s, e, text
+
+                    annotations.append((frame_name, target, fes))
+
+            offset = len(full_text)
+
+        doc.set_text(full_text)
+
+        for frame_name, target, fes in annotations:
+            ev = doc.add_hopper()
+            target_start, target_end, text = target
+            evm = doc.add_predicate(
+                ev, target_start, target_end - target_start, text=text,
+                frame_type=frame_name)
+
+            for start, end, fe_text, role in fes:
+                filler = doc.add_filler(start, end - start, fe_text)
+                evm.add_arg(role, filler.aid)
+
+        return doc
+
+    def read_fn_data(self):
+        full_text_dir = os.path.join(self.params.fn_path, 'fulltext')
+
+        doc = DEDocument()
+
+        for full_text_path in glob.glob(full_text_dir + '/*.xml'):
+            self.parse_full_text(full_text_path, doc)
+
+            basename = os.path.basename(full_text_path).replace(".xml", '')
+
+            with open(os.path.join(
+                    self.params.out_dir, basename + '.json'), 'w') as out:
+                out.write(doc.dump(indent=2))
+
+
 if __name__ == '__main__':
     from event.util import basic_console_log
     from event.util import load_command_line_config
@@ -524,8 +661,13 @@ if __name__ == '__main__':
             config=True)
 
 
-    class FrameNet(Configurable):
-        source = Unicode(help='Plain source input directory').tag(config=True)
+    class FrameNetConf(Configurable):
+        fn_path = Unicode(help='FrameNet dataset path.').tag(config=True)
+        out_dir = Unicode(help='Output directory').tag(config=True)
+
+
+    class ConllConf(Configurable):
+        source = Unicode(help='Conll file input directory').tag(config=True)
 
 
     basic_console_log()
@@ -537,4 +679,8 @@ if __name__ == '__main__':
         parser = RichERE(basic_para)
         parser.read_rich_ere_collection()
     elif data_format == 'framenet':
-        basic_para = FrameNet(config=cl_conf)
+        basic_para = FrameNetConf(config=cl_conf)
+        parser = FrameNet(basic_para)
+        parser.read_fn_data()
+    elif data_format == 'conll':
+        basic_para = ConllConf(config=cl_conf)
