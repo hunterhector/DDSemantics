@@ -39,7 +39,7 @@ class Span:
         return hash((self.begin, self.end))
 
     def __str__(self):
-        return '%d:%d' % (self.begin, self.end)
+        return '[Span] %d:%d' % (self.begin, self.end)
 
 
 class Annotation:
@@ -53,13 +53,13 @@ class Annotation:
         else:
             self.span = None
 
-    def validate(self, source_text):
-        source_anno = source_text[
-                      self.span.begin: self.span.end].replace('\n', ' ')
+    def validate(self, doc_text):
+        source_anno = doc_text[self.span.begin: self.span.end
+                      ].replace('\n', ' ')
         if not source_anno == self.text:
             logging.warning(
-                "Invalid mention at [%s] because not match between source "
-                "[%s] and target [%s]" % (self.span, self.text, source_anno))
+                "Non-matching mention at [%s] between doc [%s] and "
+                "specified [%s]" % (self.span, source_anno, self.text))
             return False
         return True
 
@@ -120,7 +120,7 @@ class Predicate(Annotation):
         return data
 
 
-class Argument(Annotation):
+class EntityMention(Annotation):
     def __init__(self, eid, begin, length, text, noun_type=None,
                  entity_type=None):
         super().__init__(eid, 'EntityMention', text, begin, length)
@@ -233,7 +233,7 @@ class DEDocument:
         self.fillers = []
         self.relations = []
         self.ranges = ranges
-        self.text = text
+        self.doc_text = text
         self.doc_type = None
 
         self.indices = Counter()
@@ -245,24 +245,24 @@ class DEDocument:
         lqs = []
         lqe = []
 
-        origin_len = len(self.text)
+        origin_len = len(self.doc_text)
 
-        for stuff in re.finditer(r'<quote', self.text):
+        for stuff in re.finditer(r'<quote', self.doc_text):
             lqs.append((stuff.start(), stuff.end()))
 
-        for stuff in re.finditer(r'</quote>', self.text):
+        for stuff in re.finditer(r'</quote>', self.doc_text):
             lqe.append((stuff.start(), stuff.end()))
 
         if len(lqs) == len(lqe):
             quoted = zip([e for s, e in lqs], [s for s, e in lqe])
             for s, e in quoted:
-                self.text = self.text[:s] + '>' + '_' * (e - s - 1) \
-                            + self.text[e:]
+                self.doc_text = self.doc_text[:s] + '>' + '_' * (e - s - 1) \
+                                + self.doc_text[e:]
         else:
             logging.warning("Unbalanced quoted region.")
             input('Checking.')
 
-        new_len = len(self.text)
+        new_len = len(self.doc_text)
 
         assert origin_len == new_len
 
@@ -295,7 +295,7 @@ class DEDocument:
         self.doc_type = doc_type
 
     def set_text(self, text):
-        self.text = text
+        self.doc_text = text
 
     def add_entity(self, entity_type=None, eid=None):
         if eid is None:
@@ -327,13 +327,13 @@ class DEDocument:
             eid = 'em-%d' % self.indices['entity_mention']
             self.indices['entity_mention'] += 1
 
-        em = Argument(eid, offset, length, text, noun_type, entity_type)
+        em = EntityMention(eid, offset, length, text, noun_type, entity_type)
 
-        em.fix_spaces(self.text)
+        em.fix_spaces(self.doc_text)
 
         is_valid = True
-        if text:
-            is_valid = em.validate(self.text)
+        if text and self.doc_text:
+            is_valid = em.validate(self.doc_text)
 
         if is_valid:
             ent.add_mention(em)
@@ -349,7 +349,7 @@ class DEDocument:
 
         is_valid = True
         if text:
-            is_valid = evm.validate(self.text)
+            is_valid = evm.validate(self.doc_text)
 
         if is_valid:
             hopper.add_mention(evm)
@@ -361,8 +361,9 @@ class DEDocument:
             self.indices['entity_mention'] += 1
 
         filler = Filler(eid, offset, length, text, filler_type)
+
         if text:
-            if filler.validate(self.text):
+            if filler.validate(self.doc_text):
                 self.fillers.append(filler)
 
         return filler
@@ -374,7 +375,7 @@ class DEDocument:
 
     def dump(self, indent=None):
         doc = {
-            'text': self.text,
+            'text': self.doc_text,
             'events': [e.to_json() for e in self.events],
             'entities': [e.to_json() for e in self.entities],
             'fillers': [e.to_json() for e in self.fillers],
@@ -641,6 +642,112 @@ class FrameNet:
                 out.write(doc.dump(indent=2))
 
 
+class Conll:
+    def __init__(self, params):
+        self.params = params
+
+    def parse_conll_data(self, conll_in):
+        text = ''
+        offset = 0
+
+        arg_text = []
+        sent_predicates = []
+        sent_args = defaultdict(list)
+        doc = DEDocument()
+
+        props = []
+
+        for line in conll_in:
+            parts = line.strip().split()
+            if len(parts) < 8:
+                text += '\n\n'
+                offset += 2
+
+                for index, predicate in enumerate(sent_predicates):
+                    arg_content = sent_args[index]
+                    props.append((predicate, arg_content))
+
+                sent_predicates.clear()
+                sent_args.clear()
+                arg_text.clear()
+
+                continue
+
+            fname, _, index, token, pos, parse, lemma, sense = parts[:8]
+            pb_annos = parts[8:]
+
+            if len(arg_text) == 0:
+                arg_text = [None] * len(pb_annos)
+
+            domain = fname.split('/')[1]
+
+            start = offset
+            end = start + len(token)
+
+            text += token + ' '
+            offset += len(token) + 1
+
+            for index, t in enumerate(arg_text):
+                if t:
+                    arg_text[index] += ' ' + token
+
+            if not sense == '-':
+                sent_predicates.append((start, end, token))
+
+            for index, anno in enumerate(pb_annos):
+                if anno == '(V*)':
+                    continue
+
+                if anno.startswith('('):
+                    role = anno.strip('(').strip(')').strip('*')
+                    sent_args[index].append([role, start])
+
+                    arg_text[index] = token
+                if anno.endswith(')'):
+                    sent_args[index][-1].append(end)
+                    sent_args[index][-1].append(arg_text[index])
+                    arg_text[index] = ''
+
+        doc.set_text(text)
+
+        for (p_start, p_end, p_token), args in props:
+            hopper = doc.add_hopper()
+
+            pred = doc.add_predicate(
+                hopper, p_start, p_end - p_start, p_token)
+
+            for role, arg_start, arg_end, arg_text in args:
+                filler = doc.add_filler(
+                    arg_start, arg_end - arg_start, arg_text)
+
+                pred.add_arg(role, filler.aid)
+
+        return doc
+
+    def read_pb_release(self):
+        for dirname in os.listdir(self.params.in_dir):
+            full_dir = os.path.join(self.params.in_dir, dirname)
+            for root, dirs, files in os.walk(full_dir):
+                for f in files:
+                    if not f.endswith('gold_conll'):
+                        continue
+
+                    full_path = os.path.join(root, f)
+
+                    out_dir = os.path.join(self.params.out_dir, dirname)
+
+                    if not os.path.exists(out_dir):
+                        os.makedirs(out_dir)
+
+                    out_path = os.path.join(
+                        out_dir, f.replace('gold_conll', 'json'))
+
+                    with open(full_path) as conll_in, \
+                            open(out_path, 'w') as out:
+                        doc = self.parse_conll_data(conll_in)
+                        out.write(doc.dump(indent=2))
+
+
 if __name__ == '__main__':
     from event.util import basic_console_log
     from event.util import load_command_line_config
@@ -667,7 +774,8 @@ if __name__ == '__main__':
 
 
     class ConllConf(Configurable):
-        source = Unicode(help='Conll file input directory').tag(config=True)
+        in_dir = Unicode(help='Conll file input directory').tag(config=True)
+        out_dir = Unicode(help='Output directory').tag(config=True)
 
 
     basic_console_log()
@@ -684,3 +792,5 @@ if __name__ == '__main__':
         parser.read_fn_data()
     elif data_format == 'conll':
         basic_para = ConllConf(config=cl_conf)
+        parser = Conll(basic_para)
+        parser.read_pb_release()
