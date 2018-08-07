@@ -10,7 +10,7 @@ from event.arguments.prepare.event_vocab import load_vocab
 from collections import Counter
 
 
-class Resources(Configurable):
+class ImplicitArgResources(Configurable):
     """
     Resource class.
     """
@@ -23,7 +23,7 @@ class Resources(Configurable):
     raw_lookup_path = Unicode(help='Raw Lookup Vocab.').tag(config=True)
 
     def __init__(self, **kwargs):
-        super(Resources, self).__init__(**kwargs)
+        super(ImplicitArgResources, self).__init__(**kwargs)
         self.event_embedding = np.load(self.event_embedding_path)
         self.word_embedding = np.load(self.word_embedding_path)
 
@@ -53,3 +53,4 @@ class Resources(Configurable):
                 index += 1
 
         return vocab, tf, typed_counts
+

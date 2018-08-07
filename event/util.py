@@ -6,6 +6,7 @@ import unicodedata
 import sys
 
 from traitlets.config.loader import KeyValueConfigLoader
+from traitlets.config.loader import PyFileConfigLoader
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -61,6 +62,13 @@ def basic_console_log(log_level=logging.INFO):
 def load_command_line_config(args):
     cl_loader = KeyValueConfigLoader()
     return cl_loader.load_config(args)
+
+
+def load_all_config(args):
+    cl_conf = load_command_line_config(args[2:])
+    conf = PyFileConfigLoader(args[1]).load_config()
+    conf.merge(cl_conf)
+    return conf
 
 
 tbl = dict.fromkeys(

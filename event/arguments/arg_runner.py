@@ -1,5 +1,5 @@
 from traitlets.config import Configurable
-from event.arguments.params import ModelPara
+from event.arguments.impicit_arg_params import ArgModelPara
 from event.arguments.arg_models import EventPairCompositionModel
 from traitlets import (
     Unicode,
@@ -15,7 +15,7 @@ import sys
 from event.arguments.cloze_readers import HashedClozeReader
 
 from smart_open import smart_open
-from event.arguments.resources import Resources
+from event.arguments.implicit_arg_resources import ImplicitArgResources
 import math
 import os
 from event import torch_util
@@ -28,8 +28,8 @@ class ArgRunner(Configurable):
     def __init__(self, **kwargs):
         super(ArgRunner, self).__init__(**kwargs)
 
-        self.para = ModelPara(**kwargs)
-        self.resources = Resources(**kwargs)
+        self.para = ArgModelPara(**kwargs)
+        self.resources = ImplicitArgResources(**kwargs)
 
         self.model_dir = kwargs['model_dir']
         self.debug_dir = kwargs['debug_dir']
@@ -349,19 +349,16 @@ if __name__ == '__main__':
 
 
     from event.util import basic_console_log
-    from event.util import load_command_line_config
+    from event.util import load_all_config
 
     basic_console_log()
 
     logging.info("Started the runner.")
 
-    cl_conf = load_command_line_config(sys.argv[2:])
-    conf = PyFileConfigLoader(sys.argv[1]).load_config()
-    conf.merge(cl_conf)
-
+    conf = load_all_config(sys.argv)
     basic_para = Basic(config=conf)
 
-    model = ArgRunner(
+    runner = ArgRunner(
         config=conf,
         model_dir=basic_para.model_dir,
         debug_dir=basic_para.debug_dir
@@ -370,7 +367,7 @@ if __name__ == '__main__':
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
         os.makedirs(basic_para.debug_dir)
 
-    model.train(
+    runner.train(
         basic_para.train_in,
         validation_size=basic_para.validation_size,
         validation_in=basic_para.valid_in,

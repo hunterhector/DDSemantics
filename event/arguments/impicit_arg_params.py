@@ -7,7 +7,7 @@ from traitlets import (
 )
 
 
-class ModelPara(Configurable):
+class ArgModelPara(Configurable):
     # Basic configs.
     use_gpu = Bool(help='Whether to use gpu.', default_value=True).tag(
         config=True)

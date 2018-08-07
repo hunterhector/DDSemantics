@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 import re
 from traitlets.config import Configurable
-from event.arguments.params import ModelPara
+from event.arguments.impicit_arg_params import ArgModelPara
 from event.arguments.arg_models import EventPairCompositionModel
 from traitlets import (
     Unicode,
@@ -660,8 +660,8 @@ class Conll:
         for line in conll_in:
             parts = line.strip().split()
             if len(parts) < 8:
-                text += '\n\n'
-                offset += 2
+                text += '\n'
+                offset += 1
 
                 for index, predicate in enumerate(sent_predicates):
                     arg_content = sent_args[index]
@@ -701,7 +701,6 @@ class Conll:
                 if anno.startswith('('):
                     role = anno.strip('(').strip(')').strip('*')
                     sent_args[index].append([role, start])
-
                     arg_text[index] = token
                 if anno.endswith(')'):
                     sent_args[index][-1].append(end)
@@ -716,11 +715,12 @@ class Conll:
             pred = doc.add_predicate(
                 hopper, p_start, p_end - p_start, p_token)
 
-            for role, arg_start, arg_end, arg_text in args:
-                filler = doc.add_filler(
-                    arg_start, arg_end - arg_start, arg_text)
+            if pred is not None:
+                for role, arg_start, arg_end, arg_text in args:
+                    filler = doc.add_filler(
+                        arg_start, arg_end - arg_start, arg_text)
 
-                pred.add_arg(role, filler.aid)
+                    pred.add_arg(role, filler.aid)
 
         return doc
 
@@ -742,9 +742,11 @@ class Conll:
                     out_path = os.path.join(
                         out_dir, f.replace('gold_conll', 'json'))
 
+                    doc = self.parse_conll_data(conll_in)
+                    
                     with open(full_path) as conll_in, \
                             open(out_path, 'w') as out:
-                        doc = self.parse_conll_data(conll_in)
+
                         out.write(doc.dump(indent=2))
 
 
