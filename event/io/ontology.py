@@ -48,7 +48,7 @@ class OntologyLoader:
         self.g.load(ontology_file, format='ttl')
 
         self.ldc_ont = 'ldcOnt'
-        self.aida_common = 'aidaCommon'
+        self.aida_common = 'aidaDomainCommon'
         self.rdf = 'rdf'
         self.rdfs = 'rdfs'
         self.owl = 'owl'
@@ -59,10 +59,12 @@ class OntologyLoader:
             self.namespaces[prefix] = Namespace(ns)
 
         self.prefixes = {}
+
         self.event_onto = {}
+        self.relation_onto = {}
+
         self.entity_types = set()
         self.filler_types = set()
-        self.relation_types = set()
         self.labels = {}
         self.__load()
 
@@ -143,11 +145,6 @@ class OntologyLoader:
                 self.namespaces[self.ldc_ont].FillerType):
             self.filler_types.add(subj)
 
-        # Load relation types.
-        for subj in self.__find_subclassof(
-                self.namespaces[self.aida_common].RelationType):
-            self.relation_types.add(subj)
-
         # Load event types.
         for evm_type in self.__find_subclassof(
                 self.namespaces[self.aida_common].EventType):
@@ -178,6 +175,38 @@ class OntologyLoader:
                     arg_type, self.namespaces[self.rdfs].label, None
             )):
                 self.event_onto[evm_type]['args'][arg_type][
+                    'label'] = label
+
+        # Load relation types.
+        for relation_type in self.__find_subclassof(
+                self.namespaces[self.aida_common].RelationType):
+            if relation_type not in self.relation_onto:
+                self.relation_onto[relation_type] = {'args': {}}
+
+        arg_relations = {}
+        # Load relation arguments.
+        for arg_type in self.__find_subclassof(
+                self.namespaces[self.aida_common].RelationArgumentType
+        ):
+            for _, _, relation_type in self.g.triples(
+                    (arg_type, self.namespaces[self.rdfs].domain, None)):
+                self.relation_onto[relation_type]['args'][arg_type] = {}
+                arg_relations[arg_type] = relation_type
+
+        for arg_type, relation_type in arg_relations.items():
+            for _, _, restrictions in self.g.triples((
+                    arg_type, self.namespaces[self.schema].rangeIncludes, None
+            )):
+                self.relation_onto[relation_type]['args'][arg_type][
+                    'restrictions'] = set()
+                restrictions = self.__get_arg_range(arg_type)
+                self.relation_onto[relation_type]['args'][arg_type][
+                    'restrictions'].update(restrictions)
+
+            for _, _, label in self.g.triples((
+                    arg_type, self.namespaces[self.rdfs].label, None
+            )):
+                self.relation_onto[relation_type]['args'][arg_type][
                     'label'] = label
 
         # Load labels.
@@ -227,9 +256,25 @@ class OntologyLoader:
             out.write('\n')
 
             out.write('#Relation\n')
-            for full_type in self.relation_types:
-                _, _, filler_type = self.shorten(full_type)
-                out.write(filler_type + '\n')
+            for full_type, relation_info in self.relation_onto.items():
+                _, _, relation_type = self.shorten(full_type)
+                restricts = {}
+
+                for full_arg_name, arg_info in relation_info['args'].items():
+                    _, _, arg_name = self.shorten(full_arg_name)
+                    restricts[arg_name] = []
+
+                    for restrict in arg_info['restrictions']:
+                        _, _, ent_name = self.shorten(restrict)
+                        restricts[arg_name].append(ent_name)
+
+                for restrict_arg, l_restrict_ent in restricts.items():
+                    out.write(
+                        '%s\t%s\t%s\t' % (
+                            relation_type, restrict_arg, ' '.join(l_restrict_ent)
+                        )
+                    )
+                    out.write('\n')
             out.write('\n')
 
     def as_brat_conf(self, conf_path, visual_path=None):
@@ -254,7 +299,7 @@ class OntologyLoader:
             grouped_evm_types[prefix].append((short, full_type))
 
         short_relation_types = []
-        for full_type in self.relation_types:
+        for full_type in self.relation_onto.keys():
             prefix, ns, short = self.shorten(full_type)
             short_relation_types.append(short)
 
@@ -341,8 +386,14 @@ if __name__ == '__main__':
     from event import util
 
     util.set_basic_log()
-    loader = OntologyLoader('https://raw.githubusercontent.com/isi-vista'
-                            '/gaia-interchange/master/src/main/resources'
-                            '/edu/isi/gaia/seedling-ontology.ttl')
+
+    # ontology_path = 'https://raw.githubusercontent.com/isi-vista' \
+    #                 '/gaia-interchange/master/src/main/resources' \
+    #                 '/edu/isi/gaia/seedling-ontology.ttl'
+
+    ontology_path = "https://tac.nist.gov/tracks/SM-KBP/2018/" \
+                    "ontologies/SeedlingOntology"
+
+    loader = OntologyLoader(ontology_path)
     loader.as_brat_conf('annotation.conf', 'visual.conf')
     loader.as_text('temp.txt')
