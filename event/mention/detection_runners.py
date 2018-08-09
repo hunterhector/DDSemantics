@@ -32,34 +32,11 @@ class DetectionRunner:
     def predict(self, test_reader, csr):
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
-            event_types = self.model.predict(data)
-
+            # event_types = self.model.predict(data)
             center = int(len(l_word_meta) / 2)
-
             token, span = l_word_meta[center]
+            this_feature = features[center]
 
-            if event_types:
-                extent_span = [span[0], span[1]]
-
-                # for role, (index, entity_type) in args.items():
-                #     a_token, a_span = l_word_meta[index]
-                #     if a_span[0] < extent_span[0]:
-                #         extent_span[0] = a_span[0]
-                #     if a_span[1] > extent_span[1]:
-                #         extent_span[1] = a_span[1]
-
-                for onto, t in event_types:
-                    evm = csr.add_event_mention(span, span, token, onto,
-                                                t, component=self.model_name)
-
-        # if evm:
-        #     for role, (index, entity_type) in args.items():
-        #         a_token, a_span = l_word_meta[index]
-        #
-        #         csr.add_entity_mention(a_span, a_span, a_token, 'aida',
-        #                                entity_type=entity_type,
-        #                                component='rule')
-        #
-        #         csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
-        #                                   'aida', role,
-        #                                   component='rule')
+            if not this_feature[-1] == '_':
+                csr.add_event_mention(span, span, token, 'aida',
+                                      this_feature[-1], component='Maria')

@@ -20,7 +20,7 @@ class BaseRuleDetector(MentionDetector):
     def predict(self, *input):
         words, _, l_feature, word_meta, sent_meta = input[0]
         center = math.floor(len(words) / 2)
-        lemmas = [features[0] for features in l_feature]
+        lemmas = [features[0] if features else '' for features in l_feature]
         words = self.token_vocab.reveal_origin(words)
         return self.predict_by_word(words, lemmas, l_feature, center)
 

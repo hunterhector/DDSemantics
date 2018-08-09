@@ -40,17 +40,18 @@ def add_edl_entities(edl_file, csr):
             for entity in entity_sent['namedMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
                 head_span = [int(s) for s in entity['head_span'].split('-')]
-                csr.add_entity_mention(head_span, mention_span,
-                                       entity['mention'], 'aida', entity['ner'],
-                                       component=edl_component_id)
+                csr.add_entity_mention(
+                    head_span, mention_span, entity['mention'], 'aida',
+                    entity['ner'], entity_form='named',
+                    component=edl_component_id)
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
                 head_span = [int(s) for s in entity['head_span'].split('-')]
                 ner = 'NOM' if entity['ner'] == 'null' else entity['ner']
-                csr.add_entity_mention(head_span, mention_span,
-                                       entity['headword'], 'aida', ner,
-                                       component=edl_component_id)
+                csr.add_entity_mention(
+                    head_span, mention_span, entity['headword'], 'aida', ner,
+                    entity_form='nominal', component=edl_component_id)
 
 
 def recover_via_token(tokens, token_ids):
@@ -88,8 +89,6 @@ def handle_noise(origin_onto, origin_type, frame_type):
 
 def add_rich_events(rich_event_file, csr, provided_tokens=None):
     with open(rich_event_file) as fin:
-        # Add negation and modal words.
-
         rich_event_info = json.load(fin)
 
         rich_entities = {}
@@ -112,7 +111,8 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
             ent = csr.add_entity_mention(
                 head_span, span, text, 'conll', rich_ent.get('type', None),
-                sent_id, component=rich_ent.get(
+                sent_id=sent_id, entity_form=rich_ent['entity_form'],
+                component=rich_ent.get(
                     'component', 'opera.events.mention.tac.hector'))
 
             if 'negationWord' in rich_ent:
@@ -192,7 +192,7 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                             onto = "framenet"
                             frame_name = mention['frame']
                             component = 'Semafor'
-                            role_name = frame_name + ':' + role_name
+                            role_name = frame_name + '_' + role_name
                         elif onto_name == 'pb':
                             onto = "propbank"
                             component = 'Fanse'
@@ -352,12 +352,17 @@ def read_source(source_folder, output_dir, language, aida_ontology,
             yield csr, docid
 
 
+def mid_rdf_format(mid):
+    return mid.strip('/').replace('/', '.')
+
+
 def add_entity_salience(csr, entity_salience_info):
     for span, data in entity_salience_info.items():
         entity = csr.get_by_span(csr.entity_key, span)
         if not entity:
-            entity = csr.add_entity_mention(span, data['span'], data['text'],
-                                            'aida', None, component='tagme')
+            entity = csr.add_entity_mention(
+                span, data['span'], data['text'], 'aida', None,
+                entity_form='named', component='dbpedia-spotlight-0.7')
 
         if not entity:
             if len(data['text']) > 20:
@@ -370,8 +375,10 @@ def add_entity_salience(csr, entity_salience_info):
 
         if entity:
             entity.add_salience(data['salience'])
-            entity.add_linking(data['mid'], data['wiki'], data['link_score'],
-                               component='wikifier')
+            entity.add_linking(
+                mid_rdf_format(data['mid']), data['wiki'], data['link_score'],
+                # component='wikifier'
+            )
 
 
 def add_event_salience(csr, event_salience_info):

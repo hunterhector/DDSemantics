@@ -338,6 +338,9 @@ class EntityMention(SpanInterpFrame):
                          'entity_evidence_interp', reference, begin, length,
                          text, component)
 
+    def add_form(self, entity_form):
+        self.interp.add_fields('form', 'form', entity_form, entity_form)
+
     def add_type(self, ontology, entity_type, score=None, component=None):
         # type_interp = Interp(self.interp_type)
         if entity_type == "null":
@@ -354,7 +357,7 @@ class EntityMention(SpanInterpFrame):
                                score=score, component=component)
         # input("Added entity type for {}, {}".format(self.id, self.text))
 
-    def add_linking(self, mid, wiki, score, component=None):
+    def add_linking(self, mid, wiki, score, lang='en', component=None):
         if mid.startswith('/'):
             mid = mid.strip('/')
 
@@ -362,7 +365,8 @@ class EntityMention(SpanInterpFrame):
         self.interp.add_fields('xref', 'freebase', mid, fb_xref,
                                multi_value=True)
 
-        wiki_xref = ValueFrame('wikipedia:' + wiki, 'db_reference', score=score)
+        wiki_xref = ValueFrame(lang + '_wiki:' + wiki, 'db_reference',
+                               score=score)
         self.interp.add_fields('xref', 'wikipedia', wiki, wiki_xref,
                                component=component, multi_value=True)
 
@@ -609,7 +613,7 @@ class CSR:
         return None
 
     def add_entity_mention(self, head_span, span, text, ontology, entity_type,
-                           sent_id=None, component=None):
+                           sent_id=None, entity_form=None, component=None):
         head_span = tuple(head_span)
         span = tuple(span)
 
@@ -644,6 +648,9 @@ class CSR:
             self._frame_map[self.entity_group_key][group_id] = ent_group
 
         ent_group.add_arg(entity_id)
+
+        if entity_form:
+            entity_mention.add_form(entity_form)
 
         if entity_type:
             entity_mention.add_type(ontology, entity_type, component=component)
@@ -757,6 +764,7 @@ class CSR:
                               arg_text, onto_name, arg_role, component):
         ent = self.add_entity_mention(arg_head_span, arg_span,
                                       arg_text, 'aida', "argument",
+                                      entity_form='nominal',
                                       component=component)
 
         if ent:

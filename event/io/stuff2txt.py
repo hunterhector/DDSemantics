@@ -6,20 +6,6 @@ from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import WhitespaceTokenizer
 
 
-def conllu2txt(in_file, out_dir):
-    with open(in_file) as conllu:
-        for line in conllu:
-            if line.startswith("#"):
-                if line.startswith('# new doc'):
-                    docid = line.split('=')[1].strip()
-                    text = ""
-                elif line.startswith('# sent_id'):
-                    pass
-            else:
-                parts = line.split('\t')
-                lemma = parts[2]
-
-
 def validate_sent(seg):
     unk = 0
     all = 0

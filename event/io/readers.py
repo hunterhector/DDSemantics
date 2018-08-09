@@ -218,8 +218,6 @@ class ConllUReader:
 
         self.language = language
 
-        self.feature_vector_len = 7
-
         logging.info("Corpus with [%d] words and [%d] tags.",
                      self.token_vocab.vocab_size(),
                      self.tag_vocab.vocab_size())
@@ -247,7 +245,11 @@ class ConllUReader:
                     line = line.strip()
                     if line.startswith("#"):
                         if line.startswith("# newdoc"):
-                            docid = line.split("=")[1].strip()
+                            parts = line.split("=")
+                            if len(parts) > 1:
+                                docid = line.split("=")[1].strip()
+                            else:
+                                docid = os.path.basename(data_file)
                     elif not line:
                         # Yield data when seeing sentence break.
                         yield parsed_data, (
@@ -258,30 +260,32 @@ class ConllUReader:
                     else:
                         parts = line.split()
 
-                        (wid, token, lemma, upos, xpos, feats, head, deprel,
-                         deps) = parts[:9]
+                        token = parts[1]
+                        upos = parts[3]
+                        xpos = parts[4]
+
+                        # (wid, token, lemma, upos, xpos, feats, head, deprel,
+                        #  deps) = parts[:9]
 
                         tag = parts[self.tag_index] if \
                             self.tag_index >= 0 else self.tag_vocab.unk
 
-                        xpos = xpos.lower()
-
                         span = [int(x) for x in parts[-1].split(",")]
 
-                        if xpos == 'punct' and self.no_punct:
-                            # Simulate the non-punctuation audio input.
-                            continue
+                        if xpos == 'PUNCT' or upos == 'PUNCT':
+                            if self.no_punct:
+                                # Simulate the non-punctuation audio input.
+                                continue
 
                         parsed_data[0].append(self.token_vocab(token.lower()))
                         parsed_data[1].append(self.tag_vocab(tag))
 
-                        word_feature = parts[2:9]
+                        word_feature = parts[2:-1]
 
                         parsed_data[2].append(
                             word_feature
                         )
 
-                        assert len(word_feature) == self.feature_vector_len
                         parsed_data[3].append(
                             (token, span)
                         )
@@ -292,7 +296,7 @@ class ConllUReader:
                         sent_end = [sentence_id, span[1]]
 
     def read_window(self):
-        empty_feature = ["EMPTY"] * self.feature_vector_len
+        # empty_feature = ["EMPTY"] * self.feature_vector_len
 
         for (token_ids, tag_ids, features, token_meta), meta in self.parse():
             assert len(token_ids) == len(tag_ids)
@@ -300,7 +304,7 @@ class ConllUReader:
             token_pad = [self.token_vocab.pad] * self.context_size
             tag_pad = [self.tag_vocab.pad] * self.context_size
 
-            feature_pad = [empty_feature] * self.context_size
+            feature_pad = [None] * self.context_size
 
             actual_len = len(token_ids)
 
