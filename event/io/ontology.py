@@ -271,7 +271,8 @@ class OntologyLoader:
                 for restrict_arg, l_restrict_ent in restricts.items():
                     out.write(
                         '%s\t%s\t%s\t' % (
-                            relation_type, restrict_arg, ' '.join(l_restrict_ent)
+                            relation_type, restrict_arg,
+                            ' '.join(l_restrict_ent)
                         )
                     )
                     out.write('\n')
@@ -286,22 +287,26 @@ class OntologyLoader:
         grouped_ent_types = defaultdict(list)
         for full_type in self.entity_types:
             prefix, ns, short = self.shorten(full_type)
+            short = short.replace('.', '_')
             grouped_ent_types[prefix].append((short, full_type))
 
         grouped_filler_types = defaultdict(list)
         for full_type in self.filler_types:
             prefix, ns, short = self.shorten(full_type)
+            short = short.replace('.', '_')
             grouped_filler_types[prefix].append((short, full_type))
 
         grouped_evm_types = defaultdict(list)
         for full_type in self.event_onto.keys():
             prefix, ns, short = self.shorten(full_type)
+            short = short.replace('.', '_')
             grouped_evm_types[prefix].append((short, full_type))
 
-        short_relation_types = []
+        grouped_relation_types = defaultdict(list)
         for full_type in self.relation_onto.keys():
             prefix, ns, short = self.shorten(full_type)
-            short_relation_types.append(short)
+            short = short.replace('.', '_')
+            grouped_relation_types[prefix].append((short, full_type))
 
         with open(conf_path, 'w') as out:
             out.write('[entities]\n\n')
@@ -319,10 +324,37 @@ class OntologyLoader:
                 out.write('\n')
 
             out.write('[relations]\n\n')
-            for rel_type in sorted(short_relation_types):
-                out.write(
-                    '{}\tArg1:<ENTITY>, Arg2:<ENTITY>'
-                    '\n'.format(rel_type))
+            for onto, types in grouped_relation_types.items():
+                out.write('!{}\n'.format(onto + '_relation'))
+                for t, full_type in sorted(types):
+                    sep = '\t'
+
+                    out.write(t + '\t')
+
+                    args = self.relation_onto[full_type]['args']
+                    for arg, arg_content in args.items():
+                        arg_prefix, arg_ns, arg_type = self.shorten(arg)
+                        restricts = arg_content['restrictions']
+                        plain_res = []
+
+                        for r in restricts:
+                            _, _, restrict_type = self.shorten(r)
+                            plain_res.append(restrict_type.replace('.', '_'))
+
+                        out.write(
+                            '{}{}:{}'.format(sep, arg_type.replace('.', '_'),
+                                             '|'.join(plain_res))
+                        )
+                        sep = ', '
+
+                    if len(args) == 1:
+                        # Fill unspecified role with general entity.
+                        out.write(', Arg:<ENTITY>')
+
+                    out.write('\n')
+
+                out.write('\n')
+
             out.write(
                 'ENT_COREF\tArg1:<ENTITY>, Arg2:<ENTITY>\n'
             )
@@ -355,10 +387,10 @@ class OntologyLoader:
 
                         for r in restricts:
                             _, _, restrict_type = self.shorten(r)
-                            plain_res.append(restrict_type)
+                            plain_res.append(restrict_type.replace('.', '_'))
 
                         out.write(
-                            '{}{}:{}'.format(sep, arg_type,
+                            '{}{}:{}'.format(sep, arg_type.replace('.', '_'),
                                              '|'.join(plain_res))
                         )
                         sep = ', '
@@ -369,9 +401,10 @@ class OntologyLoader:
                 out.write('[labels]\n\n')
                 for origin, label in self.labels.items():
                     prefix, ns, t = self.shorten(origin)
-                    out.write(t + ' | ' + label)
+                    out.write(
+                        t.replace('.', '_') + ' | ' + label.replace('.', '_'))
                     if len(t) < len(label):
-                        out.write(' | ' + t)
+                        out.write(' | ' + t.replace('.', '_'))
                     out.write('\n')
 
                 out.write('\n[drawing]\n')
@@ -396,4 +429,4 @@ if __name__ == '__main__':
 
     loader = OntologyLoader(ontology_path)
     loader.as_brat_conf('annotation.conf', 'visual.conf')
-    loader.as_text('temp.txt')
+    loader.as_text('ontology.txt')
