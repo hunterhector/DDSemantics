@@ -407,26 +407,6 @@ def token_to_span(conll_file):
     return tokens
 
 
-def find_args(csr, aida_ontology):
-    """
-    Link more arguments using the ontology mapper.
-    :param csr:
-    :param aida_ontology:
-    :return:
-    """
-    for eid, event_mention in csr.get_events_mentions().items():
-        trigger = event_mention.trigger
-
-        trigger_begin = trigger.begin
-        trigger_len = trigger.length
-
-        sent = csr.get_frame(csr.sent_key, trigger.reference)
-
-        # print(sent, trigger_begin, trigger_len)
-        # print(sent.text)
-        # print(event_mention.interp.get_field('type'))
-        # print(event_mention.interp.get_field('args'))
-
 
 def main(config):
     assert config.conllu_folder is not None
@@ -452,7 +432,8 @@ def main(config):
         tag_vocab = Vocab(config.resource_folder, 'tag',
                           embedding_path=config.tag_list,
                           ignore_existing=True)
-        detector = DetectionRunner(config, token_vocab, tag_vocab)
+        detector = DetectionRunner(config, token_vocab, tag_vocab,
+                                   aida_ontology)
 
     ignore_edl = False
     if config.edl_json:
