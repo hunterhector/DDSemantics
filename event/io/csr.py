@@ -687,8 +687,13 @@ class CSR:
         valid = self.validate_span(sent_id, span, text)
 
         if valid:
+            if head_span in self._span_frame_map[self.event_key]:
+                logging.info("Cannot handle overlapped event mentions now.")
+                return
+
             event_id = self.get_id('evm')
             self._span_frame_map[self.event_key][head_span] = event_id
+
             sent = self._frame_map[self.sent_key][sent_id]
 
             relative_begin = span[0] - sent.span.begin
@@ -761,10 +766,11 @@ class CSR:
                 pass
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
-                              arg_text, onto_name, arg_role, component):
+                              arg_text, onto_name, arg_role, component,
+                              arg_entity_form='named'):
         ent = self.add_entity_mention(arg_head_span, arg_span,
                                       arg_text, 'aida', "argument",
-                                      entity_form='nominal',
+                                      entity_form=arg_entity_form,
                                       component=component)
 
         if ent:
