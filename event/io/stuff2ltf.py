@@ -126,11 +126,16 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    print("Converting data in {} to LTF, store to {}".format(
+        input_dir, output_dir))
+
     for f in os.listdir(input_dir):
         file_path = os.path.join(input_dir, f)
 
         if not f.endswith('.json'):
             continue
+
+        print("Converting {}".format(f))
 
         docid = f.strip('.json')
         output_path = os.path.join(output_dir, f + '.ltf.xml')
