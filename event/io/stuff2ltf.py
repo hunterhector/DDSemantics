@@ -2,51 +2,136 @@ import sys
 import os
 import json
 import xml.etree.ElementTree as ET
+from xml.dom import minidom
 
 
 class LTF:
-    def __init__(self, language='eng'):
-        root = ET.Element('xml')
-        lctl_node = ET.SubElement(root, 'LCTL_TEXT')
-        lctl_node.set('lang', language)
-        doc_node = ET.SubElement(lctl_node, 'DOC')
-        self.text_node = ET.SubElement(doc_node, 'TEXT')
+    def __init__(self, docid, language='eng'):
+        self.docid = docid
+
+        self.root = ET.Element('LCTL_TEXT')
+        self.root.set('lang', language)
+
+        self.doc_node = ET.SubElement(self.root, 'DOC')
+        self.doc_node.set('id', docid)
+        self.doc_node.set('lang', language)
+        self.doc_node.set('grammar', 'none')
+
+        self.text_node = ET.SubElement(self.doc_node, 'TEXT')
         self.text_offset = 0
 
-    def add_seg(self):
-        seg = ET.SubElement(self.text_node, 'SEG')
-        seg.set('start_char', self.text_offset)
-        return seg
+        self.current_seg = None
+        self.seg_text = []
 
-    def add_token(self, seg):
-        pass
+        self.seg_id = 0
+        self.token_id = 0
+
+        self.total_len = 0
+
+    def get_new_seg(self):
+        sid = 'segment-{}'.format(self.seg_id)
+        return sid
+
+    def get_new_token(self):
+        tid = 'token-{}-{}'.format(self.seg_id, self.token_id)
+        self.token_id += 1
+        return tid
+
+    def begin_seg(self):
+        self.current_seg = ET.SubElement(self.text_node, 'SEG')
+        self.current_seg.set('start_char', str(self.text_offset + 1))
+        self.current_seg.set('id', self.get_new_seg())
+
+    def add_token(self, text):
+        self.seg_text.append(text)
+
+    def end_seg(self):
+        sep = ''
+
+        text_node = ET.SubElement(self.current_seg, 'ORIGINAL_TEXT')
+        text_node.text = ' '.join(self.seg_text)
+
+        for text in self.seg_text:
+            self.text_offset += len(sep)
+            sep = ' '
+            token = ET.SubElement(self.current_seg, 'TOKEN')
+            token.set('id', self.get_new_token())
+            token.set('pos', 'word')
+            token.set('morph', 'none')
+            token.set('start_char', str(self.text_offset + 1))
+            token.text = text
+            self.text_offset += len(text)
+
+            self.total_len += len(text) + len(sep)
+
+            token.set('end_char', str(self.text_offset))
+
+        self.current_seg.set('end_char', str(self.text_offset))
+
+        assert len(text_node.text) == int(
+            self.current_seg.attrib['end_char']) - int(
+            self.current_seg.attrib['start_char']) + 1
+
+        # Leave some space to add stuff in between.
+        self.text_offset += 2
+
+        self.seg_id += 1
+        self.seg_text.clear()
+
+    def write(self, out):
+        self.doc_node.set('raw_text_char_length', str(self.total_len))
+
+        rough_string = ET.tostring(self.root, 'UTF-8')
+        reparsed = minidom.parseString(rough_string)
+        out.write(reparsed.toprettyxml(indent='  '))
 
 
-def sausage_to_ltf(in_file_path, out_file_path):
-    with open(in_file_path) as inf, open(out_file_path) as out:
-        print(in_file_path)
-        sausage_json = json.load(inf)
+def sausage_to_ltf(in_file_path, out_file_path, docid):
+    with open(in_file_path) as inf, open(out_file_path, 'w') as out:
+        audio_parsed = json.load(inf)
 
-        for obj in sausage_json:
-            result = obj['result']
+        ltf = LTF(docid)
 
-            best_words = []
-            for hypos in result['sausage']:
-                best_words.append((hypos[0]['word'], hypos[0]['confidence']))
+        for keyframe, intervals in audio_parsed:
+            for interval in intervals:
+                best_words = []
+
+                ltf.begin_seg()
+
+                for hypos in interval['sausage']:
+                    best_score = -1
+                    best_word = ""
+
+                    for hypo in hypos:
+                        word = hypo['word']
+                        confidence = hypo['confidence']
+
+                        if confidence > best_score:
+                            best_score = confidence
+                            best_word = word
+
+                    ltf.add_token(best_word)
+
+                ltf.end_seg()
+
+        ltf.write(out)
 
 
 if __name__ == '__main__':
     input_dir = sys.argv[1]
     output_dir = sys.argv[2]
-    format = sys.argv[3]
+    language = sys.argv[3]
+    # format = sys.argv[3]
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     for f in os.listdir(input_dir):
         file_path = os.path.join(input_dir, f)
 
-        if not file_path.endswith('.json'):
+        if not f.endswith('.json'):
             continue
 
-        if format == 'sausage':
-            sausage_to_ltf(file_path)
-        else:
-            raise ValueError("Unsupport format: " + format)
+        docid = f.strip('.json')
+        output_path = os.path.join(output_dir, f + '.ltf.xml')
+        sausage_to_ltf(file_path, output_path, docid)
