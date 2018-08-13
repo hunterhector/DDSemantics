@@ -39,10 +39,7 @@ def add_edl_entities(edl_file, csr):
 
             for entity in entity_sent['namedMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
-                if 'head_span' in entity:
-                    head_span = [int(s) for s in entity['head_span'].split('-')]
-                else:
-                    head_span = mention_span
+                head_span = entity['head_span']
 
                 csr.add_entity_mention(
                     head_span, mention_span, entity['mention'], 'aida',
@@ -51,15 +48,13 @@ def add_edl_entities(edl_file, csr):
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
-                if 'head_span' in entity:
-                    head_span = [int(s) for s in entity['head_span'].split('-')]
-                else:
-                    head_span = mention_span
+                head_span = entity['head_span']
 
-                ner = 'NOM' if entity['type'] == 'null' else entity['type']
+                en_type = 'NOM' if entity['type'] == 'null' else entity['type']
+
                 csr.add_entity_mention(
-                    head_span, mention_span, entity['headword'], 'aida', ner,
-                    entity_form='nominal', component=edl_component_id)
+                    head_span, mention_span, entity['headword'], 'aida',
+                    en_type, entity_form='nominal', component=edl_component_id)
 
 
 def recover_via_token(tokens, token_ids):
@@ -158,8 +153,8 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 component_name = 'opera.events.mention.framenet.semafor'
                 ontology = 'framenet'
 
-            ontology, mention_type = handle_noise(ontology, mention['type'],
-                                                  mention.get('frame', ''))
+            ontology, mention_type = handle_noise(
+                ontology, mention['type'], mention.get('frame', ''))
 
             evm = csr.add_event_mention(
                 head_span, span, text, ontology, mention_type,

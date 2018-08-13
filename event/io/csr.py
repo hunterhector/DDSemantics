@@ -514,6 +514,10 @@ class CSR:
         self.aida_ontology = aida_ontology
         self.onto_mapper = onto_mapper
 
+        self.event_map = {}
+        for key, content in self.onto_mapper.get_seedling_event_map():
+            self.event_map[self.__cannonicalize_one_type(key)] = content
+
         self.event_onto = aida_ontology.event_onto_text()
         self.canonical_types = self.__canonicalize_event_type()
 
@@ -667,6 +671,7 @@ class CSR:
         else:
             full_type = onto_name + ':' + evm_type
             event_map = self.onto_mapper.get_seedling_event_map()
+
             if full_type in event_map:
                 return event_map[full_type]
 
