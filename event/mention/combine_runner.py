@@ -51,7 +51,11 @@ def add_edl_entities(edl_file, csr):
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
-                head_span = [int(s) for s in entity['head_span'].split('-')]
+                if 'head_span' in entity:
+                    head_span = [int(s) for s in entity['head_span'].split('-')]
+                else:
+                    head_span = mention_span
+
                 ner = 'NOM' if entity['type'] == 'null' else entity['ner']
                 csr.add_entity_mention(
                     head_span, mention_span, entity['headword'], 'aida', ner,
