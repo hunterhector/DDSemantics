@@ -56,7 +56,7 @@ def add_edl_entities(edl_file, csr):
                 else:
                     head_span = mention_span
 
-                ner = 'NOM' if entity['type'] == 'null' else entity['ner']
+                ner = 'NOM' if entity['type'] == 'null' else entity['type']
                 csr.add_entity_mention(
                     head_span, mention_span, entity['headword'], 'aida', ner,
                     entity_form='nominal', component=edl_component_id)
