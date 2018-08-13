@@ -42,13 +42,13 @@ def add_edl_entities(edl_file, csr):
                 head_span = [int(s) for s in entity['head_span'].split('-')]
                 csr.add_entity_mention(
                     head_span, mention_span, entity['mention'], 'aida',
-                    entity['ner'], entity_form='named',
+                    entity['type'], entity_form='named',
                     component=edl_component_id)
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
                 head_span = [int(s) for s in entity['head_span'].split('-')]
-                ner = 'NOM' if entity['ner'] == 'null' else entity['ner']
+                ner = 'NOM' if entity['type'] == 'null' else entity['ner']
                 csr.add_entity_mention(
                     head_span, mention_span, entity['headword'], 'aida', ner,
                     entity_form='nominal', component=edl_component_id)
@@ -407,7 +407,6 @@ def token_to_span(conll_file):
     return tokens
 
 
-
 def main(config):
     assert config.conllu_folder is not None
     assert config.csr_output is not None
@@ -504,6 +503,7 @@ if __name__ == '__main__':
         source_folder = Unicode(help='source text folder').tag(config=True)
         rich_event = Unicode(help='Rich event output.').tag(config=True)
         edl_json = Unicode(help='EDL json output.').tag(config=True)
+        relation_json = Unicode(help='Relation json output.').tag(config=True)
         salience_data = Unicode(help='Salience output.').tag(config=True)
         rich_event_token = Bool(
             help='Whether to use tokens from rich event output',

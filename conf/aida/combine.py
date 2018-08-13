@@ -1,0 +1,26 @@
+c.DetectionParams.word_embedding_dim=300
+c.DetectionParams.position_embedding_dim=50
+c.DetectionParams.dropout=0.5
+c.DetectionParams.resource_folder='/home/zhengzhl/workspace/aida/domain_frames/'
+c.DetectionParams.input_format='conllu'
+c.DetectionParams.no_punct=True
+c.DetectionParams.model_name='frame_rule'
+c.DetectionParams.frame_lexicon='/home/zhengzhl/workspace/resources/fndata-1.7/frame'
+c.DetectionParams.event_list=c.DetectionParams.resource_folder + '/ontology_event_list.txt'
+c.DetectionParams.entity_list=c.DetectionParams.resource_folder + '/ontology_entity_list.txt'
+c.DetectionParams.relation_list=c.DetectionParams.resource_folder + '/ontology_frames.txt'
+c.DetectionParams.tag_list=c.DetectionParams.resource_folder + '/target_frames.txt'
+c.DetectionParams.ontology_path=c.DetectionParams.resource_folder + '/seedling-ontology.ttl'
+c.DetectionParams.seedling_event_mapping=c.DetectionParams.resource_folder + '/seedling_event_mapping.txt'
+c.DetectionParams.seedling_argument_mapping=c.DetectionParams.resource_folder + '/seedling_argument_mapping.txt'
+c.DetectionParams.no_sentence=True
+c.DetectionParams.language='en'
+
+c.CombineParams.output_folder='/home/zhengzhl/workspace/aida/output/LDC2018E45/english/'
+c.CombineParams.conllu_folder=c.CombineParams.output_folder + '/conllu/'
+c.CombineParams.csr_output=c.CombineParams.output_folder + '/csr/'
+c.CombineParams.rich_event=c.CombineParams.output_folder + '/rich/simple_run'
+c.CombineParams.edl_json=c.CombineParams.output_folder + '/entity/'
+c.CombineParams.salience_data=c.CombineParams.output_folder + '/salience/'
+c.CombineParams.source_folder=c.CombineParams.output_folder + '/txt/'
+c.CombineParams.add_rule_detector=True
