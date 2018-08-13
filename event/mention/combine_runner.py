@@ -119,7 +119,8 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
             ent = csr.add_entity_mention(
                 head_span, span, text, 'conll', rich_ent.get('type', None),
-                sent_id=sent_id, entity_form=rich_ent['entity_form'],
+                sent_id=sent_id,
+                entity_form=rich_ent.get('entity_form', 'named'),
                 component=rich_ent.get(
                     'component', 'opera.events.mention.tac.hector'))
 
