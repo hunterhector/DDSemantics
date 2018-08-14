@@ -1,7 +1,7 @@
 import os
 from event.util import get_env
 
-output_base = os.path.join(get_env('root_output'), 'event', 'english')
+output_base = os.path.get_env('output_base')
 
 # '/home/zhengzhl/workspace/resources/fndata-1.7/frame'
 c.DetectionParams.frame_lexicon = get_env('frame_lex')
