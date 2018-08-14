@@ -2,6 +2,7 @@ import rdflib
 from rdflib import Namespace
 import re
 import logging
+from event.util import remove_punctuation
 
 
 class MappingLoader:
@@ -15,29 +16,47 @@ class MappingLoader:
         return self.mappings['seedling_event']
 
     def load_seedling_arg_mapping(self, mapping_file):
-        seedling_map = {}
+        self.mappings['seedling_arg'] = {}
+
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
                 parts = line.strip().split('\t')
-                evm = parts[0]
-                evm_arg = parts[1]
+                event_type = parts[0]
+                arg_type = parts[1]
                 constraints = parts[2]
                 mapped_frames = parts[3:]
 
+                c_event_type = self.canonicalize_type(event_type)
                 for frame in mapped_frames:
-                    seedling_map[(evm, frame)] = evm_arg
-        self.mappings['seedling_arg'] = seedling_map
+                    self.mappings['seedling_arg'][
+                        (c_event_type, frame)] = arg_type
 
     def load_seedling_event_mapping(self, mapping_file):
-        seedling_map = {}
+        # This mapping is from other ontology to seedling events, in
+        # canonical format.
+        self.mappings['seedling_event'] = {}
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
                 parts = line.strip().split('\t')
-                evm = parts[0]
+                event_type = parts[0]
+                c_event_type = self.canonicalize_type(event_type)
 
                 for frame in parts[1:]:
-                    seedling_map[frame] = evm
-        self.mappings['seedling_event'] = seedling_map
+                    self.mappings['seedling_event'][frame] = c_event_type
+
+    def create_canonical_types(self, types):
+        """
+        Create a type map from a canonical version to the variations.
+        :return:
+        """
+        type_map = {}
+        for event_type in types:
+            c_type = self.canonicalize_type(event_type)
+            type_map[c_type] = event_type
+        return type_map
+
+    def canonicalize_type(self, event_type):
+        return remove_punctuation(event_type).lower()
 
 
 class OntologyLoader:
@@ -85,7 +104,7 @@ class OntologyLoader:
 
         return text_dict
 
-    def arg_set(self):
+    def get_arg_restricts(self):
         arg_restrictions = {}
         for event_key, content in self.event_onto.items():
             _, _, event = self.shorten(event_key)

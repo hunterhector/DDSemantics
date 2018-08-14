@@ -25,8 +25,23 @@ from event import resources
 import nltk
 
 
+def add_entity_relations(relation_file, edl_entities, csr):
+    with open(relation_file) as rf:
+        data = json.load(rf)
+
+        for relation in data:
+            for rel in relation['rels']:
+                en1_id = edl_entities[rel['en1']].id
+                en2_id = edl_entities[rel['en2']].id
+
+                csr.add_relation(
+                    'aida', [en1_id, en2_id], rel['rel'], 'entity_rels')
+
+
 def add_edl_entities(edl_file, csr):
-    edl_component_id = 'opera.entities.edl.xuezhe'
+    edl_component_id = 'opera.entities.edl'
+
+    edl_entities = {}
 
     if not edl_file:
         return
@@ -41,20 +56,23 @@ def add_edl_entities(edl_file, csr):
                 mention_span = [entity['char_begin'], entity['char_end']]
                 head_span = entity['head_span']
 
-                csr.add_entity_mention(
+                ent = csr.add_entity_mention(
                     head_span, mention_span, entity['mention'], 'aida',
                     entity['type'], entity_form='named',
                     component=edl_component_id)
+                edl_entities[entity['@id']] = ent
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
                 head_span = entity['head_span']
 
-                en_type = 'NOM' if entity['type'] == 'null' else entity['type']
+                ent = csr.add_entity_mention(
+                    head_span, mention_span, entity['mention'], 'aida',
+                    entity['type'], entity_form='nominal',
+                    component=edl_component_id)
+                edl_entities[entity['@id']] = ent
 
-                csr.add_entity_mention(
-                    head_span, mention_span, entity['headword'], 'aida',
-                    en_type, entity_form='nominal', component=edl_component_id)
+    return edl_entities
 
 
 def recover_via_token(tokens, token_ids):
@@ -81,7 +99,7 @@ def recover_via_token(tokens, token_ids):
     return (first_token[0][0], last_token[0][1]), text
 
 
-def handle_noise(origin_onto, origin_type, frame_type):
+def fix_event_type_from_frame(origin_onto, origin_type, frame_type):
     if 'Contact' in origin_type:
         if frame_type == 'Shoot_projectiles':
             return 'tac', 'Conflict_Attack'
@@ -90,12 +108,53 @@ def handle_noise(origin_onto, origin_type, frame_type):
     return origin_onto, origin_type
 
 
+def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
+    arguments = rich_evm['arguments']
+
+    for argument in arguments:
+        entity_id = argument['entityId']
+        roles = argument['roles']
+        arg_ent = rich_entities[entity_id]
+
+        if provided_tokens:
+            arg_span, arg_text = recover_via_token(
+                provided_tokens, arg_ent['tokens'])
+            arg_head_span, _ = recover_via_token(
+                provided_tokens, arg_ent['headWord']['tokens'])
+        else:
+            arg_span = arg_ent['span']
+            arg_head_span = arg_ent['headWord']['span']
+            arg_text = arg_ent['text']
+
+        for role in roles:
+            onto_name, role_name = role.split(':')
+
+            arg_onto = None
+            component = None
+            if onto_name == 'fn':
+                arg_onto = "framenet"
+                frame_name = rich_evm['frame']
+                component = 'Semafor'
+                role_name = frame_name + '_' + role_name
+            elif onto_name == 'pb':
+                arg_onto = "propbank"
+                component = 'Fanse'
+
+            if arg_onto and component:
+                csr.add_event_arg_by_span(
+                    csr_evm, arg_head_span, arg_span, arg_text,
+                    arg_onto, role_name, component=component
+                )
+
+
 def add_rich_events(rich_event_file, csr, provided_tokens=None):
     with open(rich_event_file) as fin:
         rich_event_info = json.load(fin)
 
         rich_entities = {}
-        ent_by_id = {}
+        csr_entities = {}
+        same_head_entities = {}
+
         for rich_ent in rich_event_info['entityMentions']:
             eid = rich_ent['id']
             rich_entities[eid] = rich_ent
@@ -112,18 +171,25 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
             sent_id = csr.get_sentence_by_span(span)
 
-            ent = csr.add_entity_mention(
-                head_span, span, text, 'conll', rich_ent.get('type', None),
-                sent_id=sent_id,
-                entity_form=rich_ent.get('entity_form', 'named'),
-                component=rich_ent.get(
-                    'component', 'opera.events.mention.tac.hector'))
+            ent = csr.get_by_span(csr.entity_key, span)
+            head_ent = csr.get_by_span(csr.entity_head_key, head_span)
+
+            if head_ent:
+                same_head_entities[eid] = head_ent
+
+            if not ent:
+                ent = csr.add_entity_mention(
+                    head_span, span, text, 'conll', rich_ent.get('type', None),
+                    sent_id=sent_id,
+                    entity_form=rich_ent.get('entity_form', 'named'),
+                    component=rich_ent.get(
+                        'component', 'opera.events.mention.tac.hector'))
 
             if 'negationWord' in rich_ent:
                 ent.add_modifier('NEG', rich_ent['negationWord'])
 
             if ent:
-                ent_by_id[eid] = ent
+                csr_entities[eid] = ent
             else:
                 if len(text) > 20:
                     print("Argument mention {} rejected.".format(eid))
@@ -131,81 +197,64 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                     print("Argument mention {}:{} rejected.".format(eid, text))
 
         evm_by_id = {}
-        for mention in rich_event_info['eventMentions']:
-            arguments = mention['arguments']
-
+        for rich_evm in rich_event_info['eventMentions']:
             if provided_tokens:
                 span, text = recover_via_token(provided_tokens,
-                                               mention['tokens'])
+                                               rich_evm['tokens'])
                 head_span, head_text = recover_via_token(
-                    provided_tokens, mention['headWord']['tokens'])
+                    provided_tokens, rich_evm['headWord']['tokens'])
             else:
-                span = mention['span']
-                text = mention['text']
-                head_span = mention['headWord']['span']
+                span = rich_evm['span']
+                text = rich_evm['text']
+                head_span = rich_evm['headWord']['span']
 
             sent_id = csr.get_sentence_by_span(span)
 
             component_name = 'opera.events.mention.tac.hector'
             ontology = 'tac'
 
-            if mention['component'] == "FrameBasedEventDetector":
+            if rich_evm['component'] == "FrameBasedEventDetector":
                 component_name = 'opera.events.mention.framenet.semafor'
                 ontology = 'framenet'
 
-            ontology, mention_type = handle_noise(
-                ontology, mention['type'], mention.get('frame', ''))
+            ontology, evm_type = fix_event_type_from_frame(
+                ontology, rich_evm['type'], rich_evm.get('frame', ''))
 
-            evm = csr.add_event_mention(
-                head_span, span, text, ontology, mention_type,
-                realis=mention.get('realis', None), sent_id=sent_id,
-                component=component_name
+            arguments = rich_evm['arguments']
+
+            # Check which entities are in the arguments.
+            arg_entity_types = set()
+            for argument in arguments:
+                entity_id = argument['entityId']
+                csr_ent = csr_entities[entity_id]
+
+                for t in csr_ent.get_types():
+                    arg_entity_types.add(t)
+
+                if entity_id in same_head_entities:
+                    same_head_ent = same_head_entities[entity_id]
+                    for t in same_head_ent.get_types():
+                        arg_entity_types.add(t)
+
+            csr_evm = csr.add_event_mention(
+                head_span, span, text, ontology, evm_type,
+                realis=rich_evm.get('realis', None), sent_id=sent_id,
+                component=component_name, arg_entity_types=arg_entity_types
             )
 
-            if 'negationWord' in mention:
-                evm.add_modifier('NEG', mention['negationWord'])
+            if 'negationWord' in rich_evm:
+                csr_evm.add_modifier('NEG', rich_evm['negationWord'])
 
-            if 'modalWord' in mention:
-                evm.add_modifier('MOD', mention['modalWord'])
+            if 'modalWord' in rich_evm:
+                csr_evm.add_modifier('MOD', rich_evm['modalWord'])
 
-            if evm:
-                eid = mention['id']
-                evm_by_id[eid] = evm
+            if csr_evm:
+                eid = rich_evm['id']
+                evm_by_id[eid] = csr_evm
 
-                for argument in arguments:
-                    entity_id = argument['entityId']
-                    roles = argument['roles']
-                    arg_ent = rich_entities[entity_id]
-
-                    if provided_tokens:
-                        arg_span, arg_text = recover_via_token(
-                            provided_tokens, arg_ent['tokens'])
-                        arg_head_span, _ = recover_via_token(
-                            provided_tokens, arg_ent['headWord']['tokens'])
-                    else:
-                        arg_span = arg_ent['span']
-                        arg_head_span = arg_ent['headWord']['span']
-                        arg_text = arg_ent['text']
-
-                    for role in roles:
-                        onto_name, role_name = role.split(':')
-
-                        onto = None
-                        component = None
-                        if onto_name == 'fn':
-                            onto = "framenet"
-                            frame_name = mention['frame']
-                            component = 'Semafor'
-                            role_name = frame_name + '_' + role_name
-                        elif onto_name == 'pb':
-                            onto = "propbank"
-                            component = 'Fanse'
-
-                        if onto and component:
-                            csr.add_event_arg_by_span(
-                                evm, arg_head_span, arg_span, arg_text, onto,
-                                role_name, component=component
-                            )
+                add_rich_arguments(
+                    csr, csr_evm, rich_evm, rich_entities, provided_tokens
+                )
 
         for relation in rich_event_info['relations']:
             if relation['relationType'] == 'event_coreference':
@@ -214,8 +263,8 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 csr.add_relation('aida', args, 'event_coreference', 'hector')
 
             if relation['relationType'] == 'entity_coreference':
-                args = [ent_by_id[i].id for i in relation['arguments'] if
-                        i in ent_by_id]
+                args = [csr_entities[i].id for i in relation['arguments'] if
+                        i in csr_entities]
                 csr.add_relation('aida', args, 'entity_coreference', 'corenlp')
 
 
@@ -454,8 +503,13 @@ def main(config):
         if config.edl_json and not ignore_edl:
             edl_file = find_by_id(config.edl_json, docid)
             if edl_file:
-                logging.info("Predicting with EDL: {}".format(edl_file))
-                add_edl_entities(edl_file, csr)
+                logging.info("Adding EDL results: {}".format(edl_file))
+                edl_entities = add_edl_entities(edl_file, csr)
+
+                if config.relation_json:
+                    relation_file = find_by_id(config.relation_json, docid)
+                    logging.info("Adding relations between entities.")
+                    add_entity_relations(relation_file, edl_entities, csr)
 
         conll_file = find_by_id(config.conllu_folder, docid)
         if not conll_file:
@@ -518,6 +572,13 @@ if __name__ == '__main__':
         conllu_folder = Unicode(help='CoNLLU directory').tag(config=True)
         csr_output = Unicode(help='Main CSR output directory').tag(
             config=True)
+
+        # Aida specific
+        ontology_path = Unicode(help='Ontology url or path.').tag(config=True)
+        seedling_event_mapping = Unicode(
+            help='Seedling event mapping to TAC-KBP').tag(config=True)
+        seedling_argument_mapping = Unicode(
+            help='Seedling argument mapping to TAC-KBP').tag(config=True)
 
 
     util.set_basic_log()

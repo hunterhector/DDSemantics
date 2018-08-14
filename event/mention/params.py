@@ -58,9 +58,3 @@ class DetectionParams(Configurable):
 
     language = Unicode(help='Language of data.').tag(config=True)
 
-    # Aida specific
-    ontology_path = Unicode(help='Ontology url or path.').tag(config=True)
-    seedling_event_mapping = Unicode(
-        help='Seedling event mapping to TAC-KBP').tag(config=True)
-    seedling_argument_mapping = Unicode(
-        help='Seedling argument mapping to TAC-KBP').tag(config=True)

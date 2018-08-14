@@ -66,7 +66,7 @@ def call_dbpedia(in_file, out_path, freebase_map):
 
                 offset = int(resource['@offset']) + file_offset
                 title = resource['@URI'].replace(
-                    'http://dbpedia.org/resource/', '')
+                    'http://dbpedia.org/resources/', '')
                 fbid = freebase_map.get(title, '/m/UNK')
 
                 annotation = {

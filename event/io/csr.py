@@ -337,9 +337,13 @@ class EntityMention(SpanInterpFrame):
         super().__init__(fid, 'entity_evidence', parent,
                          'entity_evidence_interp', reference, begin, length,
                          text, component)
+        self.entity_types = []
 
     def add_form(self, entity_form):
         self.interp.add_fields('form', 'form', entity_form, entity_form)
+
+    def get_types(self):
+        return self.entity_types
 
     def add_type(self, ontology, entity_type, score=None, component=None):
         # type_interp = Interp(self.interp_type)
@@ -355,6 +359,8 @@ class EntityMention(SpanInterpFrame):
 
         self.interp.add_fields('type', 'type', onto_type, onto_type,
                                score=score, component=component)
+
+        self.entity_types.append(onto_type)
         # input("Added entity type for {}, {}".format(self.id, self.text))
 
     def add_linking(self, mid, wiki, score, lang='en', component=None):
@@ -505,6 +511,7 @@ class CSR:
         self.media_type = media_type
 
         self.entity_key = 'entity'
+        self.entity_head_key = 'entity_head'
         self.entity_group_key = 'entity_group'
         self.event_key = 'event'
         self.event_group_key = 'event_group'
@@ -514,14 +521,17 @@ class CSR:
         self.aida_ontology = aida_ontology
         self.onto_mapper = onto_mapper
 
-        self.event_map = {}
-        for key, content in self.onto_mapper.get_seedling_event_map():
-            self.event_map[self.__cannonicalize_one_type(key)] = content
-
         self.event_onto = aida_ontology.event_onto_text()
-        self.canonical_types = self.__canonicalize_event_type()
+        self.arg_restricts = aida_ontology.get_arg_restricts()
 
-        self.arg_set = aida_ontology.arg_set()
+        self.canonical_types = {}
+        for event_type in self.event_onto:
+            c_type = onto_mapper.canonicalize_type(event_type)
+            self.canonical_types[c_type] = event_type
+
+        for _, arg_type in self.arg_restricts:
+            c_type = onto_mapper.canonicalize_type(arg_type)
+            self.canonical_types[c_type] = arg_type
 
         self.base_onto_name = 'aida'
 
@@ -637,8 +647,12 @@ class CSR:
                                            span[0] - sentence_start,
                                            span[1] - span[0], text,
                                            component=component)
-
+            self._span_frame_map[self.entity_key][span] = entity_id
             self._frame_map[self.entity_key][entity_id] = entity_mention
+
+            self._span_frame_map[self.entity_head_key][head_span] = entity_id
+            self._frame_map[self.entity_head_key][entity_id] = entity_mention
+
         else:
             return
 
@@ -647,7 +661,7 @@ class CSR:
         if not ent_group:
             group_id = self.get_id('rel')
             ent_group = RelationMention(self.get_id('rel'), 'aida',
-                                        'span_group', [])
+                                        'share_head_span', [])
             self._span_frame_map[self.entity_group_key][head_span] = group_id
             self._frame_map[self.entity_group_key][group_id] = ent_group
 
@@ -655,7 +669,6 @@ class CSR:
 
         if entity_form:
             entity_mention.add_form(entity_form)
-
         if entity_type:
             entity_mention.add_type(ontology, entity_type, component=component)
         else:
@@ -673,12 +686,12 @@ class CSR:
             event_map = self.onto_mapper.get_seedling_event_map()
 
             if full_type in event_map:
-                return event_map[full_type]
-
+                return self.canonical_types[event_map[full_type]]
         return None
 
     def add_event_mention(self, head_span, span, text, onto_name, evm_type,
-                          realis=None, sent_id=None, component=None):
+                          realis=None, sent_id=None, component=None,
+                          arg_entity_types=None):
         # Annotation on the same span will be reused.
         head_span = tuple(head_span)
         span = tuple(span)
@@ -716,7 +729,7 @@ class CSR:
         if not evm_group:
             group_id = self.get_id('rel')
             evm_group = RelationMention(self.get_id('rel'), 'aida',
-                                        'span_group', [])
+                                        'share_head_span', [])
             self._span_frame_map[self.event_group_key][head_span] = group_id
             self._frame_map[self.event_group_key][group_id] = evm_group
 
@@ -726,6 +739,10 @@ class CSR:
             realis = 'UNK' if not realis else realis
 
             mapped_type = self.map_event_type(evm_type, onto_name)
+
+            if arg_entity_types:
+                mapped_type = fix_event_type_from_entity(
+                    mapped_type, arg_entity_types)
 
             if mapped_type:
                 evm.add_interp('aida', mapped_type, realis, component=component)
@@ -747,56 +764,66 @@ class CSR:
             index,
         )
 
-    def map_event_arg_type(self, type_onto, evm_type, arg_role):
+    def map_event_arg_type(self, event_onto, evm_type, arg_role):
         seedling_arg_map = self.onto_mapper.get_seedling_arg_map()
 
-        if type_onto == 'aida':
-            key = (evm_type, arg_role)
+        if event_onto == 'aida':
+            key = (self.onto_mapper.canonicalize_type(evm_type), arg_role)
 
-            if arg_role == 'ARGM-TMP' or 'Time' in arg_role:
-                mapped_arg = evm_type.lower() + '_time'
-                full_arg = (evm_type, mapped_arg)
-                if full_arg in self.arg_set:
-                    return mapped_arg
-            if arg_role == 'ARGM-LOC' or 'Place' in arg_role:
-                mapped_arg = evm_type.lower() + '_place'
-                full_arg = (evm_type, mapped_arg)
-                if full_arg in self.arg_set:
-                    return mapped_arg
-            elif key in seedling_arg_map:
-                mapped_arg = seedling_arg_map[key]
-                return mapped_arg
+            mapped_arg_type = None
+
+            if key in seedling_arg_map:
+                seedling_type = seedling_arg_map[key]
+                mapped_arg_type = self.canonical_types[
+                    self.onto_mapper.canonicalize_type(seedling_type)
+                ]
+            elif arg_role == 'ARGM-TMP' or 'Time' in arg_role:
+                seedling_type = evm_type + '_Time'
+                full_arg = (evm_type, seedling_type)
+                if full_arg in self.arg_restricts:
+                    mapped_arg_type = seedling_type
+            elif arg_role == 'ARGM-LOC' or 'Place' in arg_role:
+                seedling_type = evm_type.lower() + '_Place'
+                full_arg = (evm_type, seedling_type)
+                if full_arg in self.arg_restricts:
+                    mapped_arg_type = seedling_type
             else:
-                # print("Finding ", key, arg_role, ", not found")
+                input(("Finding ", key, arg_role, ", not found"))
                 pass
 
+            print(mapped_arg_type)
+
+            return mapped_arg_type
+
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
-                              arg_text, onto_name, arg_role, component,
+                              arg_text, arg_onto, arg_role, component,
                               arg_entity_form='named'):
-        ent = self.add_entity_mention(arg_head_span, arg_span,
-                                      arg_text, 'aida', "argument",
-                                      entity_form=arg_entity_form,
-                                      component=component)
+        ent = self.get_by_span(self.entity_key, arg_span)
+
+        if not ent:
+            ent = self.add_entity_mention(
+                arg_head_span, arg_span, arg_text, 'aida', "argument",
+                entity_form=arg_entity_form, component=component)
 
         if ent:
-            type_onto, evm_type = evm.event_type.split(':')
+            evm_onto, evm_type = evm.event_type.split(':')
             arg_id = self.get_id('arg')
-            in_domain_arg = self.map_event_arg_type(type_onto, evm_type,
-                                                    arg_role)
+            in_domain_arg = self.map_event_arg_type(
+                evm_onto, evm_type, arg_role)
 
             if in_domain_arg:
                 if ':' in in_domain_arg:
-                    onto_name, arg_role = in_domain_arg.split(':')
+                    arg_onto, arg_role = in_domain_arg.split(':')
                 else:
-                    onto_name = self.base_onto_name
+                    arg_onto = self.base_onto_name
                     arg_role = in_domain_arg
             else:
-                if type_onto == 'aida':
+                if evm_onto == 'aida':
                     # print("Event is", evm.text, 'Event type is', evm.type,
                     #     ', argument is', arg_text, ', arg role is', arg_role)
                     pass
 
-            evm.add_arg(onto_name, arg_role, ent, arg_id, component=component)
+            evm.add_arg(arg_onto, arg_role, ent, arg_id, component=component)
 
     def add_event_arg(self, evm, ent, ontology, arg_role, component):
         arg_id = self.get_id('arg')
@@ -831,3 +858,11 @@ class CSR:
             json.dump(self.get_json_rep(), out, indent=2, ensure_ascii=False)
 
         self.clear()
+
+
+def fix_event_type_from_entity(evm_type, arg_entity_types):
+    if evm_type == 'Movement.TransportPerson':
+        if ('aida:Person' not in arg_entity_types) and (
+                'aida:Vehicle' in arg_entity_types):
+            evm_type = 'Movement.TransportArtifact'
+    return evm_type

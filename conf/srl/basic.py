@@ -2,7 +2,7 @@ import os
 
 if 'srl_workspace' not in os.environ:
     raise KeyError("Please supply the directory as environment "
-                   "variable: 'multi_args'")
+                   "variable: 'srl_workspace'")
 else:
     base = os.environ['srl_workspace']
 
