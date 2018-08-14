@@ -1,21 +1,21 @@
 import os
+from event.util import get_env
 
-base_var_name = 'root_output'
-if base_var_name not in os.environ:
-    raise KeyError("Please supply the directory as environment "
-                   "variable: {}".format(base_var_name))
-else:
-    output_base = os.path.join(os.environ[base_var_name], 'event', 'english')
+output_base = os.path.join(get_env('root_output'), 'event', 'english')
+
+# '/home/zhengzhl/workspace/resources/fndata-1.7/frame'
+c.DetectionParams.frame_lexicon = get_env('frame_lex')
+
+# '/home/zhengzhl/workspace/aida/domain_frames/'
+c.DetectionParams.resource_folder = get_env('domain_frames')
 
 c.DetectionParams.word_embedding_dim = 300
 c.DetectionParams.position_embedding_dim = 50
 c.DetectionParams.dropout = 0.5
-c.DetectionParams.frame_lexicon = '/home/zhengzhl/workspace/resources/fndata-1.7/frame'
 c.DetectionParams.input_format = 'conllu'
 c.DetectionParams.no_punct = True
 c.DetectionParams.model_name = 'frame_rule'
 
-c.DetectionParams.resource_folder = '/home/zhengzhl/workspace/aida/domain_frames/'
 c.DetectionParams.event_list = os.path.join(c.DetectionParams.resource_folder,
                                             'ontology_event_list.txt')
 c.DetectionParams.entity_list = os.path.join(c.DetectionParams.resource_folder,

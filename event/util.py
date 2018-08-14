@@ -79,3 +79,11 @@ tbl = dict.fromkeys(
 
 def remove_punctuation(text):
     return text.translate(tbl)
+
+
+def get_env(var_name):
+    if var_name not in os.environ:
+        raise KeyError("Please supply the directory as environment "
+                       "variable: {}".format(var_name))
+    else:
+        return os.environ[var_name]
