@@ -275,13 +275,13 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 component=component_name, arg_entity_types=arg_entity_types
             )
 
-            if 'negationWord' in rich_evm:
-                csr_evm.add_modifier('NEG', rich_evm['negationWord'])
-
-            if 'modalWord' in rich_evm:
-                csr_evm.add_modifier('MOD', rich_evm['modalWord'])
-
             if csr_evm:
+                if 'negationWord' in rich_evm:
+                    csr_evm.add_modifier('NEG', rich_evm['negationWord'])
+
+                if 'modalWord' in rich_evm:
+                    csr_evm.add_modifier('MOD', rich_evm['modalWord'])
+
                 eid = rich_evm['id']
                 evm_by_id[eid] = csr_evm
 
