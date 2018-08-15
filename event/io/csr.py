@@ -651,7 +651,8 @@ class CSR:
             entity_id = self.get_id('ent')
             entity_mention = EntityMention(
                 entity_id, sent_id, sent_id, span[0] - sentence_start,
-                span[1] - span[0], text, component=component)
+                                             span[1] - span[0], text,
+                component=component)
             self._span_frame_map[self.entity_key][span] = entity_id
             self._frame_map[self.entity_key][entity_id] = entity_mention
 
@@ -679,7 +680,7 @@ class CSR:
                 return self.canonical_types[mapped_evm_type]
         else:
             full_type = onto_name + ':' + evm_type
-            event_map = self.onto_mapper.get_seedling_event_map()
+            event_map = self.onto_mapper.get_aida_event_map()
 
             if full_type in event_map:
                 return self.canonical_types[event_map[full_type]]
@@ -761,28 +762,34 @@ class CSR:
         )
 
     def map_event_arg_type(self, event_onto, evm_type, arg_role):
-        seedling_arg_map = self.onto_mapper.get_seedling_arg_map()
+        map_to_aida = self.onto_mapper.get_aida_arg_map()
 
         if event_onto == 'aida':
             key = (self.onto_mapper.canonicalize_type(evm_type), arg_role)
 
             mapped_arg_type = None
 
-            if key in seedling_arg_map:
-                seedling_type = seedling_arg_map[key]
-                mapped_arg_type = self.canonical_types[
-                    self.onto_mapper.canonicalize_type(seedling_type)
-                ]
+            if key in map_to_aida:
+                arg_aid_type = map_to_aida[key]
+
+                c_arg_aida_type = self.onto_mapper.canonicalize_type(
+                    arg_aid_type)
+
+                if c_arg_aida_type in self.canonical_types:
+                    mapped_arg_type = self.canonical_types[c_arg_aida_type]
+                else:
+                    mapped_arg_type = arg_role
+                    print("Cannot map, role is ", arg_role)
             elif arg_role == 'ARGM-TMP' or 'Time' in arg_role:
-                seedling_type = evm_type + '_Time'
-                full_arg = (evm_type, seedling_type)
+                arg_aid_type = evm_type.lower() + '_Time'
+                full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
-                    mapped_arg_type = seedling_type
+                    mapped_arg_type = arg_aid_type
             elif arg_role == 'ARGM-LOC' or 'Place' in arg_role:
-                seedling_type = evm_type.lower() + '_Place'
-                full_arg = (evm_type, seedling_type)
+                arg_aid_type = evm_type.lower() + '_Place'
+                full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
-                    mapped_arg_type = seedling_type
+                    mapped_arg_type = arg_aid_type
             else:
                 input(("Finding ", key, arg_role, ", not found"))
                 pass

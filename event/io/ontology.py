@@ -9,14 +9,14 @@ class MappingLoader:
     def __init__(self):
         self.mappings = {}
 
-    def get_seedling_arg_map(self):
-        return self.mappings['seedling_arg']
+    def get_aida_arg_map(self):
+        return self.mappings['aida_arg']
 
-    def get_seedling_event_map(self):
-        return self.mappings['seedling_event']
+    def get_aida_event_map(self):
+        return self.mappings['aida_event']
 
-    def load_seedling_arg_mapping(self, mapping_file):
-        self.mappings['seedling_arg'] = {}
+    def load_arg_aida_mapping(self, mapping_file):
+        self.mappings['aida_arg'] = {}
 
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
@@ -28,13 +28,13 @@ class MappingLoader:
 
                 c_event_type = self.canonicalize_type(event_type)
                 for frame in mapped_frames:
-                    self.mappings['seedling_arg'][
+                    self.mappings['aida_arg'][
                         (c_event_type, frame)] = arg_type
 
-    def load_seedling_event_mapping(self, mapping_file):
+    def load_event_aida_mapping(self, mapping_file):
         # This mapping is from other ontology to seedling events, in
         # canonical format.
-        self.mappings['seedling_event'] = {}
+        self.mappings['aida_event'] = {}
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
                 parts = line.strip().split('\t')
@@ -42,7 +42,7 @@ class MappingLoader:
                 c_event_type = self.canonicalize_type(event_type)
 
                 for frame in parts[1:]:
-                    self.mappings['seedling_event'][frame] = c_event_type
+                    self.mappings['aida_event'][frame] = c_event_type
 
     def create_canonical_types(self, types):
         """

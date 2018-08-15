@@ -474,8 +474,8 @@ def main(config):
 
     aida_ontology = OntologyLoader(config.ontology_path)
     onto_mapper = MappingLoader()
-    onto_mapper.load_seedling_arg_mapping(config.seedling_argument_mapping)
-    onto_mapper.load_seedling_event_mapping(config.seedling_event_mapping)
+    onto_mapper.load_arg_aida_mapping(config.seedling_argument_mapping)
+    onto_mapper.load_event_aida_mapping(config.seedling_event_mapping)
 
     if config.add_rule_detector:
         # Rule detector should not need existing vocabulary.
