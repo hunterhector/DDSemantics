@@ -778,8 +778,10 @@ class CSR:
                 if c_arg_aida_type in self.canonical_types:
                     mapped_arg_type = self.canonical_types[c_arg_aida_type]
                 else:
-                    mapped_arg_type = arg_aid_type
-                    print("Cannot map, role is ", arg_aid_type)
+                    if arg_aid_type.startswith('internal_'):
+                        mapped_arg_type = arg_aid_type.replace(
+                            'internal_', 'internal:')
+
             elif arg_role == 'ARGM-TMP' or 'Time' in arg_role:
                 arg_aid_type = evm_type.lower() + '_Time'
                 full_arg = (evm_type, arg_aid_type)
