@@ -598,9 +598,9 @@ class CSR:
         span_text = sent_text[begin: end]
 
         if not span_text == text:
-            print("Was ", span)
-            print("Becomes ", begin, end)
-            print(sent_text)
+            logging.warning("Was {}".format(span))
+            logging.warning("Becomes {},{}".format(begin, end))
+            logging.warning(sent_text)
 
             logging.warning(
                 "Span text: [{}] not matching given text [{}]"
