@@ -50,6 +50,11 @@ def set_basic_log(log_level=logging.INFO):
     logging.basicConfig(level=log_level, format=log_format)
 
 
+def set_file_log(log_file, log_level=logging.INFO):
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    logging.basicConfig(level=log_level, format=log_format, filename=log_file)
+
+
 def basic_console_log(log_level=logging.INFO):
     root = logging.getLogger()
     root.setLevel(log_level)

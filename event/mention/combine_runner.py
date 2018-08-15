@@ -619,13 +619,11 @@ if __name__ == '__main__':
         seedling_argument_mapping = Unicode(
             help='Seedling argument mapping to TAC-KBP').tag(config=True)
 
-
-    util.set_basic_log()
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
 
     cl_conf = util.load_command_line_config(sys.argv[2:])
     conf.merge(cl_conf)
 
     params = CombineParams(config=conf)
-
+    util.set_file_log(os.path.join(params.output_folder, 'combiner.log'))
     main(params)
