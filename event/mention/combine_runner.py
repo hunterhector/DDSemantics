@@ -413,9 +413,11 @@ def add_entity_salience(csr, entity_salience_info):
     for span, data in entity_salience_info.items():
         entity = csr.get_by_span(csr.entity_key, span)
         if not entity:
+            # Names that can only spot by DBpedia is considered to be nominal.
             entity = csr.add_entity_mention(
                 span, data['span'], data['text'], 'aida', None,
-                entity_form='named', component='dbpedia-spotlight-0.7')
+                entity_form='nominal', component='dbpedia-spotlight-0.7'
+            )
 
         if not entity:
             if len(data['text']) > 20:

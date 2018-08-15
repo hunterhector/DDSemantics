@@ -626,6 +626,12 @@ class CSR:
             return e
         return None
 
+    def map_entity_type(self, onto_name, entity_type):
+        if onto_name == 'conll':
+            if entity_type == 'Date':
+                return 'aida', 'Time'
+        return onto_name, entity_type
+
     def add_entity_mention(self, head_span, span, text, ontology, entity_type,
                            sent_id=None, entity_form=None, component=None):
         head_span = tuple(head_span)
@@ -643,10 +649,9 @@ class CSR:
         if valid:
             sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
             entity_id = self.get_id('ent')
-            entity_mention = EntityMention(entity_id, sent_id, sent_id,
-                                           span[0] - sentence_start,
-                                           span[1] - span[0], text,
-                                           component=component)
+            entity_mention = EntityMention(
+                entity_id, sent_id, sent_id, span[0] - sentence_start,
+                span[1] - span[0], text, component=component)
             self._span_frame_map[self.entity_key][span] = entity_id
             self._frame_map[self.entity_key][entity_id] = entity_mention
 
@@ -656,23 +661,14 @@ class CSR:
         else:
             return
 
-        # Annotation on the same span are recorded as span groups.
-        ent_group = self.get_by_span(self.entity_group_key, head_span)
-        if not ent_group:
-            group_id = self.get_id('rel')
-            ent_group = RelationMention(self.get_id('rel'), 'aida',
-                                        'share_head_span', [])
-            self._span_frame_map[self.entity_group_key][head_span] = group_id
-            self._frame_map[self.entity_group_key][group_id] = ent_group
-
-        ent_group.add_arg(entity_id)
+        ontology, entity_type = self.map_entity_type(ontology, entity_type)
 
         if entity_form:
             entity_mention.add_form(entity_form)
         if entity_type:
             entity_mention.add_type(ontology, entity_type, component=component)
         else:
-            entity_mention.add_type(ontology, 'other', component=component)
+            entity_mention.add_type('conll', 'MISC', component=component)
         return entity_mention
 
     def map_event_type(self, evm_type, onto_name):
@@ -724,16 +720,16 @@ class CSR:
         else:
             return
 
-        # Annotation on the same span are recorded as span groups.
-        evm_group = self.get_by_span(self.event_group_key, head_span)
-        if not evm_group:
-            group_id = self.get_id('rel')
-            evm_group = RelationMention(self.get_id('rel'), 'aida',
-                                        'share_head_span', [])
-            self._span_frame_map[self.event_group_key][head_span] = group_id
-            self._frame_map[self.event_group_key][group_id] = evm_group
-
-        evm_group.add_arg(event_id)
+        # # Annotation on the same span are recorded as span groups.
+        # evm_group = self.get_by_span(self.event_group_key, head_span)
+        # if not evm_group:
+        #     group_id = self.get_id('rel')
+        #     evm_group = RelationMention(self.get_id('rel'), 'aida',
+        #                                 'share_head_span', [])
+        #     self._span_frame_map[self.event_group_key][head_span] = group_id
+        #     self._frame_map[self.event_group_key][group_id] = evm_group
+        #
+        # evm_group.add_arg(event_id)
 
         if evm_type:
             realis = 'UNK' if not realis else realis
@@ -791,14 +787,15 @@ class CSR:
                 input(("Finding ", key, arg_role, ", not found"))
                 pass
 
-            print(mapped_arg_type)
-
             return mapped_arg_type
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
                               arg_text, arg_onto, arg_role, component,
                               arg_entity_form='named'):
         ent = self.get_by_span(self.entity_key, arg_span)
+
+        if not ent:
+            ent = self.get_by_span(self.entity_head_key, arg_head_span)
 
         if not ent:
             ent = self.add_entity_mention(
