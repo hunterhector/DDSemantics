@@ -226,6 +226,13 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
             arg_entity_types = set()
             for argument in arguments:
                 entity_id = argument['entityId']
+
+                if entity_id not in csr_entities:
+                    logging.error(
+                        "Argument entity id {} not found in entity set, "
+                        "at doc: [{}]".format(entity_id, rich_event_file))
+                    continue
+
                 csr_ent = csr_entities[entity_id]
 
                 for t in csr_ent.get_types():

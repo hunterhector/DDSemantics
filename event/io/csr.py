@@ -822,8 +822,8 @@ class CSR:
                     arg_role = in_domain_arg
             else:
                 if evm_onto == 'aida':
-                    print("Event is", evm.text, 'Event type is', evm.type,
-                          ', argument is', arg_text, ', arg role is', arg_role)
+                    # print("Event is", evm.text, 'Event type is', evm.type,
+                    #       ', argument is', arg_text, ', arg role is', arg_role)
                     pass
 
             evm.add_arg(arg_onto, arg_role, ent, arg_id, component=component)
