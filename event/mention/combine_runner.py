@@ -510,8 +510,12 @@ def main(config):
 
                 if config.relation_json:
                     relation_file = find_by_id(config.relation_json, docid)
-                    logging.info("Adding relations between entities.")
-                    add_entity_relations(relation_file, edl_entities, csr)
+                    if relation_file:
+                        logging.info("Adding relations between entities.")
+                        add_entity_relations(relation_file, edl_entities, csr)
+                    else:
+                        logging.error("Cannot find the relation file for"
+                                      " {}".format(docid))
 
         conll_file = find_by_id(config.conllu_folder, docid)
         if not conll_file:
