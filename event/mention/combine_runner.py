@@ -218,9 +218,10 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 csr_entities[eid] = ent
             else:
                 if len(text) > 20:
-                    print("Argument mention {} rejected.".format(eid))
+                    logging.warning("Argument mention {} rejected.".format(eid))
                 else:
-                    print("Argument mention {}:{} rejected.".format(eid, text))
+                    logging.warning(
+                        ("Argument mention {}:{} rejected.".format(eid, text)))
 
         evm_by_id = {}
         for rich_evm in rich_event_info['eventMentions']:
@@ -619,11 +620,15 @@ if __name__ == '__main__':
         seedling_argument_mapping = Unicode(
             help='Seedling argument mapping to TAC-KBP').tag(config=True)
 
+
     conf = PyFileConfigLoader(sys.argv[1]).load_config()
 
     cl_conf = util.load_command_line_config(sys.argv[2:])
     conf.merge(cl_conf)
 
     params = CombineParams(config=conf)
-    util.set_file_log(os.path.join(params.output_folder, 'combiner.log'))
+    log_file = os.path.join(params.output_folder, 'combiner.log')
+    print("Logs will be output at {}".format(log_file))
+
+    util.set_file_log(log_file)
     main(params)
