@@ -44,14 +44,17 @@ def add_entity_relations(relation_file, edl_entities, csr):
                         "Relation entities [{}] not found at {}".format(
                             relen1, relation_file)
                     )
+                    continue
+
                 if relen2 not in edl_entities:
                     logging.error(
                         "Relation entities [{}] not found at {}".format(
                             relen2, relation_file)
                     )
+                    continue
 
-                en1_id = edl_entities[rel['en1']].id
-                en2_id = edl_entities[rel['en2']].id
+                en1_id = edl_entities[relen1].id
+                en2_id = edl_entities[relen2].id
 
                 csr.add_relation(
                     'aida', [en1_id, en2_id], rel['rel'], 'entity_rels')
@@ -79,7 +82,9 @@ def add_edl_entities(edl_file, csr):
                     head_span, mention_span, entity['mention'], 'aida',
                     entity['type'], entity_form='named',
                     component=edl_component_id)
-                edl_entities[entity['@id']] = ent
+
+                if ent:
+                    edl_entities[entity['@id']] = ent
 
             for entity in entity_sent['nominalMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
@@ -89,7 +94,9 @@ def add_edl_entities(edl_file, csr):
                     head_span, mention_span, entity['mention'], 'aida',
                     entity['type'], entity_form='nominal',
                     component=edl_component_id)
-                edl_entities[entity['@id']] = ent
+
+                if ent:
+                    edl_entities[entity['@id']] = ent
 
     return edl_entities
 
