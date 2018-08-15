@@ -31,6 +31,10 @@ def add_entity_relations(relation_file, edl_entities, csr):
 
         for relation in data:
             for rel in relation['rels']:
+                if 'en1' not in rel or 'en2' not in rel:
+                    logging.error(
+                        "En1 or 2 not presented at {}".format(relation_file))
+
                 en1_id = edl_entities[rel['en1']].id
                 en2_id = edl_entities[rel['en2']].id
 
