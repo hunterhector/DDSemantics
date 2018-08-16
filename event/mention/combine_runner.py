@@ -500,9 +500,6 @@ def main(config):
     assert config.conllu_folder is not None
     assert config.csr_output is not None
 
-    if config.salience_data:
-        scored_entities, scored_events = load_salience(config.salience_data)
-
     if not os.path.exists(config.csr_output):
         os.makedirs(config.csr_output)
 
@@ -571,10 +568,15 @@ def main(config):
                 add_rich_events(rich_event_file, csr, tokens)
 
         if config.salience_data:
-            if docid in scored_entities:
-                add_entity_salience(csr, scored_entities[docid])
-            if docid in scored_events:
-                add_event_salience(csr, scored_events[docid])
+            if not os.path.exists(config.salience_data):
+                logging.info("No salience added.")
+            else:
+                scored_entities, scored_events = load_salience(
+                    config.salience_data)
+                if docid in scored_entities:
+                    add_entity_salience(csr, scored_entities[docid])
+                if docid in scored_events:
+                    add_event_salience(csr, scored_events[docid])
 
         logging.info("Reading on CoNLLU: {}".format(conll_file))
         # The conll files may contain information from another language.
