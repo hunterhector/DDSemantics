@@ -534,19 +534,23 @@ def main(config):
         logging.info('Working with docid: {}'.format(docid))
 
         if config.edl_json and not ignore_edl:
-            edl_file = find_by_id(config.edl_json, docid)
-            if edl_file:
-                logging.info("Adding EDL results: {}".format(edl_file))
-                edl_entities = add_edl_entities(edl_file, csr)
+            if os.path.exists(config.edl_json):
+                logging.info("No EDL output")
+            else:
+                edl_file = find_by_id(config.edl_json, docid)
+                if edl_file:
+                    logging.info("Adding EDL results: {}".format(edl_file))
+                    edl_entities = add_edl_entities(edl_file, csr)
 
-                if config.relation_json:
-                    relation_file = find_by_id(config.relation_json, docid)
-                    if relation_file:
-                        logging.info("Adding relations between entities.")
-                        add_entity_relations(relation_file, edl_entities, csr)
-                    else:
-                        logging.error("Cannot find the relation file for"
-                                      " {}".format(docid))
+                    if config.relation_json:
+                        relation_file = find_by_id(config.relation_json, docid)
+                        if relation_file:
+                            logging.info("Adding relations between entities.")
+                            add_entity_relations(
+                                relation_file, edl_entities, csr)
+                        else:
+                            logging.error("Cannot find the relation file for"
+                                          " {}".format(docid))
 
         conll_file = find_by_id(config.conllu_folder, docid)
         if not conll_file:
@@ -560,12 +564,15 @@ def main(config):
             tokens = token_to_span(conll_file)
 
         if config.rich_event:
-            rich_event_file = find_by_id(config.rich_event, docid)
-            if rich_event_file:
-                logging.info(
-                    "Adding events with rich output: {}".format(
-                        rich_event_file))
-                add_rich_events(rich_event_file, csr, tokens)
+            if os.path.exists(config.rich_event):
+                rich_event_file = find_by_id(config.rich_event, docid)
+                if rich_event_file:
+                    logging.info(
+                        "Adding events with rich output: {}".format(
+                            rich_event_file))
+                    add_rich_events(rich_event_file, csr, tokens)
+            else:
+                logging.info("No rich event output.")
 
         if config.salience_data:
             if not os.path.exists(config.salience_data):
