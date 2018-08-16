@@ -398,9 +398,10 @@ def read_source(source_folder, output_dir, language, aida_ontology,
         # Use the empty newline to handle different newline format.
         with open(source_text_path, newline='') as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
-            csr = CSR('Frames_hector_combined', 1,
-                      os.path.join(output_dir, docid + '.csr.json'), 'data',
-                      aida_ontology=aida_ontology, onto_mapper=onto_mapper)
+            csr = CSR(
+                'Frames_hector_combined', 1,
+                os.path.join(output_dir, docid + '.csr.json'), 'data',
+                aida_ontology=aida_ontology, onto_mapper=onto_mapper)
 
             csr.add_doc(docid, 'report', language)
             text = text_in.read()
@@ -413,6 +414,9 @@ def read_source(source_folder, output_dir, language, aida_ontology,
                         sb, se, seg_id, kf = span_str.split(' ')
                         span = (int(sb), int(se))
                         sent_text = text[span[0]: span[1]]
+
+                        # print(kf)
+
                         sent = csr.add_sentence(
                             span, text=sent_text, keyframe=kf)
 
@@ -621,8 +625,7 @@ if __name__ == '__main__':
                                  default_value=False).tag(config=True)
         output_folder = Unicode(help='Parent output directory').tag(config=True)
         conllu_folder = Unicode(help='CoNLLU directory').tag(config=True)
-        csr_output = Unicode(help='Main CSR output directory').tag(
-            config=True)
+        csr_output = Unicode(help='Main CSR output directory').tag(config=True)
 
         # Aida specific
         ontology_path = Unicode(help='Ontology url or path.').tag(config=True)

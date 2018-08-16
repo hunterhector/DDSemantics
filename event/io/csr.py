@@ -325,8 +325,7 @@ class Sentence(SpanInterpFrame):
                  text, component=None, keyframe=None):
         super().__init__(fid, 'sentence', parent, 'sentence_interp', reference,
                          begin, length, text, component=component)
-        if keyframe:
-            self.keyframe = keyframe
+        self.keyframe = keyframe
 
     def json_rep(self):
         rep = super().json_rep()
@@ -589,7 +588,7 @@ class CSR:
         self.current_doc.num_sentences += 1
         sent_text = text if text else ""
         sent = Sentence(sent_id, docid, docid, span[0], span[1] - span[0],
-                        text=sent_text, component=component)
+                        text=sent_text, component=component, keyframe=keyframe)
         self._frame_map[self.sent_key][sent_id] = sent
 
         return sent
