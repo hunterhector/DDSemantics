@@ -410,9 +410,11 @@ def read_source(source_folder, output_dir, language, aida_ontology,
             if os.path.exists(sent_path):
                 with open(sent_path) as sent_in:
                     for span_str in sent_in:
-                        span = [int(s) for s in span_str.split(' ')]
+                        sb, se, seg_id, kf = span_str.split(' ')
+                        span = (int(sb), int(se))
                         sent_text = text[span[0]: span[1]]
-                        sent = csr.add_sentence(span, text=sent_text)
+                        sent = csr.add_sentence(
+                            span, text=sent_text, keyframe=kf)
 
                         negations = analyze_sentence(sent_text)
                         for neg in negations:

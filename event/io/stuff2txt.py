@@ -45,10 +45,16 @@ def ltf2txt(in_dir, out_dir):
                 for seg in entry:
                     new_sent = True
 
+                    seg_attr = seg.attrib
+                    seg_id = seg_attr['id']
+                    key_frame = seg_attr.get('keyframe', '-')
+
                     sents.append(
-                        "%d %s" % (
-                            int(seg.attrib['start_char']) - 1,
-                            int(seg.attrib['end_char']) + 1
+                        "{} {} {} {}".format(
+                            int(seg_attr['start_char']) - 1,
+                            int(seg_attr['end_char']) + 1,
+                            seg_id,
+                            key_frame,
                         )
                     )
 

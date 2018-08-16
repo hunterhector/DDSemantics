@@ -322,9 +322,17 @@ class Sentence(SpanInterpFrame):
     """
 
     def __init__(self, fid, parent, reference, begin, length,
-                 text, component=None):
+                 text, component=None, keyframe=None):
         super().__init__(fid, 'sentence', parent, 'sentence_interp', reference,
                          begin, length, text, component=component)
+        if keyframe:
+            self.keyframe = keyframe
+
+    def json_rep(self):
+        rep = super().json_rep()
+        if self.keyframe:
+            rep['@keyframe'] = self.keyframe
+        return rep
 
 
 class EntityMention(SpanInterpFrame):
@@ -571,7 +579,7 @@ class CSR:
         frames = self.get_frames(key_type)
         return frames.get(frame_id)
 
-    def add_sentence(self, span, text=None, component=None):
+    def add_sentence(self, span, text=None, component=None, keyframe=None):
         sent_id = self.get_id('sent')
 
         if sent_id in self._frame_map[self.sent_key]:

@@ -37,10 +37,11 @@ class LTF:
         self.token_id += 1
         return tid
 
-    def begin_seg(self):
+    def begin_seg(self, keyframe=None):
         self.current_seg = ET.SubElement(self.text_node, 'SEG')
         self.current_seg.set('start_char', str(self.text_offset + 1))
         self.current_seg.set('id', self.get_new_seg())
+        self.current_seg.set('keyframe', keyframe)
 
     def add_token(self, text):
         self.seg_text.append(text)
@@ -96,7 +97,7 @@ def sausage_to_ltf(in_file_path, out_file_path, docid):
             for interval in intervals:
                 best_words = []
 
-                ltf.begin_seg()
+                ltf.begin_seg(keyframe=keyframe)
 
                 for hypos in interval['sausage']:
                     best_score = -1
@@ -120,7 +121,7 @@ def sausage_to_ltf(in_file_path, out_file_path, docid):
 if __name__ == '__main__':
     input_dir = sys.argv[1]
     output_dir = sys.argv[2]
-    language = sys.argv[3]
+    # language = sys.argv[3]
     # format = sys.argv[3]
 
     if not os.path.exists(output_dir):
