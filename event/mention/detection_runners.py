@@ -10,6 +10,7 @@ def guess_entity_form(upos, xpos):
         else:
             return 'nominal'
 
+
 class DetectionRunner:
     def __init__(self, config, token_vocab, tag_vocab, ontology):
         self.model_name = config.model_name
@@ -39,7 +40,7 @@ class DetectionRunner:
             self.model = MarkedDetector(config, token_vocab)
             self.trainable = False
 
-    def predict(self, test_reader, csr):
+    def predict(self, test_reader, csr, component_name=None):
         for data in test_reader.read_window():
             tokens, tags, features, l_word_meta, meta = data
             center = int(len(l_word_meta) / 2)
@@ -48,10 +49,13 @@ class DetectionRunner:
 
             event_type = self.model.predict(data)
 
+            if not component_name:
+                component_name = self.model_name
+
             if event_type:
                 evm = csr.add_event_mention(
                     span, span, token, 'aida', this_feature[-1],
-                    component='Maria'
+                    component=component_name
                 )
 
                 if not evm:
@@ -73,4 +77,3 @@ class DetectionRunner:
                             rel_type, component=self.model_name,
                             arg_entity_form=entity_form
                         )
-

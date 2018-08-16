@@ -594,7 +594,7 @@ def main(config):
             logging.info("Adding from ontology based rule detector.")
             # Adding rule detector. This is the last detector that use other
             # information from the CSR, including entity and events.
-            detector.predict(test_reader, csr)
+            detector.predict(test_reader, csr, 'maria_multilingual')
 
             # align_ontology(csr, aida_ontology)
 
