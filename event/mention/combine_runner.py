@@ -411,11 +411,18 @@ def read_source(source_folder, output_dir, language, aida_ontology,
             if os.path.exists(sent_path):
                 with open(sent_path) as sent_in:
                     for span_str in sent_in:
-                        sb, se, seg_id, kf = span_str.split(' ')
+                        span_parts = span_str.split(' ')
+
+                        sb, se = span_parts[:2]
+
+                        # sb, se, seg_id, kf = span_str.split(' ')
                         span = (int(sb), int(se))
                         sent_text = text[span[0]: span[1]]
 
-                        # print(kf)
+                        if len(span_parts) >= 4:
+                            kf = span_parts[3]
+                        else:
+                            kf = None
 
                         sent = csr.add_sentence(
                             span, text=sent_text, keyframe=kf)
