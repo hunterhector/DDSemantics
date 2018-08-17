@@ -421,6 +421,9 @@ def read_source(source_folder, language, aida_ontology, onto_mapper):
                         else:
                             kf = None
 
+                        if kf == '-':
+                            kf = None
+
                         sent = csr.add_sentence(
                             span, text=sent_text, keyframe=kf)
 
