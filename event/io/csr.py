@@ -76,12 +76,10 @@ class Document(Frame):
     Represent a document frame.
     """
 
-    def __init__(self, fid, doc_name, document_type, language,
-                 media_type='text'):
+    def __init__(self, fid, doc_name, media_type, language):
         super().__init__(fid, 'document', None)
         self.doc_name = doc_name
         self.media_type = media_type
-        self.document_type = document_type
         self.language = language
         self.num_sentences = 0
 
@@ -483,7 +481,7 @@ class CSR:
     Main class that collect and output frames.
     """
 
-    def __init__(self, component_name, run_id, out_path, namespace,
+    def __init__(self, component_name, run_id, namespace,
                  media_type='text', aida_ontology=None, onto_mapper=None):
         self.header = {
             "@context": [
@@ -500,8 +498,6 @@ class CSR:
                 'media_type': media_type,
             },
         }
-
-        self.out_path = out_path
 
         self._docs = {}
 
@@ -525,22 +521,41 @@ class CSR:
         self.sent_key = 'sentence'
         self.rel_key = 'relation'
 
-        self.aida_ontology = aida_ontology
+        self.base_onto_name = 'aida'
+
         self.onto_mapper = onto_mapper
 
-        self.event_onto = aida_ontology.event_onto_text()
-        self.arg_restricts = aida_ontology.get_arg_restricts()
+        if aida_ontology:
+            self.event_onto = aida_ontology.event_onto_text()
+            self.arg_restricts = aida_ontology.get_arg_restricts()
 
-        self.canonical_types = {}
-        for event_type in self.event_onto:
-            c_type = onto_mapper.canonicalize_type(event_type)
-            self.canonical_types[c_type] = event_type
+            self.canonical_types = {}
+            for event_type in self.event_onto:
+                c_type = onto_mapper.canonicalize_type(event_type)
+                self.canonical_types[c_type] = event_type
 
-        for _, arg_type in self.arg_restricts:
-            c_type = onto_mapper.canonicalize_type(arg_type)
-            self.canonical_types[c_type] = arg_type
+            for _, arg_type in self.arg_restricts:
+                c_type = onto_mapper.canonicalize_type(arg_type)
+                self.canonical_types[c_type] = arg_type
 
-        self.base_onto_name = 'aida'
+    def load_from_file(self, csr_file):
+        with open(csr_file) as fin:
+            csr_json = json.load(fin)
+            docid = csr_json['meta']['document_id']
+            media_type = csr_json['meta']['media_type']
+            docname = ''.join(docid.split(':')[1].split('-')[:-1])
+
+            for frame in csr_json['frames']:
+                frame_type = frame['@type']
+
+                if frame_type == 'document':
+                    self.add_doc(docname, media_type, frame['language'])
+
+                if frame_type == 'sentence':
+                    start = frame["provenance"]["start"]
+                    end = frame["provenance"]["length"] + start
+                    span = (start, end)
+                    self.add_sentence(span, frame["provenance"]['text'])
 
     def __canonicalize_event_type(self):
         canonical_map = {}
@@ -556,13 +571,13 @@ class CSR:
         self._span_frame_map.clear()
         self._frame_map.clear()
 
-    def add_doc(self, doc_name, doc_type, language):
-        ns_docid = self.ns_prefix + ":" + doc_name + "-" + self.media_type
+    def add_doc(self, doc_name, media_type, language):
+        ns_docid = self.ns_prefix + ":" + doc_name + "-" + media_type
 
         if ns_docid in self._docs:
             return
 
-        doc = Document(ns_docid, doc_name, doc_type, language, self.media_type)
+        doc = Document(ns_docid, doc_name, media_type, language)
         self.current_doc = doc
         self._docs[ns_docid] = doc
 
@@ -856,15 +871,15 @@ class CSR:
 
         return rep
 
-    def write(self, append=False):
+    def write(self, out_path, append=False):
         if append:
-            mode = 'a' if os.path.exists(self.out_path) else 'w'
+            mode = 'a' if os.path.exists(out_path) else 'w'
         else:
             mode = 'w'
 
-        logging.info("Writing data to [%s]" % self.out_path)
+        logging.info("Writing data to [%s]" % out_path)
 
-        with open(self.out_path, mode) as out:
+        with open(out_path, mode) as out:
             json.dump(self.get_json_rep(), out, indent=2, ensure_ascii=False)
 
         self.clear()
@@ -876,3 +891,12 @@ def fix_event_type_from_entity(evm_type, arg_entity_types):
                 'aida:Vehicle' in arg_entity_types):
             evm_type = 'Movement.TransportArtifact'
     return evm_type
+
+
+if __name__ == '__main__':
+    import sys
+
+    # Test loading a csr file
+    csr = CSR('Frames_hector_combined', 1, 'data')
+    csr.load_from_file(sys.argv[1])
+    csr.write(sys.argv[2])

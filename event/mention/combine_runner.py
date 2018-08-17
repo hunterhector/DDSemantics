@@ -72,7 +72,7 @@ def add_edl_entities(edl_file, csr):
 
         for entity_sent in data:
             docid = entity_sent['docID']
-            csr.add_doc(docid, 'report', 'en')
+            csr.add_doc(docid, 'text', 'en')
 
             for entity in entity_sent['namedMentions']:
                 mention_span = [entity['char_begin'], entity['char_end']]
@@ -392,18 +392,15 @@ def analyze_sentence(text):
     return negations
 
 
-def read_source(source_folder, output_dir, language, aida_ontology,
-                onto_mapper):
+def read_source(source_folder, language, aida_ontology, onto_mapper):
     for source_text_path in glob.glob(source_folder + '/*.txt'):
         # Use the empty newline to handle different newline format.
         with open(source_text_path, newline='') as text_in:
             docid = os.path.basename(source_text_path).split('.')[0]
-            csr = CSR(
-                'Frames_hector_combined', 1,
-                os.path.join(output_dir, docid + '.csr.json'), 'data',
-                aida_ontology=aida_ontology, onto_mapper=onto_mapper)
+            csr = CSR('Frames_hector_combined', 1, 'data',
+                      aida_ontology=aida_ontology, onto_mapper=onto_mapper)
 
-            csr.add_doc(docid, 'report', language)
+            csr.add_doc(docid, 'text', language)
             text = text_in.read()
             sent_index = 0
 
@@ -411,7 +408,7 @@ def read_source(source_folder, output_dir, language, aida_ontology,
             if os.path.exists(sent_path):
                 with open(sent_path) as sent_in:
                     for span_str in sent_in:
-                        span_parts = span_str.split(' ')
+                        span_parts = span_str.strip().split(' ')
 
                         sb, se = span_parts[:2]
 
@@ -542,8 +539,8 @@ def main(config):
                 config.edl_json))
             ignore_edl = True
 
-    for csr, docid in read_source(config.source_folder, config.csr_output,
-                                  config.language, aida_ontology, onto_mapper):
+    for csr, docid in read_source(config.source_folder, config.language,
+                                  aida_ontology, onto_mapper):
         logging.info('Working with docid: {}'.format(docid))
 
         if config.edl_json and not ignore_edl:
@@ -609,10 +606,10 @@ def main(config):
             # information from the CSR, including entity and events.
             detector.predict(test_reader, csr, 'maria_multilingual')
 
-            # align_ontology(csr, aida_ontology)
+        csr.write(os.path.join(config.csr_output, docid + '.csr.json'))
 
-        csr.write()
 
+# TODO: Get real media type somewhere.
 
 if __name__ == '__main__':
     from event import util
@@ -653,6 +650,6 @@ if __name__ == '__main__':
     print("Logs will be output at {}".format(log_file))
     util.set_file_log(log_file)
 
-#    util.set_basic_log()
+    #    util.set_basic_log()
 
     main(params)
