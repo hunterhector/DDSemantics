@@ -547,16 +547,25 @@ class CSR:
 
             for frame in csr_json['frames']:
                 frame_type = frame['@type']
+                interp = frame['interp']
+
+                if 'provenance' in frame:
+                    start = frame["provenance"]["start"]
+                    end = frame["provenance"]["length"] + start
+                    span = (start, end)
+                    text = frame["provenance"]['text']
 
                 if frame_type == 'document':
                     self.add_doc(docname, media_type, frame['language'])
                 elif frame_type == 'sentence':
-                    start = frame["provenance"]["start"]
-                    end = frame["provenance"]["length"] + start
-                    span = (start, end)
-                    self.add_sentence(span, frame["provenance"]['text'])
+                    self.add_sentence(span, text)
                 elif frame_type == 'entity_evidence':
-                    pass
+                    etype = interp['type']
+                    onto, t = etype.split(':')
+                    sent_ref = frame['provenance']['reference']
+                    self.add_event_mention(
+                        span, span, text, onto, t, interp['realis'], sent_ref,
+                        component=frame['component'])
                 elif frame_type == 'event_evidence':
 
                     pass
