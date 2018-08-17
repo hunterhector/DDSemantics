@@ -20,7 +20,10 @@ class MappingLoader:
 
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
-                parts = line.strip().split('\t')
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split('\t')
                 event_type = parts[0]
                 arg_type = parts[1]
                 constraints = parts[2]
@@ -37,7 +40,10 @@ class MappingLoader:
         self.mappings['aida_event'] = {}
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
-                parts = line.strip().split('\t')
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split('\t')
                 event_type = parts[0]
                 c_event_type = self.canonicalize_type(event_type)
 

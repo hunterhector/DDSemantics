@@ -219,6 +219,4 @@ Conflict.Attack	Conflict.Attack_Target	Commodity Weapon Facility Person Vehicle 
 Personnel.Elect	Personnel.Elect_Elect	Person	ARG1
 Personnel.Elect	Personnel.Elect_Place	GeopoliticalEntity Facility Location
 Personnel.Elect	Personnel.Elect_Elector	Person GeopoliticalEntity Organization	
-Personnel.Elect	Personnel.Elect_Time	Time	
-
-
+Personnel.Elect	Personnel.Elect_Time	Time
