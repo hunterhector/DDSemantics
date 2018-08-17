@@ -550,12 +550,18 @@ class CSR:
 
                 if frame_type == 'document':
                     self.add_doc(docname, media_type, frame['language'])
-
-                if frame_type == 'sentence':
+                elif frame_type == 'sentence':
                     start = frame["provenance"]["start"]
                     end = frame["provenance"]["length"] + start
                     span = (start, end)
                     self.add_sentence(span, frame["provenance"]['text'])
+                elif frame_type == 'entity_evidence':
+                    pass
+                elif frame_type == 'event_evidence':
+
+                    pass
+                elif frame_type == 'relation_evidence':
+                    pass
 
     def __canonicalize_event_type(self):
         canonical_map = {}
