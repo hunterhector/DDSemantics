@@ -1,38 +1,47 @@
-BUSINESS_DECLARE-BANKRUPTCY
-BUSINESS_END-BUSINESS	tac:Business_Endorg
-BUSINESS_MERGE	tac:Business_Mergeorg
-BUSINESS_START-BUSINESS	Business_Startorg
-CONFLICT_ATTACK	framenet:Ingestion
-CONFLICT_DEMONSTRATE
-CONTACT_BROADCAST	framenet:Statement	framenet:Judgment_communication
-CONTACT_CONTACT	Talk
-CONTACT_CORRESPONDENCE
-CONTACT_MEET
-JUSTICE_ACQUIT
-JUSTICE_APPEAL
-JUSTICE_ARREST-JAIL
-JUSTICE_CHARGE-INDICT
-JUSTICE_CONVICT
-JUSTICE_EXECUTE
-JUSTICE_EXTRADITE
-JUSTICE_FINE
-JUSTICE_PARDON
-JUSTICE_RELEASE-PAROLE
-JUSTICE_SENTENCE
-JUSTICE_SUE
-JUSTICE_TRIAL-HEARING
-LIFE_BE-BORN
-LIFE_DIE
-LIFE_DIVORCE
-LIFE_INJURE
-LIFE_MARRY
-MANUFACTURE_ARTIFACT
-MOVEMENT_TRANSPORT-ARTIFACT	framenet:Impact	framenet:Arriving	framenet:Motion
-MOVEMENT_TRANSPORT-PERSON
-PERSONNEL_ELECT
-PERSONNEL_END-PERSONNEL	Personnel_Endposition
-PERSONNEL_NOMINATE
-PERSONNEL_START-PERSONNEL	Personnel_Startposition
-TRANSACTION_TRANSACTION
-TRANSACTION_TRANSFER-MONEY
-TRANSACTION_TRANSFER-OWNERSHIP
+Business.DeclareBankruptcy
+Business.End	tac:Business_Endorg
+Business.Merge	tac:Business_Mergeorg
+Business.Start	Business_Startorg
+Conflict.Attack	framenet:Ingestion	framenet:Killing
+Conflict.Demonstrate
+Contact.Broadcast	framenet:Statement	framenet:Judgment_communication
+Contact.Contact
+Contact.Correspondence
+Contact.Meet
+Existence.DamageDestroy	framenet:Impact
+Government.Agreements
+Government.Legislate
+Government.Spy
+Government.Vote
+Inspection.Artifact
+Inspection.People
+Justice.Acquit
+Justice.Appeal
+Justice.ArrestJail
+Justice.ChargeIndict
+Justice.Convict
+Justice.Execute
+Justice.Extradite
+Justice.Fine
+Justice.Investigate
+Justice.Pardon
+Justice.ReleaseParole
+Justice.Sentence
+Justice.Sue
+Justice.TrialHearing
+Life.BeBorn
+Life.Die
+Life.Divorce
+Life.Injure
+Life.Marry
+Manufacture.Artifact
+Movement.TransportArtifact	framenet:Arriving	framenet:Motion
+Movement.TransportPerson
+Personnel.Elect
+Personnel.EndPosition	Personnel_Endposition
+Personnel.Nominate
+Personnel.StartPosition	Personnel_Startposition
+Transaction.Transaction
+Transaction.TransferControl
+Transaction.TransferMoney
+Transaction.TransferOwnership
