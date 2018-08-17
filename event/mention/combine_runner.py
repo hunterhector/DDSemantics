@@ -547,7 +547,7 @@ def main(config):
         logging.info('Working with docid: {}'.format(docid))
 
         if config.edl_json and not ignore_edl:
-            if os.path.exists(config.edl_json):
+            if not os.path.exists(config.edl_json):
                 logging.info("No EDL output")
             else:
                 edl_file = find_by_id(config.edl_json, docid)
