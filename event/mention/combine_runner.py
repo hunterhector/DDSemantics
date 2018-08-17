@@ -648,8 +648,11 @@ if __name__ == '__main__':
     conf.merge(cl_conf)
 
     params = CombineParams(config=conf)
+
     log_file = os.path.join(params.output_folder, 'combiner.log')
     print("Logs will be output at {}".format(log_file))
-
     util.set_file_log(log_file)
+
+#    util.set_basic_log()
+
     main(params)
