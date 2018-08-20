@@ -539,38 +539,101 @@ class CSR:
                 self.canonical_types[c_type] = arg_type
 
     def load_from_file(self, csr_file):
+        def compute_span(this_frame):
+            parent_sent_id = this_frame['provenance']['reference']
+            if sent_ref in self._frame_map[self.sent_key]:
+                parent_sent = self._frame_map[self.sent_key][parent_sent_id]
+                offset = parent_sent.span.begin
+            else:
+                offset = 0
+            s = this_frame["provenance"]["start"] + offset
+            e = this_frame["provenance"]["length"] + s
+            return (s, e)
+
         with open(csr_file) as fin:
             csr_json = json.load(fin)
             docid = csr_json['meta']['document_id']
             media_type = csr_json['meta']['media_type']
             docname = ''.join(docid.split(':')[1].split('-')[:-1])
 
+            frame_data = defaultdict(list)
+
             for frame in csr_json['frames']:
                 frame_type = frame['@type']
-                interp = frame['interp']
-
-                if 'provenance' in frame:
-                    start = frame["provenance"]["start"]
-                    end = frame["provenance"]["length"] + start
-                    span = (start, end)
-                    text = frame["provenance"]['text']
+                fid = frame['@id']
 
                 if frame_type == 'document':
                     self.add_doc(docname, media_type, frame['language'])
                 elif frame_type == 'sentence':
-                    self.add_sentence(span, text)
-                elif frame_type == 'entity_evidence':
-                    etype = interp['type']
-                    onto, t = etype.split(':')
-                    sent_ref = frame['provenance']['reference']
-                    self.add_event_mention(
-                        span, span, text, onto, t, interp['realis'], sent_ref,
-                        component=frame['component'])
-                elif frame_type == 'event_evidence':
+                    start = frame["provenance"]["start"]
+                    end = frame["provenance"]["length"] + start
+                    self.add_sentence(
+                        (start, end), frame["provenance"]['text'], sent_id=fid)
+                else:
+                    frame_data[frame_type].append(frame)
 
-                    pass
-                elif frame_type == 'relation_evidence':
-                    pass
+            entities = {}
+            for frame in frame_data['entity_evidence']:
+                sent_ref = frame['provenance']['reference']
+                interp = frame['interp']
+                onto, t = interp['type'].split(':')
+                text = frame["provenance"]['text']
+                span = compute_span(frame)
+                eid = frame['@id']
+
+                csr_ent = self.add_entity_mention(
+                    span, span, text, onto, t, sent_ref, interp['form'],
+                    frame['component'], entity_id=eid
+                )
+
+                entities[eid] = csr_ent
+
+            for frame in frame_data['event_evidence']:
+                sent_ref = frame['provenance']['reference']
+                interp = frame['interp']
+                onto, t = interp['type'].split(':')
+                text = frame["provenance"]['text']
+                span = compute_span(frame)
+
+                csr_evm = self.add_event_mention(
+                    span, span, text, onto, t, realis=interp['realis'],
+                    sent_id=sent_ref, component=frame['component'],
+                    event_id=frame['@id']
+                )
+
+                for mod, v in frame["provenance"]["modifiers"].items():
+                    csr_evm.add_modifier(mod, v)
+
+                for arg in interp.get('args', []):
+                    arg_values = []
+                    if arg['@type'] == 'xor':
+                        for sub_arg in arg['args']:
+                            arg_values.append(sub_arg['value'])
+                    else:
+                        arg_values.append(arg)
+
+                    for arg_val in arg_values:
+                        arg_onto, arg_type = arg_val['type'].split(':')
+                        arg_id = arg_val['@id']
+                        arg_entity_id = arg_val['arg']
+                        ent = entities[arg_entity_id]
+
+                        csr_evm.add_arg(
+                            arg_onto, arg_type, ent, arg_id,
+                            component=arg_val['component']
+                        )
+
+            for frame in frame_data['relation_evidence']:
+                fid = frame['@id']
+                interp = frame['interp']
+                onto, rel_type = interp['type'].split(':')
+
+                args = [arg['arg'] for arg in interp['args']]
+
+                csr.add_relation(
+                    onto, args, rel_type, component=frame['component'],
+                    relation_id=fid
+                )
 
     def __canonicalize_event_type(self):
         canonical_map = {}
@@ -608,8 +671,10 @@ class CSR:
         frames = self.get_frames(key_type)
         return frames.get(frame_id)
 
-    def add_sentence(self, span, text=None, component=None, keyframe=None):
-        sent_id = self.get_id('sent')
+    def add_sentence(self, span, text=None, component=None, keyframe=None,
+                     sent_id=None):
+        if not sent_id:
+            sent_id = self.get_id('sent')
 
         if sent_id in self._frame_map[self.sent_key]:
             return sent_id
@@ -670,7 +735,8 @@ class CSR:
         return onto_name, entity_type
 
     def add_entity_mention(self, head_span, span, text, ontology, entity_type,
-                           sent_id=None, entity_form=None, component=None):
+                           sent_id=None, entity_form=None, component=None,
+                           entity_id=None):
         head_span = tuple(head_span)
         span = tuple(span)
 
@@ -685,17 +751,19 @@ class CSR:
 
         if valid:
             sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
-            entity_id = self.get_id('ent')
+
+            if not entity_id:
+                entity_id = self.get_id('ent')
+
             entity_mention = EntityMention(
-                entity_id, sent_id, sent_id, span[0] - sentence_start,
-                                             span[1] - span[0], text,
+                entity_id, sent_id, sent_id,
+                span[0] - sentence_start, span[1] - span[0], text,
                 component=component)
             self._span_frame_map[self.entity_key][span] = entity_id
             self._frame_map[self.entity_key][entity_id] = entity_mention
 
             self._span_frame_map[self.entity_head_key][head_span] = entity_id
             self._frame_map[self.entity_head_key][entity_id] = entity_mention
-
         else:
             return
 
@@ -712,20 +780,20 @@ class CSR:
     def map_event_type(self, evm_type, onto_name):
         if onto_name == 'tac':
             mapped_evm_type = self.__cannonicalize_one_type(evm_type)
-
             if mapped_evm_type in self.canonical_types:
                 return self.canonical_types[mapped_evm_type]
-        else:
+        elif onto_name == 'aida':
+            return evm_type
+        elif self.onto_mapper:
             full_type = onto_name + ':' + evm_type
             event_map = self.onto_mapper.get_aida_event_map()
-
             if full_type in event_map:
                 return self.canonical_types[event_map[full_type]]
         return None
 
     def add_event_mention(self, head_span, span, text, onto_name, evm_type,
                           realis=None, sent_id=None, component=None,
-                          arg_entity_types=None):
+                          arg_entity_types=None, event_id=None):
         # Annotation on the same span will be reused.
         head_span = tuple(head_span)
         span = tuple(span)
@@ -743,7 +811,9 @@ class CSR:
                 logging.info("Cannot handle overlapped event mentions now.")
                 return
 
-            event_id = self.get_id('evm')
+            if not event_id:
+                event_id = self.get_id('evm')
+
             self._span_frame_map[self.event_key][head_span] = event_id
 
             sent = self._frame_map[self.sent_key][sent_id]
@@ -758,17 +828,6 @@ class CSR:
         else:
             return
 
-        # # Annotation on the same span are recorded as span groups.
-        # evm_group = self.get_by_span(self.event_group_key, head_span)
-        # if not evm_group:
-        #     group_id = self.get_id('rel')
-        #     evm_group = RelationMention(self.get_id('rel'), 'aida',
-        #                                 'share_head_span', [])
-        #     self._span_frame_map[self.event_group_key][head_span] = group_id
-        #     self._frame_map[self.event_group_key][group_id] = evm_group
-        #
-        # evm_group.add_arg(event_id)
-
         if evm_type:
             realis = 'UNK' if not realis else realis
 
@@ -776,7 +835,8 @@ class CSR:
 
             if arg_entity_types:
                 mapped_type = fix_event_type_from_entity(
-                    mapped_type, arg_entity_types)
+                    mapped_type, arg_entity_types
+                )
 
             if mapped_type:
                 evm.add_interp('aida', mapped_type, realis, component=component)
@@ -860,7 +920,8 @@ class CSR:
             else:
                 if evm_onto == 'aida':
                     # print("Event is", evm.text, 'Event type is', evm.type,
-                    #       ', argument is', arg_text, ', arg role is', arg_role)
+                    #       ', argument is', arg_text, ',
+                    #       arg role is', arg_role)
                     pass
 
             evm.add_arg(arg_onto, arg_role, ent, arg_id, component=component)
@@ -869,8 +930,10 @@ class CSR:
         arg_id = self.get_id('arg')
         evm.add_arg(ontology, arg_role, ent, arg_id, component=component)
 
-    def add_relation(self, ontology, arguments, relation_type, component=None):
-        relation_id = self.get_id('relm')
+    def add_relation(self, ontology, arguments, relation_type, component=None,
+                     relation_id=None):
+        if not relation_id:
+            relation_id = self.get_id('relm')
         rel = RelationMention(relation_id, ontology, relation_type, arguments,
                               component=component)
         self._frame_map[self.rel_key][relation_id] = rel
