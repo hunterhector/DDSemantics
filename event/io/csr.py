@@ -275,6 +275,9 @@ class Span:
             'length': self.length,
         }
 
+    def get(self):
+        return self.begin, self.begin + self.length
+
     def __str__(self):
         return "%s: %d,%d" % (
             self.reference, self.begin, self.begin + self.length
@@ -630,7 +633,7 @@ class CSR:
 
                 args = [arg['arg'] for arg in interp['args']]
 
-                csr.add_relation(
+                self.add_relation(
                     onto, args, rel_type, component=frame['component'],
                     relation_id=fid
                 )

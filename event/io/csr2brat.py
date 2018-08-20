@@ -2,12 +2,12 @@ import json
 from collections import defaultdict
 import os
 import sys
-from event.io.csr import Constants
+from event.io.csr import Constants, CSR
 
 
 def get_span(frame):
-    begin = frame['extent']['start']
-    end = frame['extent']['length'] + begin
+    begin = frame['provenance']['start']
+    end = frame['provenance']['length'] + begin
     return begin, end
 
 
@@ -70,75 +70,62 @@ class CrsConverter:
         self.data = []
 
     def read_csr(self, path):
-        with open(path) as file:
-            # Better way would be convert it to CSR object.
-            csr = json.load(file)
+        csr = CSR('Read_from_file', 1, 'data')
+        csr.load_from_file(path)
 
-            doc_sentences = defaultdict(list)
-            event_mentions = defaultdict(dict)
-            event_args = defaultdict(list)
-            entity_mentions = defaultdict(dict)
-            relations = []
+        doc_sentences = defaultdict(list)
+        event_mentions = defaultdict(dict)
+        event_args = defaultdict(list)
+        entity_mentions = defaultdict(dict)
+        relations = []
 
-            for frame in csr['frames']:
-                frame_type = frame['@type']
-                if frame_type == 'document':
-                    docid = frame['@id']
-                    num_sentences = frame['num_sentences']
-                elif frame_type == 'sentence':
-                    parent = frame['parent_scope']
-                    text = frame['text']
-                    fid = frame['@id']
-                    doc_sentences[parent].append((get_span(frame), text, fid))
-                elif frame_type == 'event_mention':
-                    parent = frame['parent_scope']
-                    fid = frame['@id']
-                    event_mentions[parent][fid] = (
-                        get_span(frame),
-                        get_type(frame, Constants.GENERAL_EVENT_TYPE),
-                        frame['text']
-                    )
-                    if 'args' in frame['interp']:
-                        for arg in frame['interp']['args']:
-                            arg_entity, arg_type = get_arg_entity(arg)
-                            event_args[fid].append((arg_entity, arg_type))
+        for fid, sent_frame in csr.get_frames(csr.sent_key).items():
+            parent = sent_frame.parent
+            doc_sentences[parent].append(
+                (sent_frame.span.get(), sent_frame.text, sent_frame.id))
 
-                elif frame_type == 'entity_mention':
-                    parent = frame['parent_scope']
-                    fid = frame['@id']
-                    entity_mentions[parent][fid] = (
-                        get_span(frame),
-                        get_type(frame, Constants.GENERAL_ENTITY_TYPE),
-                        frame['text']
-                    )
-                elif frame_type == 'relation_mention':
-                    relations.append((get_type(frame,
-                                               Constants.GENERAL_REL_TYPE),
-                                      frame['interp']['args']))
+        for fid, event_frame in csr.get_frames(csr.event_key).items():
+            parent = event_frame.parent
+            eid = event_frame.id
+            event_mentions[parent][eid] = (
+                event_frame.span.get(),
+                event_frame.event_type,
+                event_frame.text
+            )
 
-            self.data = doc_sentences, event_mentions, event_args, \
-                        entity_mentions, relations
+        for fid, entity_frame in csr.get_frames(csr.entity_key).items():
+            parent = entity_frame.parent
+            eid = entity_frame.id
+            entity_mentions[parent][eid] = (
+                entity_frame.span.get(),
+                entity_frame.entity_types[0],
+                entity_frame.text,
+            )
 
-    def write_brat(self, output_dir):
+        for fid, rel_frame in csr.get_frames(csr.rel_key).items():
+            relations.append((rel_frame.relation_type, rel_frame.arguments))
+
+        self.data = doc_sentences, event_mentions, event_args, \
+                    entity_mentions, relations
+
+    def write_brat(self, output_dir, keep_onto=False, onto_set=None):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        doc_sentences, event_mentions, event_args, entity_mentions, relations = self.data
+        (doc_sentences, event_mentions, event_args, entity_mentions,
+         relations) = self.data
         doc_texts = construct_text(doc_sentences)
 
-        conf_path = os.path.join(output_dir, 'annotation.conf')
-
-        event_types = defaultdict(dict)
-        entity_types = defaultdict(set)
-
         for docid, doc_text in doc_texts.items():
-            src_output = os.path.join(output_dir, strip_ns(docid) + '.txt')
+            doc_name, media = docid.split('-')
+
+            src_output = os.path.join(output_dir, strip_ns(doc_name) + '.txt')
             text_bound_index = 0
             event_index = 0
             with open(src_output, 'w') as out:
                 out.write(doc_text)
 
-            ann_output = os.path.join(output_dir, strip_ns(docid) + '.ann')
+            ann_output = os.path.join(output_dir, strip_ns(doc_name) + '.ann')
 
             with open(ann_output, 'w') as out:
                 for sent in doc_sentences[docid]:
@@ -149,16 +136,14 @@ class CrsConverter:
                         span, entity_type, text = ent
 
                         onto, raw_type = entity_type.split(':')
-                        full_type = onto + '_' + raw_type
 
-                        # if not entity_type == 'tac:arg':
-                        #     continue
-
-                        entity_types[onto].add(full_type)
+                        if onto_set:
+                            if onto not in onto_set:
+                                continue
 
                         text_bound = make_text_bound(
                             text_bound_index,
-                            full_type,
+                            onto + '_' + raw_type if keep_onto else raw_type,
                             sent_start + span[0], sent_start + span[1],
                             text
                         )
@@ -170,26 +155,25 @@ class CrsConverter:
                         out.write(text_bound)
 
                     for event_id, evm in event_mentions[sid].items():
-                        span, full_type, text = evm
+                        span, event_type, text = evm
 
-                        onto, raw_type = full_type.split(':')
-                        full_type = onto + '_' + raw_type
+                        onto, raw_type = event_type.split(':')
+
+                        if onto_set:
+                            if onto not in onto_set:
+                                continue
+
+                        full_type = onto + '_' + raw_type if keep_onto \
+                            else raw_type
 
                         text_bound = make_text_bound(
-                            text_bound_index,
-                            full_type,
-                            sent_start + span[0], sent_start + span[1],
-                            text
+                            text_bound_index, full_type,
+                            sent_start + span[0], sent_start + span[1], text
                         )
 
                         event_anno = 'E{}\t{}:T{}'.format(
-                            event_index,
-                            full_type,
-                            text_bound_index
+                            event_index, full_type, text_bound_index
                         )
-
-                        if full_type not in event_types[onto]:
-                            event_types[onto][full_type] = set()
 
                         if event_id in event_args:
                             args = event_args[event_id]
@@ -199,8 +183,7 @@ class CrsConverter:
                                     arg_anno = arg_type + ':' + entity2tid[
                                         arg_entity]
                                     event_anno += ' ' + arg_anno
-                                    # input(entity_types[arg_entity])
-                                    event_types[onto][full_type].add(arg_type)
+
                         event_anno += '\n'
 
                         text_bound_index += 1
@@ -209,39 +192,13 @@ class CrsConverter:
                         out.write(text_bound)
                         out.write(event_anno)
 
-        with open(conf_path, 'w') as out:
-            out.write('[entities]\n\n')
-
-            for onto, types in entity_types.items():
-                out.write('!{}\n'.format(onto + '_entity'))
-                for t in types:
-                    out.write('\t' + t + '\n')
-
-            out.write('[relations]\n\n')
-            out.write(
-                '<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, <OVL-TYPE>:<ANY>\n\n')
-
-            out.write('[attributes]\n\n')
-
-            out.write('[events]\n\n')
-            out.write('#Definition of events.\n\n')
-            out.write('other_event\trelation:<ENTITY>\n')
-
-            for onto, type_args in event_types.items():
-                out.write('!{}\n'.format(onto + '_event'))
-
-                for t, args in type_args.items():
-                    out.write('\t' + t)
-                    sep = '\t'
-                    for arg in args:
-                        out.write('{}{}:<ENTITY>'.format(sep, arg))
-                        sep = ', '
-                    out.write('\n')
-
 
 if __name__ == '__main__':
     csr_in, brat_out = sys.argv[1:3]
 
     converter = CrsConverter()
-    converter.read_csr(csr_in)
-    converter.write_brat(brat_out)
+
+    for fn in os.listdir(csr_in):
+        if fn.endswith('.csr.json'):
+            converter.read_csr(os.path.join(csr_in, fn))
+            converter.write_brat(brat_out, False, onto_set={'aida'})
