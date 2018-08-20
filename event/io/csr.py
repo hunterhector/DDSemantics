@@ -14,9 +14,9 @@ class Constants:
 
 entity_type_mapping = {
     "Fac": "Facility",
-    "Gpe": "GPE",
+    "Gpe": "GeopoliticalEntity",
     "Loc": "Location",
-    "Nom": "Nominal",
+    # "Nom": "Nominal",
     "Org": "Organization",
     "Per": "Person",
     "Veh": "Vehicle",

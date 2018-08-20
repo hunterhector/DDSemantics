@@ -141,9 +141,13 @@ class CrsConverter:
                             if onto not in onto_set:
                                 continue
 
+                        full_type = onto + '_' + raw_type if keep_onto \
+                            else raw_type
+
+                        full_type = full_type.replace('.', '_')
+
                         text_bound = make_text_bound(
-                            text_bound_index,
-                            onto + '_' + raw_type if keep_onto else raw_type,
+                            text_bound_index, full_type,
                             sent_start + span[0], sent_start + span[1],
                             text
                         )
@@ -165,6 +169,8 @@ class CrsConverter:
 
                         full_type = onto + '_' + raw_type if keep_onto \
                             else raw_type
+
+                        full_type = full_type.replace('.', '_')
 
                         text_bound = make_text_bound(
                             text_bound_index, full_type,
