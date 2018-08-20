@@ -781,17 +781,16 @@ class CSR:
         return entity_mention
 
     def map_event_type(self, evm_type, onto_name):
-        if onto_name == 'tac':
-            mapped_evm_type = self.__cannonicalize_one_type(evm_type)
-            if mapped_evm_type in self.canonical_types:
-                return self.canonical_types[mapped_evm_type]
-        elif onto_name == 'aida':
-            return evm_type
-        elif self.onto_mapper:
-            full_type = onto_name + ':' + evm_type
-            event_map = self.onto_mapper.get_aida_event_map()
-            if full_type in event_map:
-                return self.canonical_types[event_map[full_type]]
+        if self.onto_mapper:
+            if onto_name == 'tac':
+                mapped_evm_type = self.__cannonicalize_one_type(evm_type)
+                if mapped_evm_type in self.canonical_types:
+                    return self.canonical_types[mapped_evm_type]
+            elif self.onto_mapper:
+                full_type = onto_name + ':' + evm_type
+                event_map = self.onto_mapper.get_aida_event_map()
+                if full_type in event_map:
+                    return self.canonical_types[event_map[full_type]]
         return None
 
     def add_event_mention(self, head_span, span, text, onto_name, evm_type,
