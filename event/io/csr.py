@@ -442,9 +442,6 @@ class EventMention(SpanInterpFrame):
 
     def add_arg(self, ontology, arg_role, entity_mention, arg_id,
                 score=None, component=None):
-        # here we reduce the verbosity of the argument name.
-        arg_role = arg_role.split('_')[-1]
-
         arg = Argument(ontology + ':' + arg_role, entity_mention, arg_id,
                        component=component)
         # If we use the role name as as the key name, if there are multiple
@@ -867,11 +864,14 @@ class CSR:
             index,
         )
 
-    def map_event_arg_type(self, event_onto, evm_type, arg_role):
+    def map_event_arg_type(self, event_onto, evm_type, arg_role_pair):
         map_to_aida = self.onto_mapper.get_aida_arg_map()
 
+        arg_role_name = arg_role_pair[1]
+
         if event_onto == 'aida':
-            key = (self.onto_mapper.canonicalize_type(evm_type), arg_role)
+            key = (self.onto_mapper.canonicalize_type(evm_type),
+                   '_'.join(arg_role_pair))
 
             mapped_arg_type = None
 
@@ -887,13 +887,12 @@ class CSR:
                     if arg_aid_type.startswith('internal_'):
                         mapped_arg_type = arg_aid_type.replace(
                             'internal_', 'internal:')
-
-            elif arg_role == 'ARGM-TMP' or 'Time' in arg_role:
+            elif arg_role_name == 'ARGM-TMP' or 'Time' in arg_role_name:
                 arg_aid_type = evm_type.lower() + '_Time'
                 full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
                     mapped_arg_type = arg_aid_type
-            elif arg_role == 'ARGM-LOC' or 'Place' in arg_role:
+            elif arg_role_name == 'ARGM-LOC' or 'Place' in arg_role_name:
                 arg_aid_type = evm_type.lower() + '_Place'
                 full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
@@ -902,7 +901,7 @@ class CSR:
             return mapped_arg_type
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
-                              arg_text, arg_onto, arg_role, component,
+                              arg_text, arg_onto, arg_role_pair, component,
                               arg_entity_form='named'):
         ent = self.get_by_span(self.entity_key, arg_span)
 
@@ -918,7 +917,8 @@ class CSR:
             evm_onto, evm_type = evm.event_type.split(':')
             arg_id = self.get_id('arg')
             in_domain_arg = self.map_event_arg_type(
-                evm_onto, evm_type, arg_role)
+                evm_onto, evm_type, arg_role_pair
+            )
 
             if in_domain_arg:
                 if ':' in in_domain_arg:
@@ -927,11 +927,7 @@ class CSR:
                     arg_onto = self.base_onto_name
                     arg_role = in_domain_arg
             else:
-                if evm_onto == 'aida':
-                    # print("Event is", evm.text, 'Event type is', evm.type,
-                    #       ', argument is', arg_text, ',
-                    #       arg role is', arg_role)
-                    pass
+                arg_role = arg_role_pair[1]
 
             evm.add_arg(arg_onto, arg_role, ent, arg_id, component=component)
 

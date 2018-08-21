@@ -161,15 +161,16 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
                 arg_onto = "framenet"
                 frame_name = rich_evm['frame']
                 component = 'Semafor'
-                role_name = frame_name + '_' + role_name
+                role_pair = (frame_name, role_name)
             elif onto_name == 'pb':
                 arg_onto = "propbank"
                 component = 'Fanse'
+                role_pair = ('', role_name)
 
             if arg_onto and component:
                 csr.add_event_arg_by_span(
                     csr_evm, arg_head_span, arg_span, arg_text,
-                    arg_onto, role_name, component=component
+                    arg_onto, role_pair, component=component
                 )
 
 
