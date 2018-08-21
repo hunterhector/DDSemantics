@@ -136,7 +136,8 @@ class Interp(Jsonable):
         :param multi_value: Whether this field can contain multiple values.
         :return:
         """
-        # If the key is the same, then the two interps are consider the same.
+        # If the key and the corresponding content are the same,
+        # then the two interps are consider the same.
         self.__fields[name][key_name][content_rep] = {
             'content': content, 'component': component, 'score': score
         }
@@ -444,9 +445,13 @@ class EventMention(SpanInterpFrame):
                 score=None, component=None):
         arg = Argument(ontology + ':' + arg_role, entity_mention, arg_id,
                        component=component)
-        self.interp.add_fields('args', arg_role, entity_mention.id, arg,
-                               score=score, component=component,
-                               multi_value=True)
+        # If we use the role name as as the key name, if there are multiple
+        # entity mentions being identified for this field we consider them as
+        # alternative interpretation.
+        self.interp.add_fields(
+            'args', arg_role, entity_mention.id, arg, score=score,
+            component=component, multi_value=True
+        )
 
     def add_salience(self, salience_score):
         self.interp.add_fields('salience', 'score', 'score', salience_score)

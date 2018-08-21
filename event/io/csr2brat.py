@@ -82,21 +82,32 @@ class CrsConverter:
         for fid, sent_frame in csr.get_frames(csr.sent_key).items():
             parent = sent_frame.parent
             doc_sentences[parent].append(
-                (sent_frame.span.get(), sent_frame.text, sent_frame.id))
+                (sent_frame.span.get(), sent_frame.text, sent_frame.id)
+            )
 
         for fid, event_frame in csr.get_frames(csr.event_key).items():
             parent = event_frame.parent
-            eid = event_frame.id
-            event_mentions[parent][eid] = (
+            event_id = event_frame.id
+            event_mentions[parent][event_id] = (
                 event_frame.span.get(),
                 event_frame.event_type,
                 event_frame.text
             )
 
+            arg_interps = event_frame.interp.get_field('args')
+
+            if arg_interps:
+                for arg_role, arg_entities in arg_interps.items():
+                    for entity_id, arg_entry in arg_entities.items():
+                        arg = arg_entry['content']
+                        entity_mention = arg.entity_mention
+                        arg_entity_id = entity_mention.id
+                        event_args[event_id].append((arg_entity_id, arg_role))
+
         for fid, entity_frame in csr.get_frames(csr.entity_key).items():
             parent = entity_frame.parent
-            eid = entity_frame.id
-            entity_mentions[parent][eid] = (
+            event_id = entity_frame.id
+            entity_mentions[parent][event_id] = (
                 entity_frame.span.get(),
                 entity_frame.entity_types[0],
                 entity_frame.text,
@@ -107,6 +118,9 @@ class CrsConverter:
 
         self.data = doc_sentences, event_mentions, event_args, \
                     entity_mentions, relations
+
+    def write_tbf(self, output_dir, keep_onto=False, onto_set=None):
+        pass
 
     def write_brat(self, output_dir, keep_onto=False, onto_set=None):
         if not os.path.exists(output_dir):
@@ -184,7 +198,6 @@ class CrsConverter:
                         if event_id in event_args:
                             args = event_args[event_id]
                             for arg_entity, arg_type in args:
-                                arg_type = replace_ns(arg_type)
                                 if arg_entity in entity2tid:
                                     arg_anno = arg_type + ':' + entity2tid[
                                         arg_entity]
