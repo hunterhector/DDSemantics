@@ -887,6 +887,8 @@ class CSR:
                     if arg_aid_type.startswith('internal_'):
                         mapped_arg_type = arg_aid_type.replace(
                             'internal_', 'internal:')
+                # Here we take only the short argument name.
+                mapped_arg_type = '_'.join(mapped_arg_type.split('_')[1:])
             elif arg_role_name == 'ARGM-TMP' or 'Time' in arg_role_name:
                 arg_aid_type = evm_type.lower() + '_Time'
                 full_arg = (evm_type, arg_aid_type)
