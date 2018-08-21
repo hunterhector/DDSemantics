@@ -161,6 +161,7 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
                 arg_onto = "framenet"
                 frame_name = rich_evm['frame']
                 component = 'Semafor'
+                role_name = frame_name + '_' + role_name
             elif onto_name == 'pb':
                 arg_onto = "propbank"
                 component = 'Fanse'
