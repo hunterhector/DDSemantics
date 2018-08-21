@@ -401,7 +401,6 @@ class Argument(Frame):
 
     def json_rep(self):
         rep = super().json_rep()
-
         rep['type'] = self.arg_role
         rep['text'] = self.entity_mention.text
         rep['arg'] = self.entity_mention.id
@@ -443,6 +442,9 @@ class EventMention(SpanInterpFrame):
 
     def add_arg(self, ontology, arg_role, entity_mention, arg_id,
                 score=None, component=None):
+        # here we reduce the verbosity of the argument name.
+        arg_role = arg_role.split('_')[-1]
+
         arg = Argument(ontology + ':' + arg_role, entity_mention, arg_id,
                        component=component)
         # If we use the role name as as the key name, if there are multiple
@@ -815,7 +817,7 @@ class CSR:
 
         if valid:
             if head_span in self._span_frame_map[self.event_key]:
-                logging.info("Cannot handle overlapped event mentions now.")
+                # logging.info("Cannot handle overlapped event mentions now.")
                 return
 
             if not event_id:
