@@ -426,8 +426,7 @@ class OntologyLoader:
                 out.write('[labels]\n\n')
                 for origin, label in self.labels.items():
                     prefix, ns, t = self.shorten(origin)
-                    out.write(
-                        t.replace('.', '_') + ' | ' + label.replace('.', '_'))
+                    out.write((t + ' | ' + label).replace('.', '_'))
                     if len(t) < len(label):
                         out.write(' | ' + t.replace('.', '_'))
                     out.write('\n')

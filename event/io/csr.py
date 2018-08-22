@@ -25,10 +25,11 @@ entity_type_mapping = {
 
 
 def fix_entity_type(t):
-    t = t.lower().title()
-    if t in entity_type_mapping:
-        return entity_type_mapping[t]
-    return t
+    t_l = t.lower().title()
+    if t_l in entity_type_mapping:
+        return entity_type_mapping[t_l]
+    else:
+        return t
 
 
 class Jsonable:
@@ -883,8 +884,6 @@ class CSR:
 
                 if c_arg_aida_type in self.canonical_types:
                     mapped_arg_type = self.canonical_types[c_arg_aida_type]
-                    # Here we take only the short argument name.
-                    mapped_arg_type = '_'.join(mapped_arg_type.split('_')[1:])
                 else:
                     if arg_aid_type.startswith('internal_'):
                         mapped_arg_type = arg_aid_type.replace(
@@ -930,6 +929,8 @@ class CSR:
                     arg_role = in_domain_arg
             else:
                 arg_role = arg_role_pair[1]
+
+            # input(('adding argument', arg_onto, arg_role, arg_id))
 
             evm.add_arg(arg_onto, arg_role, ent, arg_id, component=component)
 

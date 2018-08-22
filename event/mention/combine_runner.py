@@ -165,7 +165,7 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
             elif onto_name == 'pb':
                 arg_onto = "propbank"
                 component = 'Fanse'
-                role_pair = ('', role_name)
+                role_pair = ('pb', role_name)
 
             if arg_onto and component:
                 csr.add_event_arg_by_span(
@@ -654,6 +654,6 @@ if __name__ == '__main__':
     print("Logs will be output at {}".format(log_file))
     util.set_file_log(log_file)
 
-    #    util.set_basic_log()
+    # util.set_basic_log()
 
     main(params)

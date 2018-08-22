@@ -97,17 +97,21 @@ class CrsConverter:
             arg_interps = event_frame.interp.get_field('args')
 
             if arg_interps:
-                for arg_role, arg_entities in arg_interps.items():
+                for arg_slot, arg_entities in arg_interps.items():
                     for entity_id, arg_entry in arg_entities.items():
                         arg = arg_entry['content']
                         entity_mention = arg.entity_mention
+                        full_arg_role = arg.arg_role
                         arg_entity_id = entity_mention.id
-                        event_args[event_id].append((arg_entity_id, arg_role))
+                        event_args[event_id].append(
+                            (arg_entity_id, full_arg_role)
+                        )
 
         for fid, entity_frame in csr.get_frames(csr.entity_key).items():
             parent = entity_frame.parent
-            event_id = entity_frame.id
-            entity_mentions[parent][event_id] = (
+            entity_id = entity_frame.id
+
+            entity_mentions[parent][entity_id] = (
                 entity_frame.span.get(),
                 entity_frame.entity_types[0],
                 entity_frame.text,
@@ -142,18 +146,18 @@ class CrsConverter:
             ann_output = os.path.join(output_dir, strip_ns(doc_name) + '.ann')
 
             with open(ann_output, 'w') as out:
+                entity2tid = {}
+
                 for sent in doc_sentences[docid]:
                     (sent_start, sent_end), sent_text, sid = sent
 
-                    entity2tid = {}
                     for entity_id, ent in entity_mentions[sid].items():
                         span, entity_type, text = ent
 
                         onto, raw_type = entity_type.split(':')
 
-                        if onto_set:
-                            if onto not in onto_set:
-                                continue
+                        if onto_set and onto not in onto_set:
+                            continue
 
                         full_type = onto + '_' + raw_type if keep_onto \
                             else raw_type
@@ -172,14 +176,16 @@ class CrsConverter:
 
                         out.write(text_bound)
 
+                for sent in doc_sentences[docid]:
+                    (sent_start, sent_end), sent_text, sid = sent
+
                     for event_id, evm in event_mentions[sid].items():
                         span, event_type, text = evm
 
                         onto, raw_type = event_type.split(':')
 
-                        if onto_set:
-                            if onto not in onto_set:
-                                continue
+                        if onto_set and onto not in onto_set:
+                            continue
 
                         full_type = onto + '_' + raw_type if keep_onto \
                             else raw_type
@@ -197,9 +203,17 @@ class CrsConverter:
 
                         if event_id in event_args:
                             args = event_args[event_id]
-                            for arg_entity, arg_type in args:
+
+                            for arg_entity, full_arg_role in args:
+                                onto, arg_role = full_arg_role.split(':')
+
+                                if onto_set and onto not in onto_set:
+                                    continue
+
+                                arg_role = arg_role.replace('.', '_')
+
                                 if arg_entity in entity2tid:
-                                    arg_anno = arg_type + ':' + entity2tid[
+                                    arg_anno = arg_role + ':' + entity2tid[
                                         arg_entity]
                                     event_anno += ' ' + arg_anno
 
