@@ -721,7 +721,9 @@ class CSR:
         span = tuple(span)
         if not sent_id:
             # Find the sentence if not provided.
-            sent_id, fitted_span = self.fit_to_sentence(span)
+            res = self.fit_to_sentence(span)
+            if res:
+                sent_id, fitted_span = res
 
         if not sent_id:
             # No suitable sentence to cover it.
