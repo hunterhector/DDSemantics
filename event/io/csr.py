@@ -330,6 +330,11 @@ class Sentence(SpanInterpFrame):
                          begin, length, text, component=component)
         self.keyframe = keyframe
 
+    def substring(self, span):
+        begin = span[0] - self.span.begin
+        end = span[1] - self.span.begin
+        return self.text[begin: end]
+
     def json_rep(self):
         rep = super().json_rep()
         if self.keyframe:
@@ -704,13 +709,37 @@ class CSR:
     def set_sentence_text(self, sent_id, text):
         self._frame_map[self.sent_key][sent_id].text = text
 
+    def align_to_text(self, span, text, sent_id=None):
+        """
+        Hacking the correct spans.
+        :param span: The origin mention span.
+        :param text: The origin mention span.
+        :param sent_id: The sentence if, if provided.
+        :return:
+        """
+
+        span = tuple(span)
+        if not sent_id:
+            # Find the sentence if not provided.
+            sent_id, fitted_span = self.fit_to_sentence(span)
+
+        if not sent_id:
+            # No suitable sentence to cover it.
+            logging.warning(
+                "No suitable sentence for entity {}".format(span))
+        else:
+            sent = self._frame_map[self.sent_key][sent_id]
+            if not fitted_span == span:
+                # If the fitted span changes, we will simply use the doc text.
+                valid_text = sent.substring(fitted_span)
+            else:
+                # The fitted span has not changed, validate it.
+                valid_text = self.validate_span(sent_id, fitted_span, text)
+            return sent_id, fitted_span, valid_text
+
     def validate_span(self, sent_id, span, text):
         sent = self._frame_map[self.sent_key][sent_id]
-        sent_text = sent.text
-
-        begin = span[0] - sent.span.begin
-        end = span[1] - sent.span.begin
-        span_text = sent_text[begin: end]
+        span_text = sent.substring(span)
 
         if not span_text == text:
             # logging.warning("Was {}".format(span))
@@ -761,17 +790,9 @@ class CSR:
                            sent_id=None, entity_form=None, component=None,
                            entity_id=None):
         head_span = tuple(head_span)
-        span = tuple(span)
 
-        if not sent_id:
-            sent_id, span = self.fit_to_sentence(span)
-            if not sent_id:
-                # No suitable sentence to cover it.
-                logging.warning(
-                    "No suitable sentence for entity {}".format(span))
-                return
-
-        valid_text = self.validate_span(sent_id, span, text)
+        sent_id, fitted_span, valid_text = self.align_to_text(
+            span, text, sent_id)
 
         if valid_text:
             sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
@@ -781,9 +802,10 @@ class CSR:
 
             entity_mention = EntityMention(
                 entity_id, sent_id, sent_id,
-                span[0] - sentence_start, span[1] - span[0], valid_text,
+                fitted_span[0] - sentence_start,
+                fitted_span[1] - fitted_span[0], valid_text,
                 component=component)
-            self._span_frame_map[self.entity_key][span] = entity_id
+            self._span_frame_map[self.entity_key][fitted_span] = entity_id
             self._frame_map[self.entity_key][entity_id] = entity_mention
 
             self._span_frame_map[self.entity_head_key][head_span] = entity_id
@@ -819,17 +841,9 @@ class CSR:
                           arg_entity_types=None, event_id=None):
         # Annotation on the same span will be reused.
         head_span = tuple(head_span)
-        span = tuple(span)
 
-        if not sent_id:
-            sent_id, span = self.fit_to_sentence(span)
-            if not sent_id:
-                # No suitable sentence to cover it.
-                logging.warning(
-                    "No suitable sentence for entity {}".format(span))
-                return
-
-        valid_text = self.validate_span(sent_id, span, text)
+        sent_id, fitted_span, valid_text = self.align_to_text(
+            span, text, sent_id)
 
         if valid_text:
             if head_span in self._span_frame_map[self.event_key]:
@@ -843,8 +857,8 @@ class CSR:
 
             sent = self._frame_map[self.sent_key][sent_id]
 
-            relative_begin = span[0] - sent.span.begin
-            length = span[1] - span[0]
+            relative_begin = fitted_span[0] - sent.span.begin
+            length = fitted_span[1] - fitted_span[0]
 
             evm = EventMention(event_id, sent_id, sent_id, relative_begin,
                                length, valid_text, component=component)
