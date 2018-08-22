@@ -793,8 +793,8 @@ class CSR:
                            entity_id=None):
         head_span = tuple(head_span)
 
-        sent_id, fitted_span, valid_text = self.align_to_text(
-            span, text, sent_id)
+        align_res = self.align_to_text(span, text, sent_id)
+        sent_id, fitted_span, valid_text = align_res
 
         if valid_text:
             sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
@@ -844,8 +844,9 @@ class CSR:
         # Annotation on the same span will be reused.
         head_span = tuple(head_span)
 
-        sent_id, fitted_span, valid_text = self.align_to_text(
-            span, text, sent_id)
+        align_res = self.align_to_text(span, text, sent_id)
+        sent_id, fitted_span, valid_text = align_res
+
 
         if valid_text:
             if head_span in self._span_frame_map[self.event_key]:
