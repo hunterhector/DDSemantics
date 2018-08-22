@@ -794,9 +794,10 @@ class CSR:
         head_span = tuple(head_span)
 
         align_res = self.align_to_text(span, text, sent_id)
-        sent_id, fitted_span, valid_text = align_res
 
-        if valid_text:
+        if align_res:
+            sent_id, fitted_span, valid_text = align_res
+
             sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
 
             if not entity_id:
@@ -845,10 +846,10 @@ class CSR:
         head_span = tuple(head_span)
 
         align_res = self.align_to_text(span, text, sent_id)
-        sent_id, fitted_span, valid_text = align_res
 
+        if align_res:
+            sent_id, fitted_span, valid_text = align_res
 
-        if valid_text:
             if head_span in self._span_frame_map[self.event_key]:
                 # logging.info("Cannot handle overlapped event mentions now.")
                 return
