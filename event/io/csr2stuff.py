@@ -123,7 +123,8 @@ class CrsConverter:
         self.data = doc_sentences, event_mentions, event_args, \
                     entity_mentions, relations
 
-    def write_brat(self, output_dir, keep_onto=False, onto_set=None):
+    def write_brat(self, output_dir, keep_onto=False, onto_set=None,
+                   extension='.ltf.xml'):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -133,6 +134,7 @@ class CrsConverter:
 
         for docid, doc_text in doc_texts.items():
             doc_name, media = docid.split('-')
+            doc_name = doc_name.replace(extension, '')
 
             src_output = os.path.join(output_dir, strip_ns(doc_name) + '.txt')
             text_bound_index = 0
