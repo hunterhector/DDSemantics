@@ -713,7 +713,7 @@ class CSR:
         """
         Hacking the correct spans.
         :param span: The origin mention span.
-        :param text: The origin mention span.
+        :param text: The origin mention text.
         :param sent_id: The sentence if, if provided.
         :return:
         """
@@ -724,9 +724,13 @@ class CSR:
             res = self.fit_to_sentence(span)
             if res:
                 sent_id, fitted_span = res
+        else:
+            # Use the provided ones.
+            sent_id = sent_id
+            fitted_span = span
 
-        if not sent_id:
-            # No suitable sentence to cover it.
+        if not sent_id or not fitted_span:
+            # No suitable sentence found.
             logging.warning(
                 "No suitable sentence for entity {}".format(span))
         else:
@@ -737,7 +741,9 @@ class CSR:
             else:
                 # The fitted span has not changed, validate it.
                 valid_text = self.validate_span(sent_id, fitted_span, text)
-            return sent_id, fitted_span, valid_text
+
+            if valid_text is not None:
+                return sent_id, fitted_span, valid_text
 
     def validate_span(self, sent_id, span, text):
         sent = self._frame_map[self.sent_key][sent_id]
@@ -791,8 +797,19 @@ class CSR:
     def add_entity_mention(self, head_span, span, text, ontology, entity_type,
                            sent_id=None, entity_form=None, component=None,
                            entity_id=None):
-        head_span = tuple(head_span)
+        if span is None:
+            logging.warning("None span provided")
+            return
 
+        if text is None:
+            logging.warning("None text provided")
+            return
+
+        if ontology is None:
+            logging.warning("None ontology provided")
+            return
+
+        head_span = tuple(head_span)
         align_res = self.align_to_text(span, text, sent_id)
 
         if align_res:

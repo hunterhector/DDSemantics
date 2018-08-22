@@ -123,9 +123,6 @@ class CrsConverter:
         self.data = doc_sentences, event_mentions, event_args, \
                     entity_mentions, relations
 
-    def write_tbf(self, output_dir, keep_onto=False, onto_set=None):
-        pass
-
     def write_brat(self, output_dir, keep_onto=False, onto_set=None):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
