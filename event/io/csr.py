@@ -513,6 +513,7 @@ class CSR:
 
         self._span_frame_map = defaultdict(dict)
         self._frame_map = defaultdict(dict)
+        self._char_sent_map = {}
 
         self.run_id = run_id
 
@@ -656,6 +657,7 @@ class CSR:
     def clear(self):
         self._span_frame_map.clear()
         self._frame_map.clear()
+        self._char_sent_map.clear()
 
     def add_doc(self, doc_name, media_type, language):
         ns_docid = self.ns_prefix + ":" + doc_name + "-" + media_type
@@ -694,6 +696,9 @@ class CSR:
                         text=sent_text, component=component, keyframe=keyframe)
         self._frame_map[self.sent_key][sent_id] = sent
 
+        for c in range(span[0], span[1]):
+            self._char_sent_map[c] = sent_id
+
         return sent
 
     def set_sentence_text(self, sent_id, text):
@@ -708,24 +713,29 @@ class CSR:
         span_text = sent_text[begin: end]
 
         if not span_text == text:
-            logging.warning("Was {}".format(span))
-            logging.warning("Becomes {},{}".format(begin, end))
-            logging.warning(sent_text)
-
+            # logging.warning("Was {}".format(span))
+            # logging.warning("Becomes {},{}".format(begin, end))
+            # logging.warning(sent_text)
             logging.warning(
                 "Span text: [{}] not matching given text [{}]"
                 ", at span [{}] at sent [{}]".format(
                     span_text, text, span, sent_id)
             )
-            return False
 
-        return True
+            if "".join(span_text.split()) == "".join(text.split()):
+                logging.warning('only white space difference, accepting.')
+                return span_text
+            return None
+
+        return text
 
     def get_sentence_by_span(self, span):
-        for sent_id, sentence in self._frame_map[self.sent_key].items():
+        if span[0] in self._char_sent_map:
+            sent_id = self._char_sent_map[span[0]]
+            sentence = self._frame_map[self.sent_key][sent_id]
             sent_begin = sentence.span.begin
             sent_end = sentence.span.length + sent_begin
-            if span[0] >= sent_begin and span[1] <= sent_end:
+            if span[1] <= sent_end:
                 return sent_id
 
     def get_by_span(self, object_type, span):
@@ -750,14 +760,15 @@ class CSR:
 
         if not sent_id:
             sent_id = self.get_sentence_by_span(span)
+            # TODO: sentence split error?
             if not sent_id:
                 # No suitable sentence to cover it.
                 logging.warning(
                     "No suitable sentence for entity {}".format(span))
                 return
-        valid = self.validate_span(sent_id, span, text)
+        valid_text = self.validate_span(sent_id, span, text)
 
-        if valid:
+        if valid_text:
             sentence_start = self._frame_map[self.sent_key][sent_id].span.begin
 
             if not entity_id:
@@ -765,7 +776,7 @@ class CSR:
 
             entity_mention = EntityMention(
                 entity_id, sent_id, sent_id,
-                span[0] - sentence_start, span[1] - span[0], text,
+                span[0] - sentence_start, span[1] - span[0], valid_text,
                 component=component)
             self._span_frame_map[self.entity_key][span] = entity_id
             self._frame_map[self.entity_key][entity_id] = entity_mention
@@ -809,11 +820,13 @@ class CSR:
             sent_id = self.get_sentence_by_span(span)
             if not sent_id:
                 # No suitable sentence to cover it.
+                logging.warning(
+                    "No suitable sentence for entity {}".format(span))
                 return
 
-        valid = self.validate_span(sent_id, span, text)
+        valid_text = self.validate_span(sent_id, span, text)
 
-        if valid:
+        if valid_text:
             if head_span in self._span_frame_map[self.event_key]:
                 # logging.info("Cannot handle overlapped event mentions now.")
                 return
@@ -829,7 +842,7 @@ class CSR:
             length = span[1] - span[0]
 
             evm = EventMention(event_id, sent_id, sent_id, relative_begin,
-                               length, text, component=component)
+                               length, valid_text, component=component)
             evm.add_trigger(relative_begin, length)
             self._frame_map[self.event_key][event_id] = evm
         else:
