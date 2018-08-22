@@ -729,14 +729,19 @@ class CSR:
 
         return text
 
-    def get_sentence_by_span(self, span):
+    def fit_to_sentence(self, span):
         if span[0] in self._char_sent_map:
             sent_id = self._char_sent_map[span[0]]
             sentence = self._frame_map[self.sent_key][sent_id]
             sent_begin = sentence.span.begin
             sent_end = sentence.span.length + sent_begin
+
             if span[1] <= sent_end:
-                return sent_id
+                return sent_id, span
+            else:
+                logging.warning("Force span {} end at sentence end {} of "
+                                "{}".format(span, sent_end, sent_id))
+                return sent_id, (span[0], sent_end)
 
     def get_by_span(self, object_type, span):
         span = tuple(span)
@@ -759,13 +764,13 @@ class CSR:
         span = tuple(span)
 
         if not sent_id:
-            sent_id = self.get_sentence_by_span(span)
-            # TODO: sentence split error?
+            sent_id, span = self.fit_to_sentence(span)
             if not sent_id:
                 # No suitable sentence to cover it.
                 logging.warning(
                     "No suitable sentence for entity {}".format(span))
                 return
+
         valid_text = self.validate_span(sent_id, span, text)
 
         if valid_text:
@@ -817,7 +822,7 @@ class CSR:
         span = tuple(span)
 
         if not sent_id:
-            sent_id = self.get_sentence_by_span(span)
+            sent_id, span = self.fit_to_sentence(span)
             if not sent_id:
                 # No suitable sentence to cover it.
                 logging.warning(

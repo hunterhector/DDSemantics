@@ -196,7 +196,7 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 text = rich_ent['text']
                 head_span = rich_ent['headWord']['span']
 
-            sent_id = csr.get_sentence_by_span(span)
+            # sent_id = csr.fit_to_sentence(span)
 
             ent = csr.get_by_span(csr.entity_key, span)
             head_ent = csr.get_by_span(csr.entity_head_key, head_span)
@@ -207,7 +207,6 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
             if not ent:
                 ent = csr.add_entity_mention(
                     head_span, span, text, 'conll', rich_ent.get('type', None),
-                    sent_id=sent_id,
                     entity_form=rich_ent.get('entity_form', 'named'),
                     component=rich_ent.get(
                         'component', 'opera.events.mention.tac.hector'))
@@ -236,7 +235,7 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 text = rich_evm['text']
                 head_span = rich_evm['headWord']['span']
 
-            sent_id = csr.get_sentence_by_span(span)
+            # sent_id = csr.fit_to_sentence(span)
 
             component_name = 'opera.events.mention.tac.hector'
             ontology = 'tac'
@@ -273,7 +272,7 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
             csr_evm = csr.add_event_mention(
                 head_span, span, text, ontology, evm_type,
-                realis=rich_evm.get('realis', None), sent_id=sent_id,
+                realis=rich_evm.get('realis', None),
                 component=component_name, arg_entity_types=arg_entity_types
             )
 
