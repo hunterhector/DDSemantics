@@ -41,7 +41,8 @@ class LTF:
         self.current_seg = ET.SubElement(self.text_node, 'SEG')
         self.current_seg.set('start_char', str(self.text_offset + 1))
         self.current_seg.set('id', self.get_new_seg())
-        self.current_seg.set('keyframe', keyframe)
+        if keyframe:
+            self.current_seg.set('keyframe', keyframe)
 
     def add_token(self, text):
         self.seg_text.append(text)
