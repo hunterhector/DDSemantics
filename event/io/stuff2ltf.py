@@ -89,7 +89,7 @@ class LTF:
 
 
 def text_to_ltf(in_file_path, out_file_path, docid):
-    with open(in_file_path) as inf, open(out_file_path, 'w') as out:
+    with open(in_file_path) as inf:
         ltf = LTF(docid)
         is_empty = True
         for line in inf:
@@ -100,7 +100,8 @@ def text_to_ltf(in_file_path, out_file_path, docid):
             is_empty = False
 
         if not is_empty:
-            ltf.write(out)
+            with open(out_file_path, 'w') as out:
+                ltf.write(out)
 
 
 def sausage_to_ltf(in_file_path, out_file_path, docid):
