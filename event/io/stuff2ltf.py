@@ -90,12 +90,16 @@ class LTF:
 def text_to_ltf(in_file_path, out_file_path, docid):
     with open(in_file_path) as inf, open(out_file_path, 'w') as out:
         ltf = LTF(docid)
+        is_empty = True
         for line in inf:
             ltf.begin_seg()
             for word in line.split(' '):
                 ltf.add_token(word)
             ltf.end_seg()
-        ltf.write(out)
+            is_empty = False
+
+        if not is_empty:
+            ltf.write(out)
 
 
 def sausage_to_ltf(in_file_path, out_file_path, docid):
