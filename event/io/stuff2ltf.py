@@ -87,6 +87,17 @@ class LTF:
         out.write(reparsed.toprettyxml(indent='  '))
 
 
+def text_to_ltf(in_file_path, out_file_path, docid):
+    with open(in_file_path) as inf, open(out_file_path, 'w') as out:
+        ltf = LTF(docid)
+        for line in inf:
+            ltf.begin_seg()
+            for word in line.split(' '):
+                ltf.add_token(word)
+            ltf.end_seg()
+        ltf.write(out)
+
+
 def sausage_to_ltf(in_file_path, out_file_path, docid):
     with open(in_file_path) as inf, open(out_file_path, 'w') as out:
         audio_parsed = json.load(inf)
@@ -121,8 +132,13 @@ def sausage_to_ltf(in_file_path, out_file_path, docid):
 if __name__ == '__main__':
     input_dir = sys.argv[1]
     output_dir = sys.argv[2]
-    # language = sys.argv[3]
-    # format = sys.argv[3]
+
+    if len(sys.argv) > 3:
+        suffix = sys.argv[3]
+        input_format = sys.argv[4]
+    else:
+        suffix = '.json'
+        input_format = 'sausage'
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -133,11 +149,15 @@ if __name__ == '__main__':
     for f in os.listdir(input_dir):
         file_path = os.path.join(input_dir, f)
 
-        if not f.endswith('.json'):
+        if not f.endswith(suffix):
             continue
 
         print("Converting {}".format(f))
 
-        docid = f.strip('.json')
+        docid = f.strip(suffix)
         output_path = os.path.join(output_dir, f + '.ltf.xml')
-        sausage_to_ltf(file_path, output_path, docid)
+
+        if input_format == 'sausage':
+            sausage_to_ltf(file_path, output_path, docid)
+        elif input_format == 'txt':
+            text_to_ltf(file_path, output_path, docid)
