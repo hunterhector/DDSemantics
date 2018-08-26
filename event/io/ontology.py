@@ -354,6 +354,8 @@ class OntologyLoader:
                 out.write('!{}\n'.format(onto + '_filler'))
                 for t, full_type in sorted(types):
                     out.write('\t' + t + '\n')
+                # Put a special other type here.
+                out.write('\tOTHER\n')
                 out.write('\n')
 
             out.write('[relations]\n\n')
@@ -427,6 +429,10 @@ class OntologyLoader:
                                              '|'.join(plain_res))
                         )
                         sep = ', '
+
+                    # Put a special other type here.
+                    out.write('\tOTHER\n')
+
                     out.write('\n')
 
         if visual_path:
