@@ -939,10 +939,10 @@ class CSR:
                 if type_res:
                     print('map', key, 'to', c_arg_aida_type)
                     print('has restriction', type_res)
-                    input("we have a restrict here.")
+                    print("we have a restrict here.")
 
                     if len(aida_arg_ent_types) > 0:
-                        print("checking restricts for typed entities")
+                        input("checking restricts for typed entities")
 
                         match_resitrct = False
                         for t in aida_arg_ent_types:
