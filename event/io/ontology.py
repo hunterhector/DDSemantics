@@ -5,6 +5,7 @@ import logging
 from event.util import remove_punctuation
 from collections import defaultdict
 
+
 class MappingLoader:
     def __init__(self):
         self.mappings = {}
@@ -435,7 +436,6 @@ class OntologyLoader:
             # Put a special other type here.
             out.write('\tOTHER_EVENT\n')
 
-
         if visual_path:
             with open(visual_path, 'w') as out:
                 out.write('[labels]\n\n')
@@ -448,7 +448,19 @@ class OntologyLoader:
 
                 out.write('\n[drawing]\n')
                 out.write('SPAN_DEFAULT	fgColor:black, bgColor:lightgreen, '
-                          'borderColor:darken')
+                          'borderColor:darken\n')
+
+                for t in self.entity_types:
+                    out.write('{}	fgColor:black, bgColor:yellow, '
+                              'borderColor:darken\n'.format(t))
+
+                for t in self.filler_types:
+                    out.write('{}	fgColor:black, bgColor:blue, '
+                              'borderColor:darken\n'.format(t))
+
+                for t in self.event_onto:
+                    out.write('{}	fgColor:black, bgColor:cyan, '
+                              'borderColor:darken\n'.format(t))
 
     def __find_arg_restrictions(self):
         pass

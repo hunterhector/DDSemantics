@@ -168,8 +168,7 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
             if arg_onto and component:
                 csr.add_event_arg_by_span(
                     csr_evm, arg_head_span, arg_span, arg_text,
-                    arg_onto, role_pair,
-                    component=component
+                    arg_onto, role_pair, component=component
                 )
 
 
