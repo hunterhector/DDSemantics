@@ -168,7 +168,8 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
             if arg_onto and component:
                 csr.add_event_arg_by_span(
                     csr_evm, arg_head_span, arg_span, arg_text,
-                    arg_onto, role_pair, component=component
+                    arg_onto, role_pair,
+                    component='opera.events.mention.tac.hector'
                 )
 
 
@@ -485,8 +486,9 @@ def add_event_salience(csr, event_salience_info):
     for span, data in event_salience_info.items():
         event = csr.get_by_span(csr.event_key, span)
         if not event:
-            event = csr.add_event_mention(span, data['span'], data['text'],
-                                          'aida', None, component='salience')
+            event = csr.add_event_mention(
+                span, data['span'], data['text'],
+                'aida', None, component='opera.events.mention.tac.hector')
             if event:
                 event.add_salience(data['salience'])
 
