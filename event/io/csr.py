@@ -894,7 +894,6 @@ class CSR:
             mapped_type = self.map_event_type(evm_type, onto_name)
 
             if arg_entity_types:
-                print(text)
                 mapped_type = fix_event_type_from_entity(
                     mapped_type, arg_entity_types
                 )
