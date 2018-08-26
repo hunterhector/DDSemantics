@@ -933,20 +933,17 @@ class CSR:
             if key in map_to_aida:
                 candidate_aida_types = map_to_aida[key]
 
-                print(key)
-                print('Candidate mappings', candidate_aida_types)
-
                 for arg_aid_type, type_res in candidate_aida_types:
                     c_arg_aida_type = self.onto_mapper.canonicalize_type(
                         arg_aid_type)
 
                     if type_res:
-                        print('map', key, 'to', c_arg_aida_type)
-                        print('has restriction', type_res)
-                        print("we have a restrict here.")
+                        # print('map', key, 'to', c_arg_aida_type)
+                        # print('has restriction', type_res)
+                        # print("we have a restrict here.")
 
                         if len(aida_arg_ent_types) > 0:
-                            input("checking restricts for typed entities")
+                            # input("checking restricts for typed entities")
 
                             match_resitrct = False
                             for t in aida_arg_ent_types:
@@ -954,11 +951,11 @@ class CSR:
                                     match_resitrct = True
 
                             if not match_resitrct:
-                                input(
-                                    "Reject for entity type restrictions, check next")
+                                logging.info(
+                                    "arg is rejected because entity type "
+                                    "{} cannot fill {}".format(arg_aid_type,
+                                                               arg_role_name))
                                 continue
-                            else:
-                                input((t, "matches restrictions,"))
 
                     if c_arg_aida_type in self.canonical_types:
                         mapped_arg_type = self.canonical_types[c_arg_aida_type]
