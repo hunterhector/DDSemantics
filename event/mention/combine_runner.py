@@ -127,8 +127,6 @@ def recover_via_token(tokens, token_ids):
 
 def fix_event_type_from_frame(origin_onto, origin_type, frame_type):
     if 'Contact' in origin_type:
-        if frame_type == 'Shoot_projectiles':
-            return 'tac', 'Conflict_Attack'
         if frame_type == 'Quantity':
             return 'framenet', frame_type
     return origin_onto, origin_type

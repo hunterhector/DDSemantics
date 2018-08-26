@@ -30,9 +30,17 @@ class MappingLoader:
                 mapped_frames = parts[3:]
 
                 c_event_type = self.canonicalize_type(event_type)
-                for frame in mapped_frames:
+                for frame_res in mapped_frames:
+                    parts = frame_res.split(':')
+                    if len(parts) > 1:
+                        frame = parts[0]
+                        res = set(parts[1:])
+                    else:
+                        frame = frame_res
+                        res = None
+
                     self.mappings['aida_arg'][
-                        (c_event_type, frame)] = arg_type
+                        (c_event_type, frame)] = (arg_type, res)
 
     def load_event_aida_mapping(self, mapping_file):
         # This mapping is from other ontology to seedling events, in

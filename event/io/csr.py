@@ -918,7 +918,8 @@ class CSR:
             index,
         )
 
-    def map_event_arg_type(self, event_onto, evm_type, arg_role_pair):
+    def map_event_arg_type(self, event_onto, evm_type, arg_role_pair,
+                           aida_arg_ent_types):
         map_to_aida = self.onto_mapper.get_aida_arg_map()
 
         arg_role_name = arg_role_pair[1]
@@ -930,10 +931,24 @@ class CSR:
             mapped_arg_type = None
 
             if key in map_to_aida:
-                arg_aid_type = map_to_aida[key]
+                (arg_aid_type, type_res) = map_to_aida[key]
 
                 c_arg_aida_type = self.onto_mapper.canonicalize_type(
                     arg_aid_type)
+
+                if type_res:
+                    print('map', key, 'to', c_arg_aida_type)
+                    print('has restriction', type_res)
+                    input("we have a restrict here.")
+
+                    match_resitrct = False
+                    for t in aida_arg_ent_types:
+                        if t in type_res:
+                            match_resitrct = True
+
+                    if not match_resitrct:
+                        input("Reject for entity type restrictions")
+                        return None
 
                 if c_arg_aida_type in self.canonical_types:
                     mapped_arg_type = self.canonical_types[c_arg_aida_type]
@@ -970,8 +985,15 @@ class CSR:
         if ent:
             evm_onto, evm_type = evm.event_type.split(':')
             arg_id = self.get_id('arg')
+
+            aida_arg_entity_types = []
+
+            for t in ent.get_types():
+                if t.startswith(':'):
+                    aida_arg_entity_types.append(t.split(':')[1])
+
             in_domain_arg = self.map_event_arg_type(
-                evm_onto, evm_type, arg_role_pair
+                evm_onto, evm_type, arg_role_pair, aida_arg_entity_types
             )
 
             if in_domain_arg:
