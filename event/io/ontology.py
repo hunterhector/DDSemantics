@@ -383,9 +383,12 @@ class OntologyLoader:
                         )
                         sep = ', '
 
-                    if len(args) == 1:
-                        # Fill unspecified role with general entity.
-                        out.write(', Arg:<ENTITY>')
+                    # if len(args) == 1:
+                    #     # Fill unspecified role with general entity.
+                    #     out.write(', Arg:<ENTITY>')
+
+                    # Fill unspecified role with general entity.
+                    out.write(', Arg:<ENTITY>')
 
                     out.write('\n')
 

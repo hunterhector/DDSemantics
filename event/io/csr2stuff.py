@@ -206,10 +206,10 @@ class CrsConverter:
                             for arg_entity, full_arg_role in args:
                                 onto, arg_role = full_arg_role.split(':')
 
-                                if onto_set and onto not in onto_set:
-                                    continue
-
-                                arg_role = arg_role.replace('.', '_')
+                                if onto_set and onto in onto_set:
+                                    arg_role = arg_role.replace('.', '_')
+                                else:
+                                    arg_role = 'Arg'
 
                                 if arg_entity in entity2tid:
                                     arg_anno = arg_role + ':' + entity2tid[
