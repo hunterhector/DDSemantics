@@ -433,7 +433,7 @@ class OntologyLoader:
                     out.write('\n')
 
             # Put a special other type here.
-            out.write('\tOTHER\n')
+            out.write('\tOTHER_EVENT\n')
 
 
         if visual_path:

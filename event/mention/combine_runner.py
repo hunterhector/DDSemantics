@@ -197,8 +197,6 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 text = rich_ent['text']
                 head_span = rich_ent['headWord']['span']
 
-            # sent_id = csr.fit_to_sentence(span)
-
             ent = csr.get_by_span(csr.entity_key, span)
             head_ent = csr.get_by_span(csr.entity_head_key, head_span)
 

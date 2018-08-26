@@ -790,7 +790,7 @@ class CSR:
 
     def map_entity_type(self, onto_name, entity_type):
         if onto_name == 'conll':
-            if entity_type == 'Date':
+            if entity_type == 'DATE':
                 return 'aida', 'Time'
         return onto_name, entity_type
 
