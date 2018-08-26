@@ -169,11 +169,13 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
                 csr.add_event_arg_by_span(
                     csr_evm, arg_head_span, arg_span, arg_text,
                     arg_onto, role_pair,
-                    component='opera.events.mention.tac.hector'
+                    component=component
                 )
 
 
 def add_rich_events(rich_event_file, csr, provided_tokens=None):
+    base_component_name = 'opera.events.mention.tac.hector'
+
     with open(rich_event_file) as fin:
         rich_event_info = json.load(fin)
 
@@ -204,11 +206,15 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 same_head_entities[eid] = head_ent
 
             if not ent:
+                if rich_ent.get('component') == 'FrameBasedEventDetector':
+                    component = 'Semafor'
+                else:
+                    component = base_component_name
+
                 ent = csr.add_entity_mention(
                     head_span, span, text, 'conll', rich_ent.get('type', None),
                     entity_form=rich_ent.get('entity_form', 'named'),
-                    component=rich_ent.get(
-                        'component', 'opera.events.mention.tac.hector'))
+                    component=component)
 
             if 'negationWord' in rich_ent:
                 ent.add_modifier('NEG', rich_ent['negationWord'])
@@ -234,14 +240,13 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
                 text = rich_evm['text']
                 head_span = rich_evm['headWord']['span']
 
-            # sent_id = csr.fit_to_sentence(span)
-
-            component_name = 'opera.events.mention.tac.hector'
             ontology = 'tac'
 
             if rich_evm['component'] == "FrameBasedEventDetector":
-                component_name = 'opera.events.mention.framenet.semafor'
+                component = 'Semafor'
                 ontology = 'framenet'
+            else:
+                component = base_component_name
 
             ontology, evm_type = fix_event_type_from_frame(
                 ontology, rich_evm['type'], rich_evm.get('frame', ''))
@@ -272,7 +277,7 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
             csr_evm = csr.add_event_mention(
                 head_span, span, text, ontology, evm_type,
                 realis=rich_evm.get('realis', None),
-                component=component_name, arg_entity_types=arg_entity_types
+                component=component, arg_entity_types=arg_entity_types
             )
 
             if csr_evm:
