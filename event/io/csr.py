@@ -931,34 +931,41 @@ class CSR:
             mapped_arg_type = None
 
             if key in map_to_aida:
-                (arg_aid_type, type_res) = map_to_aida[key]
+                candidate_aida_types = map_to_aida[key]
 
-                c_arg_aida_type = self.onto_mapper.canonicalize_type(
-                    arg_aid_type)
+                for arg_aid_type, type_res in candidate_aida_types:
+                    c_arg_aida_type = self.onto_mapper.canonicalize_type(
+                        arg_aid_type)
 
-                if type_res:
-                    print('map', key, 'to', c_arg_aida_type)
-                    print('has restriction', type_res)
-                    print("we have a restrict here.")
+                    if type_res:
+                        print('map', key, 'to', c_arg_aida_type)
+                        print('has restriction', type_res)
+                        print("we have a restrict here.")
 
-                    if len(aida_arg_ent_types) > 0:
-                        input("checking restricts for typed entities")
+                        if len(aida_arg_ent_types) > 0:
+                            input("checking restricts for typed entities")
 
-                        match_resitrct = False
-                        for t in aida_arg_ent_types:
-                            if t in type_res:
-                                match_resitrct = True
+                            match_resitrct = False
+                            for t in aida_arg_ent_types:
+                                if t in type_res:
+                                    match_resitrct = True
 
-                        if not match_resitrct:
-                            input("Reject for entity type restrictions")
-                            return None
+                            if not match_resitrct:
+                                input(
+                                    "Reject for entity type restrictions, check next")
+                                continue
+                            else:
+                                input((t, "matches restrictions,"))
 
-                if c_arg_aida_type in self.canonical_types:
-                    mapped_arg_type = self.canonical_types[c_arg_aida_type]
-                else:
-                    if arg_aid_type.startswith('internal_'):
+                    if c_arg_aida_type in self.canonical_types:
+                        mapped_arg_type = self.canonical_types[c_arg_aida_type]
+                        break
+                    elif arg_aid_type.startswith('internal_'):
                         mapped_arg_type = arg_aid_type.replace(
                             'internal_', 'internal:')
+                        break
+
+
             elif arg_role_name == 'ARGM-TMP' or 'Time' in arg_role_name:
                 arg_aid_type = evm_type + '_Time'
                 full_arg = (evm_type, arg_aid_type)

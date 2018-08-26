@@ -3,7 +3,7 @@ from rdflib import Namespace
 import re
 import logging
 from event.util import remove_punctuation
-
+from collections import defaultdict
 
 class MappingLoader:
     def __init__(self):
@@ -16,7 +16,7 @@ class MappingLoader:
         return self.mappings['aida_event']
 
     def load_arg_aida_mapping(self, mapping_file):
-        self.mappings['aida_arg'] = {}
+        self.mappings['aida_arg'] = defaultdict(list)
 
         with open(mapping_file) as seedling_mappings:
             for line in seedling_mappings:
@@ -40,7 +40,7 @@ class MappingLoader:
                         res = None
 
                     self.mappings['aida_arg'][
-                        (c_event_type, frame)] = (arg_type, res)
+                        (c_event_type, frame)].append((arg_type, res))
 
     def load_event_aida_mapping(self, mapping_file):
         # This mapping is from other ontology to seedling events, in
