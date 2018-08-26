@@ -430,10 +430,11 @@ class OntologyLoader:
                         )
                         sep = ', '
 
-                    # Put a special other type here.
-                    out.write('\tOTHER\n')
-
                     out.write('\n')
+
+            # Put a special other type here.
+            out.write('\tOTHER\n')
+
 
         if visual_path:
             with open(visual_path, 'w') as out:
