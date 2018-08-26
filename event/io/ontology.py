@@ -452,15 +452,16 @@ class OntologyLoader:
 
                 for t in self.entity_types:
                     out.write('{}	fgColor:black, bgColor:yellow, '
-                              'borderColor:darken\n'.format(t))
+                              'borderColor:darken\n'.format(t.split('#')[1]))
 
                 for t in self.filler_types:
-                    out.write('{}	fgColor:black, bgColor:blue, '
-                              'borderColor:darken\n'.format(t))
+                    out.write('{}	fgColor:black, bgColor:lightblue, '
+                              'borderColor:darken\n'.format(t.split('#')[1]))
 
                 for t in self.event_onto:
                     out.write('{}	fgColor:black, bgColor:cyan, '
-                              'borderColor:darken\n'.format(t))
+                              'borderColor:darken\n'.format(
+                        t.split('#')[1].replace('.', '_')))
 
     def __find_arg_restrictions(self):
         pass
