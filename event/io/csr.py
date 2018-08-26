@@ -933,6 +933,9 @@ class CSR:
             if key in map_to_aida:
                 candidate_aida_types = map_to_aida[key]
 
+                print(key)
+                print('Candidate mappings', candidate_aida_types)
+
                 for arg_aid_type, type_res in candidate_aida_types:
                     c_arg_aida_type = self.onto_mapper.canonicalize_type(
                         arg_aid_type)
