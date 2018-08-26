@@ -942,12 +942,12 @@ class CSR:
                         mapped_arg_type = arg_aid_type.replace(
                             'internal_', 'internal:')
             elif arg_role_name == 'ARGM-TMP' or 'Time' in arg_role_name:
-                arg_aid_type = evm_type.lower() + '_Time'
+                arg_aid_type = evm_type + '_Time'
                 full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
                     mapped_arg_type = arg_aid_type
             elif arg_role_name == 'ARGM-LOC' or 'Place' in arg_role_name:
-                arg_aid_type = evm_type.lower() + '_Place'
+                arg_aid_type = evm_type + '_Place'
                 full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
                     mapped_arg_type = arg_aid_type

@@ -612,8 +612,6 @@ def main(config):
         csr.write(os.path.join(config.csr_output, docid + '.csr.json'))
 
 
-# TODO: Get real media type somewhere.
-
 if __name__ == '__main__':
     from event import util
     import sys
