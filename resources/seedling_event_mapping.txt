@@ -2,7 +2,7 @@ Business.DeclareBankruptcy
 Business.End	tac:Business_Endorg
 Business.Merge	tac:Business_Mergeorg
 Business.Start	Business_Startorg
-Conflict.Attack	framenet:Ingestion	framenet:Killing	framenet:Shoot
+Conflict.Attack	framenet:Ingestion	framenet:Killing	framenet:Shoot_projectiles
 Conflict.Demonstrate
 Contact.Broadcast	framenet:Statement	framenet:Judgment_communication
 Contact.Contact
