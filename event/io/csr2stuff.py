@@ -156,10 +156,10 @@ class CrsConverter:
                         onto, raw_type = entity_type.split(':')
 
                         if onto_set and onto not in onto_set:
-                            continue
-
-                        full_type = onto + '_' + raw_type if keep_onto \
-                            else raw_type
+                            full_type = 'OTHER'
+                        else:
+                            full_type = onto + '_' + raw_type if keep_onto \
+                                else raw_type
 
                         full_type = full_type.replace('.', '_')
 

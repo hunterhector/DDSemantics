@@ -840,7 +840,7 @@ class CSR:
         if entity_type:
             entity_mention.add_type(ontology, entity_type, component=component)
         else:
-            entity_mention.add_type('aida', 'OTHER', component=component)
+            entity_mention.add_type('conll', 'MISC', component=component)
         return entity_mention
 
     def map_event_type(self, evm_type, onto_name):
@@ -1000,7 +1000,7 @@ class CSR:
             aida_arg_entity_types = []
 
             for t in ent.get_types():
-                if t.startswith('aida:') and not t == 'aida:OTHER':
+                if t.startswith('aida:'):
                     aida_arg_entity_types.append(t.split(':')[1])
 
             in_domain_arg = self.map_event_arg_type(
