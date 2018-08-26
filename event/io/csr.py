@@ -941,14 +941,17 @@ class CSR:
                     print('has restriction', type_res)
                     input("we have a restrict here.")
 
-                    match_resitrct = False
-                    for t in aida_arg_ent_types:
-                        if t in type_res:
-                            match_resitrct = True
+                    if len(aida_arg_ent_types) > 0:
+                        print("checking restricts for typed entities")
 
-                    if not match_resitrct:
-                        input("Reject for entity type restrictions")
-                        return None
+                        match_resitrct = False
+                        for t in aida_arg_ent_types:
+                            if t in type_res:
+                                match_resitrct = True
+
+                        if not match_resitrct:
+                            input("Reject for entity type restrictions")
+                            return None
 
                 if c_arg_aida_type in self.canonical_types:
                     mapped_arg_type = self.canonical_types[c_arg_aida_type]
