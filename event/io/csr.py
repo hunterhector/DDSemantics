@@ -894,6 +894,7 @@ class CSR:
             mapped_type = self.map_event_type(evm_type, onto_name)
 
             if arg_entity_types:
+                print(text)
                 mapped_type = fix_event_type_from_entity(
                     mapped_type, arg_entity_types
                 )
@@ -1058,9 +1059,12 @@ class CSR:
 
 def fix_event_type_from_entity(evm_type, arg_entity_types):
     if evm_type == 'Movement.TransportPerson':
+        print('tyring to fix', evm_type)
+        print(arg_entity_types)
         if ('aida:Person' not in arg_entity_types) and (
                 'aida:Vehicle' in arg_entity_types):
             evm_type = 'Movement.TransportArtifact'
+        input(evm_type)
     return evm_type
 
 
