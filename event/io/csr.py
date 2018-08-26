@@ -992,7 +992,7 @@ class CSR:
             aida_arg_entity_types = []
 
             for t in ent.get_types():
-                if t.startswith(':'):
+                if t.startswith('aida:'):
                     aida_arg_entity_types.append(t.split(':')[1])
 
             in_domain_arg = self.map_event_arg_type(
