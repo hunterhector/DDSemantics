@@ -923,8 +923,7 @@ class CSR:
         map_to_aida = self.onto_mapper.get_aida_arg_map()
 
         if event_onto == 'aida':
-            key = (self.onto_mapper.canonicalize_type(evm_type),
-                   '_'.join(full_role_name))
+            key = (self.onto_mapper.canonicalize_type(evm_type), full_role_name)
 
             mapped_arg_type = None
 
@@ -936,7 +935,6 @@ class CSR:
                         arg_aid_type)
 
                     if type_res:
-
                         if len(aida_arg_ent_types) > 0:
                             match_resitrct = False
                             for t in aida_arg_ent_types:
@@ -949,13 +947,11 @@ class CSR:
                                     "{} cannot fill {}".format(
                                         arg_aid_type, full_role_name))
                                 continue
-
                     if c_arg_aida_type in self.canonical_types:
                         mapped_arg_type = self.canonical_types[c_arg_aida_type]
                         break
-                    elif arg_aid_type.startswith('internal_'):
-                        mapped_arg_type = arg_aid_type.replace(
-                            'internal_', 'internal:')
+                    elif arg_aid_type.startswith('Internal.'):
+                        mapped_arg_type = arg_aid_type
                         break
             elif full_role_name == 'pb_ARGM-TMP' or 'Time' in full_role_name:
                 arg_aid_type = evm_type + '_Time'
@@ -999,8 +995,11 @@ class CSR:
             )
 
             if in_domain_arg:
-                arg_onto = self.base_onto_name
-                arg_role = in_domain_arg
+                if in_domain_arg.startswith('Internal.'):
+                    arg_onto, arg_role = in_domain_arg.split('.')
+                else:
+                    arg_onto = self.base_onto_name
+                    arg_role = in_domain_arg
             else:
                 arg_role = full_role_name
 

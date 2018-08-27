@@ -132,6 +132,9 @@ def fix_event_type_from_frame(origin_onto, origin_type, frame_type):
     if 'Contact' in origin_type:
         if frame_type == 'Quantity':
             return 'framenet', frame_type
+    if 'Movement_Transportperson' == origin_type:
+        if frame_type == 'Arranging':
+            return 'aida', 'Movement_TransportArtifact'
     return origin_onto, origin_type
 
 
