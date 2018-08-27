@@ -57,7 +57,10 @@ def add_entity_relations(relation_file, edl_entities, csr):
                 en2_id = edl_entities[relen2].id
 
                 csr.add_relation(
-                    'aida', [en1_id, en2_id], rel['rel'], 'entity_rels')
+                    'aida', [en1_id, en2_id], rel['rel'],
+                    'entity_rels',
+                    # 'opera.relations.xiang'
+                )
 
 
 def add_edl_entities(edl_file, csr):
@@ -159,16 +162,18 @@ def add_rich_arguments(csr, csr_evm, rich_evm, rich_entities, provided_tokens):
                 arg_onto = "framenet"
                 frame_name = rich_evm['frame']
                 component = 'Semafor'
-                role_pair = (frame_name, role_name)
+                # role_pair = (frame_name, role_name)
+                full_role_name = frame_name + '_' + role_name
             elif onto_name == 'pb':
                 arg_onto = "propbank"
                 component = 'Fanse'
-                role_pair = ('pb', role_name)
+                # role_pair = ('pb', role_name)
+                full_role_name = 'pb_' + role_name
 
             if arg_onto and component:
                 csr.add_event_arg_by_span(
                     csr_evm, arg_head_span, arg_span, arg_text,
-                    arg_onto, role_pair, component=component
+                    arg_onto, full_role_name, component=component
                 )
 
 
@@ -295,7 +300,9 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
             if relation['relationType'] == 'event_coreference':
                 args = [evm_by_id[i].id for i in relation['arguments'] if
                         i in evm_by_id]
-                csr.add_relation('aida', args, 'event_coreference', 'hector')
+                csr.add_relation(
+                    'aida', args, 'event_coreference', base_component_name
+                )
 
             if relation['relationType'] == 'entity_coreference':
                 args = [csr_entities[i].id for i in relation['arguments'] if

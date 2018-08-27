@@ -918,15 +918,13 @@ class CSR:
             index,
         )
 
-    def map_event_arg_type(self, event_onto, evm_type, arg_role_pair,
+    def map_event_arg_type(self, event_onto, evm_type, full_role_name,
                            aida_arg_ent_types):
         map_to_aida = self.onto_mapper.get_aida_arg_map()
 
-        arg_role_name = arg_role_pair[1]
-
         if event_onto == 'aida':
             key = (self.onto_mapper.canonicalize_type(evm_type),
-                   '_'.join(arg_role_pair))
+                   '_'.join(full_role_name))
 
             mapped_arg_type = None
 
@@ -938,13 +936,8 @@ class CSR:
                         arg_aid_type)
 
                     if type_res:
-                        # print('map', key, 'to', c_arg_aida_type)
-                        # print('has restriction', type_res)
-                        # print("we have a restrict here.")
 
                         if len(aida_arg_ent_types) > 0:
-                            # input("checking restricts for typed entities")
-
                             match_resitrct = False
                             for t in aida_arg_ent_types:
                                 if t in type_res:
@@ -953,8 +946,8 @@ class CSR:
                             if not match_resitrct:
                                 logging.info(
                                     "arg is rejected because entity type "
-                                    "{} cannot fill {}".format(arg_aid_type,
-                                                               arg_role_name))
+                                    "{} cannot fill {}".format(
+                                        arg_aid_type, full_role_name))
                                 continue
 
                     if c_arg_aida_type in self.canonical_types:
@@ -964,14 +957,12 @@ class CSR:
                         mapped_arg_type = arg_aid_type.replace(
                             'internal_', 'internal:')
                         break
-
-
-            elif arg_role_name == 'ARGM-TMP' or 'Time' in arg_role_name:
+            elif full_role_name == 'pb_ARGM-TMP' or 'Time' in full_role_name:
                 arg_aid_type = evm_type + '_Time'
                 full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
                     mapped_arg_type = arg_aid_type
-            elif arg_role_name == 'ARGM-LOC' or 'Place' in arg_role_name:
+            elif full_role_name == 'pb_ARGM-LOC' or 'Place' in full_role_name:
                 arg_aid_type = evm_type + '_Place'
                 full_arg = (evm_type, arg_aid_type)
                 if full_arg in self.arg_restricts:
@@ -980,7 +971,7 @@ class CSR:
             return mapped_arg_type
 
     def add_event_arg_by_span(self, evm, arg_head_span, arg_span,
-                              arg_text, arg_onto, arg_role_pair, component,
+                              arg_text, arg_onto, full_role_name, component,
                               arg_entity_form='named'):
         ent = self.get_by_span(self.entity_key, arg_span)
 
@@ -990,7 +981,8 @@ class CSR:
         if not ent:
             ent = self.add_entity_mention(
                 arg_head_span, arg_span, arg_text, 'aida', "argument",
-                entity_form=arg_entity_form, component=component)
+                entity_form=arg_entity_form, component=component
+            )
 
         if ent:
             evm_onto, evm_type = evm.event_type.split(':')
@@ -1003,19 +995,14 @@ class CSR:
                     aida_arg_entity_types.append(t.split(':')[1])
 
             in_domain_arg = self.map_event_arg_type(
-                evm_onto, evm_type, arg_role_pair, aida_arg_entity_types
+                evm_onto, evm_type, full_role_name, aida_arg_entity_types
             )
 
             if in_domain_arg:
-                if ':' in in_domain_arg:
-                    arg_onto, arg_role = in_domain_arg.split(':')
-                else:
-                    arg_onto = self.base_onto_name
-                    arg_role = in_domain_arg
+                arg_onto = self.base_onto_name
+                arg_role = in_domain_arg
             else:
-                arg_role = arg_role_pair[1]
-
-            # input(('adding argument', arg_onto, arg_role, arg_id))
+                arg_role = full_role_name
 
             evm.add_arg(arg_onto, arg_role, ent, arg_id, component=component)
 
