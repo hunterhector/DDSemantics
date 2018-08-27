@@ -58,8 +58,7 @@ def add_entity_relations(relation_file, edl_entities, csr):
 
                 csr.add_relation(
                     'aida', [en1_id, en2_id], rel['rel'],
-                    'entity_rels',
-                    # 'opera.relations.xiang'
+                    'opera.relations.xiang'
                 )
 
 
