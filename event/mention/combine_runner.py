@@ -47,7 +47,7 @@ def add_entity_relations(relation_file, edl_entities, csr):
                     en_id = edl_entities[relen].id
                     args.append((arg_name, en_id))
 
-                if len(args) < 3:
+                if len(args) < 2:
                     logging.error(
                         "Insufficent number of fields {} in relation "
                         "at {}. some might be filtered".format(
