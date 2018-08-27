@@ -31,14 +31,12 @@ def add_entity_relations(relation_file, edl_entities, csr):
 
         for relation in data:
             for rel in relation['rels']:
-                if len(rel) < 3:
-                    logging.error(
-                        "Insufficent number of fields {} in relation "
-                        "at {}".format(len(rel), relation_file))
-                    continue
-
                 args = []
                 for arg_name, relen in rel.items():
+                    if arg_name == 'rel':
+                        # Not an argument field.
+                        continue
+
                     if relen not in edl_entities:
                         logging.error(
                             "Relation entities [{}] not found at {}".format(
@@ -48,6 +46,13 @@ def add_entity_relations(relation_file, edl_entities, csr):
 
                     en_id = edl_entities[relen].id
                     args.append((arg_name, en_id))
+
+                if len(args) < 3:
+                    logging.error(
+                        "Insufficent number of fields {} in relation "
+                        "at {}. some might be filtered".format(
+                            len(rel), relation_file))
+                    continue
 
                 csr.add_relation(
                     'aida', args, rel['rel'], 'opera.relations.xiang'
