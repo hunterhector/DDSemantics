@@ -31,34 +31,26 @@ def add_entity_relations(relation_file, edl_entities, csr):
 
         for relation in data:
             for rel in relation['rels']:
-                if 'en1' not in rel or 'en2' not in rel:
+                if len(rel) < 3:
                     logging.error(
-                        "En1 or 2 not presented at {}".format(relation_file))
+                        "Insufficent number of fields {} in relation "
+                        "at {}".format(len(rel), relation_file))
                     continue
 
-                relen1 = rel['en1']
-                relen2 = rel['en2']
+                args = []
+                for arg_name, relen in rel.items():
+                    if relen not in edl_entities:
+                        logging.error(
+                            "Relation entities [{}] not found at {}".format(
+                                relen, relation_file)
+                        )
+                        continue
 
-                if relen1 not in edl_entities:
-                    logging.error(
-                        "Relation entities [{}] not found at {}".format(
-                            relen1, relation_file)
-                    )
-                    continue
-
-                if relen2 not in edl_entities:
-                    logging.error(
-                        "Relation entities [{}] not found at {}".format(
-                            relen2, relation_file)
-                    )
-                    continue
-
-                en1_id = edl_entities[relen1].id
-                en2_id = edl_entities[relen2].id
+                    en_id = edl_entities[relen].id
+                    args.append((arg_name, en_id))
 
                 csr.add_relation(
-                    'aida', [en1_id, en2_id], rel['rel'],
-                    'opera.relations.xiang'
+                    'aida', args, rel['rel'], 'opera.relations.xiang'
                 )
 
 
@@ -300,15 +292,17 @@ def add_rich_events(rich_event_file, csr, provided_tokens=None):
 
         for relation in rich_event_info['relations']:
             if relation['relationType'] == 'event_coreference':
-                args = [evm_by_id[i].id for i in relation['arguments'] if
-                        i in evm_by_id]
+                args = [('member', evm_by_id[i].id) for i in
+                        relation['arguments'] if i in evm_by_id]
+
                 csr.add_relation(
                     'aida', args, 'event_coreference', base_component_name
                 )
 
             if relation['relationType'] == 'entity_coreference':
-                args = [csr_entities[i].id for i in relation['arguments'] if
-                        i in csr_entities]
+                args = [('member', csr_entities[i].id) for i in
+                        relation['arguments'] if i in csr_entities]
+
                 csr.add_relation('aida', args, 'entity_coreference', 'corenlp')
 
 

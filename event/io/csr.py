@@ -222,9 +222,9 @@ class InterpFrame(Frame):
         return rep
 
 
-class RelFrame(Frame):
+class RelArgFrame(Frame):
     """
-    A frame for relations between other frames.
+    A frame for the arguments of a relation.
     """
 
     def __init__(self, fid):
@@ -235,15 +235,13 @@ class RelFrame(Frame):
         self.members.append(arg)
 
     def json_rep(self):
-        # rep = super().json_rep()
-        # print(rep)
         rep = []
-        for arg in self.members:
+        for arg_type, arg_ent in self.members:
             rep.append(
                 {
                     '@type': 'argument',
-                    'type': 'aida:member',
-                    'arg': arg
+                    'type': 'aida:' + arg_type,
+                    'arg': arg_ent
                 }
             )
         return rep
@@ -477,7 +475,7 @@ class RelationMention(InterpFrame):
         self.interp.add_fields('type', 'type', onto_type, onto_type)
 
     def json_rep(self):
-        arg_frame = RelFrame(None)
+        arg_frame = RelArgFrame(None)
         for arg in self.arguments:
             arg_frame.add_arg(arg)
 
