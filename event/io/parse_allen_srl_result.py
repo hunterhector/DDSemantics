@@ -66,16 +66,17 @@ if __name__ == '__main__':
             word_spans = [token.idx for token in tokens]
 
             for verb_data in output_data['verbs']:
-                srl = {}
+                srl = []
 
                 args = get_srl(verb_data)
                 for arg_type, span in args.items():
                     s = word_spans[span[0]]
                     e = word_spans[span[1]] + len(tokens[span[1]])
-                    srl[arg_type] = {
+                    srl.append({
+                        'role': arg_type,
                         'text': sent[s:e],
                         'span': (sent_start + s, sent_start + e)
-                    }
+                    })
 
                 if len(srl) > 1:
                     # Keep the ones with arguments.
