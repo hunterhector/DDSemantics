@@ -1,8 +1,6 @@
 import os
 import sys
 import json
-from itertools import izip
-
 
 def get_srl(verb_data):
     spans = {}
@@ -34,7 +32,7 @@ if __name__ == '__main__':
 
         data = []
 
-        for inline, outline in izip(inf, outf):
+        for inline, outline in zip(inf, outf):
             input_data = json.loads(inline)
             output_data = json.loads(outline)
             docid = input_data['docid']
