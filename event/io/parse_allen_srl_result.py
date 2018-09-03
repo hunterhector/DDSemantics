@@ -2,6 +2,7 @@ import os
 import sys
 import json
 
+
 def get_srl(verb_data):
     spans = {}
 
@@ -28,8 +29,10 @@ if __name__ == '__main__':
     output_file = sys.argv[2]
     out_dir = sys.argv[3]
 
-    with open(input_file) as inf, open(output_file) as outf:
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
 
+    with open(input_file) as inf, open(output_file) as outf:
         data = []
 
         for inline, outline in zip(inf, outf):
@@ -40,7 +43,7 @@ if __name__ == '__main__':
             end = input_data['end']
             sent = input_data['sentence']
 
-            for verb_data in outline['verbs']:
+            for verb_data in output_data['verbs']:
                 spans = get_srl(verb_data)
                 print(sent)
                 print(spans)
