@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+from allennlp.data.tokenizers.word_splitter import SpacyWordSplitter
 
 
 def get_srl(verb_data):
@@ -47,6 +48,10 @@ if __name__ == '__main__':
     output_file = sys.argv[2]
     out_dir = sys.argv[3]
 
+    # How to reproduce their tokens? Run their tokenizer!
+    tokenizer = SpacyWordSplitter(language='en_core_web_sm',
+                                  pos_tags=True)
+
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -65,12 +70,19 @@ if __name__ == '__main__':
 
             output_words = output_data['words']
 
+            tokens = tokenizer.split_words(sent)
+            words = [(token.text, token.idx) for token in tokens]
+
+            print(output_words)
+            print(words)
+
             for verb_data in output_data['verbs']:
                 args = get_srl(verb_data)
 
                 for arg_type, span in args.items():
-                    span_words = output_words[span[0]: span[1] + 1]
-                    align_to_char_span(sent, span, span_words)
+                    span_words = words[span[0]: span[1] + 1]
+
+                    align_to_char_span(tokenizer, sent, span, span_words)
                     input('check')
 
             if lastid and not docid == lastid:
