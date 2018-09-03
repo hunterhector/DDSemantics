@@ -12,12 +12,19 @@ def get_srl(verb_data):
 
     for index, tag in enumerate(tags):
         if tag.startswith('B'):
+            if t:
+                # Output last span.
+                spans[t] = (start, end)
             t = tag.split('-', 1)[1]
             start = index
             end = index
         elif tag.startswith('I'):
             end = index
         elif tag == 'O':
+            if t:
+                spans[t] = (start, end)
+
+        if index == len(tags) - 1:
             if t:
                 spans[t] = (start, end)
 
