@@ -72,9 +72,14 @@ if __name__ == '__main__':
                 for arg_type, span in args.items():
                     s = word_spans[span[0]]
                     e = word_spans[span[1]] + len(tokens[span[1]])
-                    srl[arg_type] = (sent_start + s, sent_start + e)
+                    srl[arg_type] = {
+                        'text': sent[s:e],
+                        'span': (sent_start + s, sent_start + e)
+                    }
 
-                data.append(srl)
+                if len(srl) > 1:
+                    # Keep the ones with arguments.
+                    data.append(srl)
 
             if lastid and not docid == lastid:
                 write_out(out_dir, lastid, data)
