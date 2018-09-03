@@ -66,14 +66,19 @@ if __name__ == '__main__':
             word_spans = [token.idx for token in tokens]
 
             for verb_data in output_data['verbs']:
+                srl = {}
+
                 args = get_srl(verb_data)
                 for arg_type, span in args.items():
                     s = word_spans[span[0]]
                     e = word_spans[span[1]] + len(tokens[span[1]])
-                    data[arg_type] = (sent_start + s, sent_start + e)
+                    srl[arg_type] = (sent_start + s, sent_start + e)
+
+                data.append(srl)
 
             if lastid and not docid == lastid:
                 write_out(out_dir, lastid, data)
+                data.clear()
 
             lastid = docid
 
