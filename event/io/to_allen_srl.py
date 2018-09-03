@@ -4,8 +4,11 @@ import json
 
 
 def convert(inf, sent, out):
-    for line in inf:
-        sent_json = {'sentence': line.strip()}
+    txt = inf.read()
+
+    for line in sent:
+        start, end, sid, _ = line.split()
+        sent_json = {'sentence': txt[int(start), int(end)]}
         out.write(json.dumps(sent_json))
         out.write('\n')
 
