@@ -62,6 +62,6 @@ if __name__ == '__main__':
                 spans = get_srl(verb_data)
 
                 for span in spans:
-                    span_words = output_words[span[0], span[1] + 1]
+                    span_words = output_words[span[0]: span[1] + 1]
                     align_to_char_span(sent, span, span_words)
                     input('check')
