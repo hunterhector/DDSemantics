@@ -31,6 +31,12 @@ def get_srl(verb_data):
     return spans
 
 
+def align_to_char_span(sent, span, span_words):
+    print(sent)
+    print(span)
+    print(span_words)
+
+
 if __name__ == '__main__':
     input_file = sys.argv[1]
     output_file = sys.argv[2]
@@ -50,8 +56,12 @@ if __name__ == '__main__':
             end = input_data['end']
             sent = input_data['sentence']
 
+            output_words = output_data['words']
+
             for verb_data in output_data['verbs']:
                 spans = get_srl(verb_data)
-                print(sent)
-                print(spans)
-                input('check')
+
+                for span in spans:
+                    span_words = output_words[span[0], span[1] + 1]
+                    align_to_char_span(sent, span, span_words)
+                    input('check')
