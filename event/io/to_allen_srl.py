@@ -6,7 +6,7 @@ import json
 def convert(inf, sent, out):
     for line in inf:
         sent_json = {'sentence': line.strip()}
-        out.write(sent_json)
+        out.write(json.dumps(sent_json))
 
     out.write('\n')
 
