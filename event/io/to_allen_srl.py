@@ -14,8 +14,6 @@ def convert(docid, inf, sent, out):
                      'start': start, 'end': end}
         out.write(json.dumps(sent_json))
         out.write('\n')
-    out.write('\n')
-
 
 if __name__ == '__main__':
     txt_dir = sys.argv[1]
