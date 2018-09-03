@@ -67,6 +67,7 @@ def call_dbpedia(in_file, out_path, freebase_map):
                 offset = int(resource['@offset']) + file_offset
                 title = resource['@URI'].replace(
                     'http://dbpedia.org/resources/', '')
+                fbid = freebase_map.get(title, '/m/UNK')
 
                 annotation = {
                     'title': title,
@@ -74,11 +75,8 @@ def call_dbpedia(in_file, out_path, freebase_map):
                     'end': len(resource['@surfaceForm']) + offset,
                     'link_probability': resource['@similarityScore'],
                     'spot': resource['@surfaceForm'],
+                    'mid': fbid,
                 }
-
-                if title in freebase_map:
-                    annotation['mid'] = freebase_map[title]
-
                 annotations.append(annotation)
         else:
             pass
