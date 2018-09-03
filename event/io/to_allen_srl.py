@@ -15,6 +15,9 @@ if __name__ == '__main__':
     txt_dir = sys.argv[1]
     out_dir = sys.argv[2]
 
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
     for fname in os.listdir(txt_dir):
         if fname.endswith('txt'):
             sent_file = fname.replace('.txt', '.sent')
