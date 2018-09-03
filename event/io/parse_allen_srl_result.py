@@ -4,7 +4,7 @@ import json
 
 
 def get_srl(verb_data):
-    spans = {}
+    args = {}
 
     tags = verb_data['tags']
 
@@ -14,7 +14,7 @@ def get_srl(verb_data):
         if tag.startswith('B'):
             if t:
                 # Output last span.
-                spans[t] = (start, end)
+                args[t] = (start, end)
             t = tag.split('-', 1)[1]
             start = index
             end = index
@@ -22,19 +22,24 @@ def get_srl(verb_data):
             end = index
         elif tag == 'O':
             if t:
-                spans[t] = (start, end)
+                args[t] = (start, end)
 
         if index == len(tags) - 1:
             if t:
-                spans[t] = (start, end)
+                args[t] = (start, end)
 
-    return spans
+    return args
 
 
 def align_to_char_span(sent, span, span_words):
     print(sent)
     print(span)
     print(span_words)
+
+
+def write_out(out_dir, docid, data):
+    with open(os.path.join(out_dir, docid + '.json', 'w')) as out:
+        json.dump(data, out)
 
 
 if __name__ == '__main__':
@@ -48,6 +53,8 @@ if __name__ == '__main__':
     with open(input_file) as inf, open(output_file) as outf:
         data = []
 
+        lastid = None
+
         for inline, outline in zip(inf, outf):
             input_data = json.loads(inline)
             output_data = json.loads(outline)
@@ -59,9 +66,17 @@ if __name__ == '__main__':
             output_words = output_data['words']
 
             for verb_data in output_data['verbs']:
-                spans = get_srl(verb_data)
+                args = get_srl(verb_data)
 
-                for span in spans:
+                for arg_type, span in args:
                     span_words = output_words[span[0]: span[1] + 1]
                     align_to_char_span(sent, span, span_words)
                     input('check')
+
+            if lastid and not docid == lastid:
+                write_out(out_dir, lastid, [])
+
+            lastid = docid
+
+        if lastid:
+            write_out(out_dir, lastid, [])
