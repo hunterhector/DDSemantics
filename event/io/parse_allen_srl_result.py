@@ -33,7 +33,7 @@ def get_srl(verb_data):
 
 
 def write_out(out_dir, docid, data):
-    with open(os.path.join(out_dir, docid + '.json', 'w')) as out:
+    with open(os.path.join(out_dir, docid + '.json'), 'w') as out:
         json.dump(data, out)
 
 
