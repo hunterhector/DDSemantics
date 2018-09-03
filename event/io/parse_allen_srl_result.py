@@ -50,7 +50,7 @@ if __name__ == '__main__':
         os.makedirs(out_dir)
 
     with open(input_file) as inf, open(output_file) as outf:
-        data = []
+        data = {'srl': []}
 
         lastid = None
 
@@ -80,11 +80,13 @@ if __name__ == '__main__':
 
                 if len(srl) > 1:
                     # Keep the ones with arguments.
-                    data.append(srl)
+                    data['srl'].append(srl)
 
             if lastid and not docid == lastid:
+                data['docid'] = lastid
+
                 write_out(out_dir, lastid, data)
-                data.clear()
+                data = {'srl': []}
 
             lastid = docid
 
