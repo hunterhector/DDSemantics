@@ -8,7 +8,7 @@ def convert(inf, sent, out):
 
     for line in sent:
         start, end, sid, _ = line.split()
-        sent_json = {'sentence': txt[int(start), int(end)]}
+        sent_json = {'sentence': txt[int(start): int(end)]}
         out.write(json.dumps(sent_json))
         out.write('\n')
 
