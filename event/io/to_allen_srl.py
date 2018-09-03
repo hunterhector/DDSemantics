@@ -3,12 +3,15 @@ import os
 import json
 
 
-def convert(inf, sent, out):
+def convert(docid, inf, sent, out):
     txt = inf.read()
 
     for line in sent:
         start, end, sid, _ = line.split()
-        sent_json = {'sentence': txt[int(start): int(end)]}
+        start = int(start)
+        end = int(end)
+        sent_json = {'sentence': txt[start: end], 'docid': docid,
+                     'start': start, 'end': end}
         out.write(json.dumps(sent_json))
         out.write('\n')
 
@@ -24,8 +27,9 @@ if __name__ == '__main__':
 
     for fname in os.listdir(txt_dir):
         if fname.endswith('txt'):
+            docid = fname.replace('.txt', '')
             sent_file = fname.replace('.txt', '.sent')
             with open(os.path.join(txt_dir, fname)) as inf, open(
                     os.path.join(txt_dir, sent_file)) as sent, open(
                 os.path.join(out_dir, fname), 'w') as out:
-                convert(inf, sent, out)
+                convert(docid, inf, sent, out)
