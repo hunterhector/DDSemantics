@@ -32,12 +32,6 @@ def get_srl(verb_data):
     return args
 
 
-def align_to_char_span(sent, span, span_words):
-    print(sent)
-    print(span)
-    print(span_words)
-
-
 def write_out(out_dir, docid, data):
     with open(os.path.join(out_dir, docid + '.json', 'w')) as out:
         json.dump(data, out)
@@ -71,18 +65,19 @@ if __name__ == '__main__':
             output_words = output_data['words']
 
             tokens = tokenizer.split_words(sent)
-            words = [(token.text, token.idx) for token in tokens]
+            word_spans = [token.idx for token in tokens]
 
             print(output_words)
-            print(words)
 
             for verb_data in output_data['verbs']:
                 args = get_srl(verb_data)
 
                 for arg_type, span in args.items():
-                    span_words = words[span[0]: span[1] + 1]
+                    s = word_spans[span[0]]
+                    e = word_spans[span[1]] + len(tokens[span[1]])
 
-                    align_to_char_span(tokenizer, sent, span, span_words)
+                    print(sent[s:e + 1])
+
                     input('check')
 
             if lastid and not docid == lastid:
