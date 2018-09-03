@@ -58,32 +58,24 @@ if __name__ == '__main__':
             input_data = json.loads(inline)
             output_data = json.loads(outline)
             docid = input_data['docid']
-            start = input_data['start']
-            end = input_data['end']
-            sent = input_data['sentence']
 
-            output_words = output_data['words']
+            sent_start = input_data['start']
+            sent = input_data['sentence']
 
             tokens = tokenizer.split_words(sent)
             word_spans = [token.idx for token in tokens]
 
-            print(output_words)
-
             for verb_data in output_data['verbs']:
                 args = get_srl(verb_data)
-
                 for arg_type, span in args.items():
                     s = word_spans[span[0]]
                     e = word_spans[span[1]] + len(tokens[span[1]])
-
-                    print(sent[s:e + 1])
-
-                    input('check')
+                    data[arg_type] = (sent_start + s, sent_start + e)
 
             if lastid and not docid == lastid:
-                write_out(out_dir, lastid, [])
+                write_out(out_dir, lastid, data)
 
             lastid = docid
 
         if lastid:
-            write_out(out_dir, lastid, [])
+            write_out(out_dir, lastid, data)
