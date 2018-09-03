@@ -23,8 +23,9 @@ def call_tagme(in_file, out_path, freebase_map, token, username, password):
         for spot in tagme_json['annotations']:
             if 'title' in spot:
                 wiki_title = get_wiki_name(spot['title'])
-                fbid = freebase_map.get(wiki_title, '/m/UNK')
-                spot['mid'] = fbid
+                fbid = freebase_map.get(wiki_title, None)
+                if fbid:
+                    spot['mid'] = fbid
         json.dump(tagme_json, out)
         out.write('\n')
 
@@ -67,7 +68,7 @@ def call_dbpedia(in_file, out_path, freebase_map):
                 offset = int(resource['@offset']) + file_offset
                 title = resource['@URI'].replace(
                     'http://dbpedia.org/resources/', '')
-                fbid = freebase_map.get(title, '/m/UNK')
+                fbid = freebase_map.get(title, None)
 
                 annotation = {
                     'title': title,
@@ -75,8 +76,10 @@ def call_dbpedia(in_file, out_path, freebase_map):
                     'end': len(resource['@surfaceForm']) + offset,
                     'link_probability': resource['@similarityScore'],
                     'spot': resource['@surfaceForm'],
-                    'mid': fbid,
                 }
+
+                if fbid:
+                    annotation['mid'] = fbid
                 annotations.append(annotation)
         else:
             pass
