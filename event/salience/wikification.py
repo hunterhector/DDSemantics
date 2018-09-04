@@ -3,6 +3,7 @@ import getpass
 from urllib.parse import urlencode, quote, quote_plus
 import json
 import sys
+import re
 import logging
 
 
@@ -66,8 +67,10 @@ def call_dbpedia(url, in_file, out_path, freebase_map):
                     continue
 
                 offset = int(resource['@offset']) + file_offset
-                title = resource['@URI'].replace(
-                    'http://dbpedia.org/resource/', '')
+
+                title = re.sub(r'http://(.*?)dbpedia.org/resource/', '',
+                               resource['@URI'])
+
                 fbid = freebase_map.get(title, None)
 
                 annotation = {
