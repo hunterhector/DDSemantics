@@ -11,6 +11,10 @@ def get_srl(verb_data):
 
     t = None
 
+    # TODO: C_ARG0 means discontinous argument
+    # "R-" arguments are arguments that are referencing another argument in the sentence.
+    # "R" may be simply ignored?
+
     for index, tag in enumerate(tags):
         if tag.startswith('B'):
             if t:
