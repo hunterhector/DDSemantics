@@ -30,8 +30,8 @@ def call_tagme(in_file, out_path, freebase_map, token, username, password):
         out.write('\n')
 
 
-def call_dbpedia(in_file, out_path, freebase_map):
-    url = 'http://localhost:2222/en/rest/annotate'
+def call_dbpedia(url, in_file, out_path, freebase_map):
+    # url = 'http://localhost:2222/en/rest/annotate'
 
     headers = {
         'Accept': 'application/json',
@@ -95,7 +95,7 @@ def get_wiki_name(name):
     return name.title().replace(' ', '_')
 
 
-def main(in_dir, out_dir, freebase_map_file, token):
+def main(url, in_dir, out_dir, freebase_map_file, token):
     import os
 
     if not token == 'dbpedia':
@@ -120,11 +120,11 @@ def main(in_dir, out_dir, freebase_map_file, token):
             with open(os.path.join(in_dir, fn)) as infile:
                 out_path = os.path.join(out_dir, fn + '.json')
                 if token == 'dbpedia':
-                    call_dbpedia(infile, out_path, freebase_map)
+                    call_dbpedia(url, infile, out_path, freebase_map)
                 else:
                     call_tagme(infile, out_path, freebase_map, token,
                                username, password)
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
