@@ -469,7 +469,7 @@ class HashedClozeReader:
         # Now use a large distance to represent Indefinite.
         # Infinity: if the entity cannot be found again, or it is not an entity.
         # Arbitrarily use 50 since most document is shorter than this.
-        inf = 50.0
+        inf = 30.0
 
         for current_slot, slot_info in event['args'].items():
             entity_id = slot_info.get('entity_id', -1)

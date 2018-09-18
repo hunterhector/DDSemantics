@@ -33,6 +33,14 @@ class ArgRunner(Configurable):
         self.model_dir = kwargs['model_dir']
         self.debug_dir = kwargs['debug_dir']
 
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+
+        if not os.path.exists(self.debug_dir):
+            os.makedirs(self.debug_dir)
+
+        logging.info("Model saving directory: " + self.model_dir)
+
         self.checkpoint_name = 'checkpoint.pth'
 
         self.device = torch.device(
