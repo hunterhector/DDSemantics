@@ -5,7 +5,6 @@ from traitlets import (
     Unicode,
     Integer
 )
-from traitlets.config.loader import PyFileConfigLoader
 import torch
 from torch.nn import functional as F
 
@@ -45,7 +44,7 @@ class ArgRunner(Configurable):
             self.para, self.resources).to(self.device)
 
         logging.info("Initialize model")
-        print(self.model)
+        logging.info(str(self.model))
 
         self.nb_epochs = self.para.nb_epochs
 
@@ -162,9 +161,9 @@ class ArgRunner(Configurable):
 
         for name, param in self.model.named_parameters():
             if torch.isnan(param).any():
-                print(param)
-                print(name)
-                print("NaN in ", name)
+                logging.error(param)
+                logging.error(name)
+                logging.error("NaN in ", name)
 
         batch_instance = self.__load_stuff('batch_instance')
         batch_info = self.__load_stuff('batch_info')
@@ -252,7 +251,7 @@ class ArgRunner(Configurable):
 
                     for name, weight in self.model.named_parameters():
                         if name.startswith('event_to_var_layer'):
-                            print(name, weight)
+                            logging.error(name, weight)
 
                     self.__dump_stuff('batch_instance', batch_instance)
                     self.__dump_stuff('batch_info', batch_info)
@@ -279,9 +278,9 @@ class ArgRunner(Configurable):
                             total_loss / batch_count)
                     )
 
-                    for name, weight in self.model.named_parameters():
-                        if name.startswith('event_to_var_layer'):
-                            print(name, weight)
+                    # for name, weight in self.model.named_parameters():
+                    #     if name.startswith('event_to_var_layer'):
+                    #         print(name, weight)
 
                     recent_loss = 0
 
@@ -346,21 +345,39 @@ if __name__ == '__main__':
         model_name = Unicode(help='model name', default_value='basic').tag(
             config=True)
         model_dir = Unicode(help='model directory').tag(config=True)
+        log_dir = Unicode(help='logging directory').tag(config=True)
 
 
-    from event.util import basic_console_log
-    from event.util import load_all_config
+    from event.util import load_config_with_cmd, load_with_sub_config
+    import json
 
-    basic_console_log()
+    print(sys.argv)
+    conf = load_with_sub_config(sys.argv)
+    print(conf)
 
-    logging.info("Started the runner.")
-
-    conf = load_all_config(sys.argv)
     basic_para = Basic(config=conf)
+
+    from event.util import set_file_log, set_basic_log, ensure_dir
+    from time import gmtime, strftime
+
+    timestamp = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
+
+    if basic_para.log_dir:
+        log_path = os.path.join(
+            basic_para.log_dir,
+            basic_para.model_name + '_' + timestamp + '.log')
+        ensure_dir(log_path)
+        set_file_log(log_path)
+        print("Logging is set at: " + log_path)
+    else:
+        set_basic_log()
+
+    logging.info("Started the runner at " + timestamp)
+    logging.info(json.dumps(conf, indent=2))
 
     runner = ArgRunner(
         config=conf,
-        model_dir=basic_para.model_dir,
+        model_dir=os.path.join(basic_para.model_dir, basic_para.model_name),
         debug_dir=basic_para.debug_dir
     )
 

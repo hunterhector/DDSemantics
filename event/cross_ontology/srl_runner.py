@@ -36,10 +36,10 @@ if __name__ == '__main__':
 
 
     from event.util import basic_console_log
-    from event.util import load_all_config
+    from event.util import load_config_with_cmd
 
     basic_console_log()
-    conf = load_all_config(sys.argv)
+    conf = load_config_with_cmd(sys.argv)
 
     logging.info("Started the SRL runner.")
 

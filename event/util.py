@@ -7,6 +7,7 @@ import sys
 
 from traitlets.config.loader import KeyValueConfigLoader
 from traitlets.config.loader import PyFileConfigLoader
+import hashlib
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -69,11 +70,34 @@ def load_command_line_config(args):
     return cl_loader.load_config(args)
 
 
-def load_all_config(args):
+def load_config_with_cmd(args):
     cl_conf = load_command_line_config(args[2:])
-    conf = PyFileConfigLoader(args[1]).load_config()
+    loader = PyFileConfigLoader(args[1])
+    conf = loader.load_config()
     conf.merge(cl_conf)
     return conf
+
+
+def load_with_sub_config(args):
+    """
+    This method try to mimics the behavior of the sub_config. It currently only
+    take one base and one main.
+    :param args:
+    :return:
+    """
+    base_conf = args[1]
+    main_conf = args[2]
+
+    loader = PyFileConfigLoader(base_conf)
+    loader.load_config()
+
+    # Since subconfig will be merged to and override the base.
+    loader.load_subconfig(main_conf)
+    return loader.config
+
+
+def file_md5(file):
+    hashlib.md5(open(file, 'rb').read()).hexdigest()
 
 
 tbl = dict.fromkeys(
