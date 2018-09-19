@@ -186,7 +186,7 @@ class ArgRunner(Configurable):
             logging.info("Validation with data from [%s]", validation_in)
         elif validation_size:
             logging.info(
-                "Will use first few [%d] for validation." % validation_size)
+                "Will use first [%d] sets for validation." % validation_size)
         else:
             logging.error("No validation!")
 

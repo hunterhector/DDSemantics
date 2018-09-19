@@ -40,7 +40,7 @@ c.ImplicitArgResources.raw_lookup_path = os.path.join(base, 'vocab/')
 # Runner parameters
 c.Basic.train_in = os.path.join(base, 'hashed')
 # c.Basic.train_until = 1946546
-c.Basic.validation_size = 1
+c.Basic.validation_size = 10000
 c.Basic.debug_dir = os.path.join(base, 'debug')
 c.Basic.log_dir = os.path.join(base, 'logs')
 c.Basic.model_dir = os.path.join(base, 'models')
