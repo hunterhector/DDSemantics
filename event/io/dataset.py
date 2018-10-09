@@ -1,5 +1,5 @@
 import os
-import xml.etree.ElementTree as ElementTree
+import xml.etree.ElementTree as ET
 import logging
 import json
 from collections import defaultdict
@@ -45,7 +45,7 @@ class Span:
 class Annotation:
     def __init__(self, aid, anno_type, text, begin, length):
         self.aid = aid
-        self.text = text
+        self.text = text.replace('\n', ' ')
         self.anno_type = anno_type
 
         if begin is not None and length is not None:
@@ -59,7 +59,7 @@ class Annotation:
         if not source_anno == self.text:
             logging.warning(
                 "Non-matching mention at [%s] between doc [%s] and "
-                "specified [%s]" % (self.span, source_anno, self.text))
+                "provided [%s]" % (self.span, source_anno, self.text))
             return False
         return True
 
@@ -129,11 +129,12 @@ class EntityMention(Annotation):
 
     def to_json(self):
         data = super().to_json()
-        more = {
-            'type': self.entity_type,
-            'noun_type': self.noun_type,
-        }
-        data.update(more)
+        if self.entity_type:
+            data['type'] = self.entity_type
+
+        if self.noun_type:
+            data['noun_type'] = self.noun_type
+
         return data
 
 
@@ -144,10 +145,9 @@ class Filler(Annotation):
 
     def to_json(self):
         data = super().to_json()
-        more = {
-            'type': self.filler_type,
-        }
-        data.update(more)
+
+        if self.filler_type:
+            data['type'] = self.filler_type
         return data
 
 
@@ -319,7 +319,8 @@ class DEDocument:
         return event
 
     def add_entity_mention(self, ent, offset, length, text=None,
-                           eid=None, noun_type=None, entity_type=None):
+                           eid=None, noun_type=None, entity_type=None,
+                           validate=True):
         if entity_type is None:
             entity_type = ent.object_type
 
@@ -332,15 +333,17 @@ class DEDocument:
         em.fix_spaces(self.doc_text)
 
         is_valid = True
-        if text and self.doc_text:
-            is_valid = em.validate(self.doc_text)
+
+        if validate:
+            if text and self.doc_text:
+                is_valid = em.validate(self.doc_text)
 
         if is_valid:
             ent.add_mention(em)
             return em
 
     def add_predicate(self, hopper, offset, length, text=None,
-                      eid=None, frame_type=None, realis=None):
+                      eid=None, frame_type=None, realis=None, validate=True):
         if eid is None:
             eid = 'evm-%d' % self.indices['event_mention']
             self.indices['event_mention'] += 1
@@ -348,8 +351,10 @@ class DEDocument:
         evm = Predicate(eid, offset, length, text, frame_type, realis)
 
         is_valid = True
-        if text:
-            is_valid = evm.validate(self.doc_text)
+
+        if validate:
+            if text:
+                is_valid = evm.validate(self.doc_text)
 
         if is_valid:
             hopper.add_mention(evm)
@@ -373,6 +378,57 @@ class DEDocument:
         self.relations.append(relation)
         return relation
 
+    def to_brat(self):
+        ann_text = ''
+
+        t_count = 1
+        e_count = 1
+
+        ent_map = {}
+
+        for ent in self.entities:
+            for e in ent.mentions:
+                tid = 'T%d' % t_count
+                t_count += 1
+
+                text_bound = [
+                    tid,
+                    '%s %d %d' % (e.entity_type, e.span.begin, e.span.end),
+                    e.text,
+                ]
+                ann_text += '\t'.join(text_bound) + '\n'
+
+                ent_map[e.aid] = tid
+
+        for event in self.events:
+            for e in event.mentions:
+                tid = 'T%d' % t_count
+                t_count += 1
+
+                text_bound = [
+                    tid,
+                    '%s %d %d' % (e.frame_type, e.span.begin, e.span.end),
+                    e.text,
+                ]
+
+                args = []
+                for arg_type, ent in e.arguments.items():
+                    if ent in ent_map:
+                        ent_tid = ent_map[ent]
+                        args.append('%s:%s' % (arg_type, ent_tid))
+
+                event_info = [
+                    'E%d' % e_count,
+                    '%s:%s %s' % (e.frame_type, tid, ' '.join(args))
+                ]
+
+                e_count += 1
+
+                ann_text += '\t'.join(text_bound) + '\n'
+                ann_text += '\t'.join(event_info) + '\n'
+
+        return self.doc_text, ann_text
+
     def dump(self, indent=None):
         doc = {
             'text': self.doc_text,
@@ -390,7 +446,7 @@ class RichERE:
         self.params = params
 
     def parse_ere(self, ere_file, doc):
-        root = ElementTree.parse(ere_file).getroot()
+        root = ET.parse(ere_file).getroot()
 
         doc_info = root.attrib
 
@@ -548,7 +604,7 @@ class FrameNet:
     def parse_full_text(self, full_text_file, doc):
         print(full_text_file)
 
-        root = ElementTree.parse(full_text_file).getroot()
+        root = ET.parse(full_text_file).getroot()
 
         header = root.find('icsi:header', self.ns)
 
@@ -640,6 +696,120 @@ class FrameNet:
             with open(os.path.join(
                     self.params.out_dir, basename + '.json'), 'w') as out:
                 out.write(doc.dump(indent=2))
+
+
+class ACE:
+    def __init__(self, params):
+        self.params = params
+        logging.info('Loading ACE data.')
+
+        if not os.path.exists(self.params.out_dir):
+            os.makedirs(self.params.out_dir)
+
+        if not os.path.exists(self.params.text_dir):
+            os.makedirs(self.params.text_dir)
+
+        if not os.path.exists(self.params.brat_dir):
+            os.makedirs(self.params.brat_dir)
+
+    def read_ace(self):
+        ace_folder = self.params.in_dir
+        text_files = glob.glob(ace_folder + '/English/*/timex2norm/*.sgm')
+
+        text_annos = []
+
+        for f in text_files:
+            anno = f.replace('.sgm', '.apf.xml')
+            text_annos.append((f, anno))
+
+        for source_file, anno_file in text_annos:
+            # print(source_file, anno_file)
+            self.parse_ace_data(source_file, anno_file)
+
+    def get_source_text(self, source_in):
+        text = re.sub('<[^<]+>', "", source_in.read())
+        return text
+
+    def parse_ace_data(self, source_file, anno_file):
+        with open(source_file) as source_in:
+            doc = DEDocument()
+
+            text = self.get_source_text(source_in)
+
+            doc.set_text(text)
+
+            tree = ET.parse(anno_file)
+            root = tree.getroot()
+
+            for xml_doc in root.iter('document'):
+                docid = xml_doc.attrib['DOCID']
+
+                # Parse entity.
+                for entity in xml_doc.iter('entity'):
+                    entity_type = entity.attrib['TYPE']
+                    entity_subtype = entity.attrib['SUBTYPE']
+                    full_type = entity_type + '_' + entity_subtype
+
+                    ent = doc.add_entity(full_type,
+                                         entity.attrib['ID'])
+
+                    for em in entity:
+                        for head in em.iter('head'):
+                            for charseq in head.iter('charseq'):
+                                start = int(charseq.attrib['START'])
+                                end = int(charseq.attrib['END'])
+
+                                doc.add_entity_mention(
+                                    ent, start, end - start + 1,
+                                    charseq.text,
+                                    em.attrib['ID'],
+                                    entity_type=full_type,
+                                    validate=False,
+                                )
+
+                # Parse event.
+                for event_node in xml_doc.iter('event'):
+                    event_type = event_node.attrib['TYPE']
+                    event_subtype = event_node.attrib['SUBTYPE']
+
+                    hopper = doc.add_hopper(event_node.attrib['ID'])
+
+                    for evm_node in event_node:
+                        evm = None
+                        for anchor in evm_node.iter('anchor'):
+                            for charseq in anchor.iter('charseq'):
+                                start = int(charseq.attrib['START'])
+                                end = int(charseq.attrib['END'])
+
+                                evm = doc.add_predicate(
+                                    hopper, start, end - start + 1,
+                                    charseq.text, eid=evm_node.attrib['ID'],
+                                    frame_type=event_type + '_' + event_subtype,
+                                    validate=False,
+                                )
+
+                        if evm:
+                            for em_arg in event_node.iter('event_argument'):
+                                role = em_arg.attrib['ROLE']
+                                arg_id = em_arg.attrib['REFID']
+                                evm.add_arg(role, arg_id)
+
+                with open(os.path.join(
+                        self.params.out_dir, docid + '.json'), 'w') as out:
+                    out.write(doc.dump(indent=2))
+
+                with open(os.path.join(self.params.text_dir,
+                                       docid + '.txt'), 'w') as out:
+                    out.write(text)
+
+                source_text, ann_text = doc.to_brat()
+                with open(os.path.join(self.params.brat_dir,
+                                       docid + '.ann'), 'w') as out:
+                    out.write(ann_text)
+
+                with open(os.path.join(self.params.brat_dir,
+                                       docid + '.txt'), 'w') as out:
+                    out.write(source_text)
 
 
 class Conll:
@@ -743,18 +913,15 @@ class Conll:
                         out_dir, f.replace('gold_conll', 'json'))
 
                     doc = self.parse_conll_data(conll_in)
-                    
+
                     with open(full_path) as conll_in, \
                             open(out_path, 'w') as out:
-
                         out.write(doc.dump(indent=2))
 
 
-if __name__ == '__main__':
+def main(data_format, args):
     from event.util import basic_console_log
     from event.util import load_command_line_config
-    import sys
-
 
     class EreConf(Configurable):
         source = Unicode(help='Plain source input directory').tag(config=True)
@@ -769,20 +936,22 @@ if __name__ == '__main__':
         ignore_quote = Bool(help='model name', default_value=False).tag(
             config=True)
 
-
     class FrameNetConf(Configurable):
         fn_path = Unicode(help='FrameNet dataset path.').tag(config=True)
         out_dir = Unicode(help='Output directory').tag(config=True)
-
 
     class ConllConf(Configurable):
         in_dir = Unicode(help='Conll file input directory').tag(config=True)
         out_dir = Unicode(help='Output directory').tag(config=True)
 
+    class AceConf(Configurable):
+        in_dir = Unicode(help='Conll file input directory').tag(config=True)
+        out_dir = Unicode(help='Output directory').tag(config=True)
+        text_dir = Unicode(help='Raw Text Output directory').tag(config=True)
+        brat_dir = Unicode(help='Brat Output directory').tag(config=True)
 
     basic_console_log()
-    data_format = sys.argv[1]
-    cl_conf = load_command_line_config(sys.argv[2:])
+    cl_conf = load_command_line_config(args)
 
     if data_format == 'rich_ere':
         basic_para = EreConf(config=cl_conf)
@@ -796,3 +965,13 @@ if __name__ == '__main__':
         basic_para = ConllConf(config=cl_conf)
         parser = Conll(basic_para)
         parser.read_pb_release()
+    elif data_format == 'ace':
+        basic_para = AceConf(config=cl_conf)
+        parser = ACE(basic_para)
+        parser.read_ace()
+
+
+if __name__ == '__main__':
+    import sys
+
+    main(sys.argv[1], sys.argv[2:])
