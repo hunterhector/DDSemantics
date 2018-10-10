@@ -5,17 +5,34 @@ import json
 from collections import defaultdict
 import re
 from traitlets.config import Configurable
-from event.arguments.impicit_arg_params import ArgModelPara
-from event.arguments.arg_models import EventPairCompositionModel
 from traitlets import (
     Unicode,
     Integer,
     Bool,
 )
-from traitlets.config.loader import PyFileConfigLoader
 import glob
 
 from collections import Counter
+
+
+def find_close_mention(evm, ent_mentions):
+    min_dist = None
+    closest_mention = None
+
+    for em in ent_mentions:
+        dist = em.span.begin - evm.span.end
+
+        if dist < 0:
+            dist = evm.span.begin - em.span.end
+
+        if not min_dist:
+            min_dist = dist
+            closest_mention = em
+        elif dist < min_dist:
+            min_dist = dist
+            closest_mention = em
+
+    return closest_mention, min_dist
 
 
 class Span:
@@ -96,14 +113,17 @@ class Annotation:
 
 
 class Predicate(Annotation):
-    def __init__(self, eid, begin, length, text, frame_type=None, realis=None):
+    def __init__(self, doc, eid, begin, length, text, frame_type=None,
+                 realis=None):
         super().__init__(eid, 'Predicate', text, begin, length)
         self.arguments = {}
         self.frame_type = frame_type
         self.realis = realis
+        self.doc = doc
 
     def add_arg(self, arg_type, ent):
         self.arguments[arg_type] = ent
+        self.doc.add_arg_type(self.frame_type, arg_type, '<ENTITY>')
 
     def to_json(self):
         data = super().to_json()
@@ -141,13 +161,13 @@ class EntityMention(Annotation):
 class Filler(Annotation):
     def __init__(self, eid, begin, length, text, filler_type=None):
         super().__init__(eid, 'Filler', text, begin, length)
-        self.filler_type = filler_type
+        self.entity_type = filler_type
 
     def to_json(self):
         data = super().to_json()
 
-        if self.filler_type:
-            data['type'] = self.filler_type
+        if self.entity_type:
+            data['type'] = self.entity_type
         return data
 
 
@@ -226,8 +246,61 @@ class Relation:
         return data
 
 
+class Corpus:
+    def __init__(self):
+        self.documents = []
+        self.entity_types = set()
+        self.event_types = {}
+
+    def add_doc(self, document):
+        self.documents.append(document)
+        for ent in document.entities:
+            self.entity_types.add(ent.entity_type)
+
+        for ev in document.events:
+            for evm in ev:
+                self.event_types[evm.frame_type] = {}
+
+    def add_entity_type(self, entity_type):
+        self.entity_types.add(entity_type)
+
+    def add_event_type(self, frame_type):
+        self.event_types[frame_type] = defaultdict(set)
+
+    def add_arg_type(self, evm_type, arg_type, entity_type):
+        self.event_types[evm_type][arg_type].add(entity_type)
+
+    def get_brat_config(self):
+        print("This corpus contains %d entity types." % len(self.entity_types))
+        print("This corpus contains %d event types." % len(self.event_types))
+
+        config = '[entities]\n'
+        config += '\n'.join(self.entity_types)
+
+        config += '\n\n[relations]\n'
+
+        config += '\n\n[events]\n'
+
+        for t, arg_types in self.event_types.items():
+            config += t
+            config += '\t'
+
+            role_pairs = []
+            for role, ent_set in arg_types.items():
+                role_pairs.append(role + ':' + '|'.join(ent_set))
+
+            config += ', '.join(role_pairs)
+
+            config += '\n'
+
+        config += '\n\n[attributes]'
+
+        return config
+
+
 class DEDocument:
-    def __init__(self, text=None, ranges=None, ignore_quote=False):
+    def __init__(self, corpus, text=None, ranges=None, ignore_quote=False):
+        self.corpus = corpus
         self.entities = []
         self.events = []
         self.fillers = []
@@ -235,8 +308,11 @@ class DEDocument:
         self.ranges = ranges
         self.doc_text = text
         self.doc_type = None
+        self.docid = None
 
         self.indices = Counter()
+
+        self.corpus.add_doc(self)
 
         if ignore_quote:
             self.remove_quote()
@@ -307,6 +383,7 @@ class DEDocument:
 
         ent = Entity(eid, entity_type)
         self.entities.append(ent)
+        self.corpus.add_entity_type(entity_type)
         return ent
 
     def add_hopper(self, eid=None):
@@ -348,7 +425,8 @@ class DEDocument:
             eid = 'evm-%d' % self.indices['event_mention']
             self.indices['event_mention'] += 1
 
-        evm = Predicate(eid, offset, length, text, frame_type, realis)
+        evm = Predicate(self, eid, offset, length, text, frame_type, realis)
+        self.corpus.add_event_type(frame_type)
 
         is_valid = True
 
@@ -359,6 +437,9 @@ class DEDocument:
         if is_valid:
             hopper.add_mention(evm)
             return evm
+
+    def add_arg_type(self, evm_type, arg_type, entity_type):
+        self.corpus.add_arg_type(evm_type, arg_type, entity_type)
 
     def add_filler(self, offset, length, text, eid=None, filler_type=None):
         if eid is None:
@@ -386,6 +467,20 @@ class DEDocument:
 
         ent_map = {}
 
+        def get_brat_span(span):
+            brat_spans = [[span.begin, -1]]
+
+            span_text = self.doc_text[span.begin: span.end]
+
+            for i_offset, c in enumerate(span_text):
+                if c == '\n':
+                    offset = span.begin + i_offset
+                    brat_spans[-1][1] = offset
+                    brat_spans.append([offset + 1, -1])
+            brat_spans[-1][1] = span.end
+
+            return ';'.join(['%d %d' % (s[0], s[1]) for s in brat_spans])
+
         for ent in self.entities:
             for e in ent.mentions:
                 tid = 'T%d' % t_count
@@ -393,7 +488,7 @@ class DEDocument:
 
                 text_bound = [
                     tid,
-                    '%s %d %d' % (e.entity_type, e.span.begin, e.span.end),
+                    '%s %s' % (e.entity_type, get_brat_span(e.span)),
                     e.text,
                 ]
                 ann_text += '\t'.join(text_bound) + '\n'
@@ -407,7 +502,7 @@ class DEDocument:
 
                 text_bound = [
                     tid,
-                    '%s %d %d' % (e.frame_type, e.span.begin, e.span.end),
+                    '%s %s' % (e.frame_type, get_brat_span(e.span)),
                     e.text,
                 ]
 
@@ -441,8 +536,18 @@ class DEDocument:
         return json.dumps(doc, indent=indent)
 
 
-class RichERE:
+class DataLoader:
     def __init__(self, params):
+        self.params = params
+        self.corpus = Corpus()
+
+    def get_doc(self):
+        pass
+
+
+class RichERE(DataLoader):
+    def __init__(self, params):
+        super().__init__(params)
         self.params = params
 
     def parse_ere(self, ere_file, doc):
@@ -471,6 +576,12 @@ class RichERE:
                     noun_type=ent_info['noun_type'],
                     entity_type=ent_info.get('type', None),
                 )
+
+        for filler in root.find('fillers'):
+            filler_info = filler.attrib
+            doc.add_filler(
+                filler_info['offset'], filler_info['length'], filler.text,
+                eid=filler_info['id'], filler_type=filler_info['type'])
 
         for event_node in root.find('hoppers'):
             evm_ids = []
@@ -503,12 +614,6 @@ class RichERE:
                     role = arg_info['role']
 
                     evm.add_arg(role, arg_ent_mention)
-
-        for filler in root.find('fillers'):
-            filler_info = filler.attrib
-            doc.add_filler(
-                filler_info['offset'], filler_info['length'], filler.text,
-                eid=filler_info['id'], filler_type=filler_info['type'])
 
         for relation_node in root.find('relations'):
             relation_info = relation_node.attrib
@@ -551,17 +656,17 @@ class RichERE:
 
                 relation.add_mention(rel_mention)
 
-    def read_rich_ere(self, source_path, l_ere_path, ranges):
+    def read_rich_ere(self, corpus, source_path, l_ere_path, ranges):
         with open(source_path) as source:
             text = source.read()
-            doc = DEDocument(text, ranges, self.params.ignore_quote)
+            doc = DEDocument(corpus, text, ranges, self.params.ignore_quote)
             for ere_path in l_ere_path:
                 with open(ere_path) as ere:
                     logging.info("Processing: " + os.path.basename(ere_path))
                     self.parse_ere(ere, doc)
                     return doc
 
-    def read_rich_ere_collection(self):
+    def get_doc(self):
         sources = {}
         eres = defaultdict(list)
         annotate_ranges = defaultdict(list)
@@ -588,27 +693,20 @@ class RichERE:
         for basename, source in sources.items():
             l_ere = eres[basename]
             ranges = annotate_ranges[basename]
-            doc = self.read_rich_ere(source, l_ere, ranges)
-            with open(os.path.join(
-                    self.params.out_dir, basename + '.json'), 'w') as out:
-                out.write(doc.dump(indent=2))
+            doc = self.read_rich_ere(self.corpus, source, l_ere, ranges)
+            yield doc
 
 
-class FrameNet:
+class FrameNet(DataLoader):
     def __init__(self, params):
+        super().__init__(params)
         self.params = params
         self.ns = {
             'icsi': 'http://framenet.icsi.berkeley.edu',
         }
 
     def parse_full_text(self, full_text_file, doc):
-        print(full_text_file)
-
         root = ET.parse(full_text_file).getroot()
-
-        header = root.find('icsi:header', self.ns)
-
-        corpus = header.find('icsi:corpus', self.ns).attrib['name']
 
         full_text = ''
         offset = 0
@@ -683,36 +781,24 @@ class FrameNet:
 
         return doc
 
-    def read_fn_data(self):
+    def get_doc(self):
         full_text_dir = os.path.join(self.params.fn_path, 'fulltext')
 
-        doc = DEDocument()
-
         for full_text_path in glob.glob(full_text_dir + '/*.xml'):
+            doc = DEDocument(self.corpus)
+            docid = os.path.basename(full_text_path).replace(".xml", '')
+            doc.set_id(docid)
             self.parse_full_text(full_text_path, doc)
-
-            basename = os.path.basename(full_text_path).replace(".xml", '')
-
-            with open(os.path.join(
-                    self.params.out_dir, basename + '.json'), 'w') as out:
-                out.write(doc.dump(indent=2))
+            yield doc
 
 
-class ACE:
+class ACE(DataLoader):
     def __init__(self, params):
+        super().__init__(params)
         self.params = params
         logging.info('Loading ACE data.')
 
-        if not os.path.exists(self.params.out_dir):
-            os.makedirs(self.params.out_dir)
-
-        if not os.path.exists(self.params.text_dir):
-            os.makedirs(self.params.text_dir)
-
-        if not os.path.exists(self.params.brat_dir):
-            os.makedirs(self.params.brat_dir)
-
-    def read_ace(self):
+    def get_doc(self):
         ace_folder = self.params.in_dir
         text_files = glob.glob(ace_folder + '/English/*/timex2norm/*.sgm')
 
@@ -723,16 +809,15 @@ class ACE:
             text_annos.append((f, anno))
 
         for source_file, anno_file in text_annos:
-            # print(source_file, anno_file)
-            self.parse_ace_data(source_file, anno_file)
+            yield self.parse_ace_data(self.corpus, source_file, anno_file)
 
     def get_source_text(self, source_in):
         text = re.sub('<[^<]+>', "", source_in.read())
         return text
 
-    def parse_ace_data(self, source_file, anno_file):
+    def parse_ace_data(self, corpus, source_file, anno_file):
         with open(source_file) as source_in:
-            doc = DEDocument()
+            doc = DEDocument(corpus)
 
             text = self.get_source_text(source_in)
 
@@ -743,8 +828,11 @@ class ACE:
 
             for xml_doc in root.iter('document'):
                 docid = xml_doc.attrib['DOCID']
+                doc.set_id(docid)
 
                 # Parse entity.
+                entity2mention = defaultdict(list)
+
                 for entity in xml_doc.iter('entity'):
                     entity_type = entity.attrib['TYPE']
                     entity_subtype = entity.attrib['SUBTYPE']
@@ -759,12 +847,16 @@ class ACE:
                                 start = int(charseq.attrib['START'])
                                 end = int(charseq.attrib['END'])
 
-                                doc.add_entity_mention(
+                                ent_mention = doc.add_entity_mention(
                                     ent, start, end - start + 1,
                                     charseq.text,
                                     em.attrib['ID'],
                                     entity_type=full_type,
                                     validate=False,
+                                )
+
+                                entity2mention[entity.attrib['ID']].append(
+                                    ent_mention
                                 )
 
                 # Parse event.
@@ -792,38 +884,30 @@ class ACE:
                             for em_arg in event_node.iter('event_argument'):
                                 role = em_arg.attrib['ROLE']
                                 arg_id = em_arg.attrib['REFID']
-                                evm.add_arg(role, arg_id)
 
-                with open(os.path.join(
-                        self.params.out_dir, docid + '.json'), 'w') as out:
-                    out.write(doc.dump(indent=2))
+                                mentions = entity2mention[arg_id]
 
-                with open(os.path.join(self.params.text_dir,
-                                       docid + '.txt'), 'w') as out:
-                    out.write(text)
+                                if len(mentions) > 0:
+                                    closest_mention, _ = find_close_mention(
+                                        evm, mentions)
+                                    evm.add_arg(role, closest_mention.aid)
 
-                source_text, ann_text = doc.to_brat()
-                with open(os.path.join(self.params.brat_dir,
-                                       docid + '.ann'), 'w') as out:
-                    out.write(ann_text)
-
-                with open(os.path.join(self.params.brat_dir,
-                                       docid + '.txt'), 'w') as out:
-                    out.write(source_text)
+                return doc
 
 
-class Conll:
+class Conll(DataLoader):
     def __init__(self, params):
+        super().__init__(params)
         self.params = params
 
-    def parse_conll_data(self, conll_in):
+    def parse_conll_data(self, corpus, conll_in):
         text = ''
         offset = 0
 
         arg_text = []
         sent_predicates = []
         sent_args = defaultdict(list)
-        doc = DEDocument()
+        doc = DEDocument(corpus)
 
         props = []
 
@@ -894,7 +978,7 @@ class Conll:
 
         return doc
 
-    def read_pb_release(self):
+    def get_doc(self):
         for dirname in os.listdir(self.params.in_dir):
             full_dir = os.path.join(self.params.in_dir, dirname)
             for root, dirs, files in os.walk(full_dir):
@@ -909,14 +993,12 @@ class Conll:
                     if not os.path.exists(out_dir):
                         os.makedirs(out_dir)
 
-                    out_path = os.path.join(
-                        out_dir, f.replace('gold_conll', 'json'))
+                    docid = f.replace('gold_conll', '')
 
-                    doc = self.parse_conll_data(conll_in)
-
-                    with open(full_path) as conll_in, \
-                            open(out_path, 'w') as out:
-                        out.write(doc.dump(indent=2))
+                    with open(full_path) as conll_in:
+                        doc = self.parse_conll_data(self.corpus, conll_in)
+                        doc.set_id(docid)
+                        yield doc
 
 
 def main(data_format, args):
@@ -956,19 +1038,50 @@ def main(data_format, args):
     if data_format == 'rich_ere':
         basic_para = EreConf(config=cl_conf)
         parser = RichERE(basic_para)
-        parser.read_rich_ere_collection()
     elif data_format == 'framenet':
         basic_para = FrameNetConf(config=cl_conf)
         parser = FrameNet(basic_para)
-        parser.read_fn_data()
     elif data_format == 'conll':
         basic_para = ConllConf(config=cl_conf)
         parser = Conll(basic_para)
-        parser.read_pb_release()
     elif data_format == 'ace':
         basic_para = AceConf(config=cl_conf)
         parser = ACE(basic_para)
-        parser.read_ace()
+    else:
+        parser = None
+
+    if parser:
+        if not os.path.exists(basic_para.out_dir):
+            os.makedirs(basic_para.out_dir)
+
+        if not os.path.exists(basic_para.text_dir):
+            os.makedirs(basic_para.text_dir)
+
+        brat_data_path = os.path.join(basic_para.brat_dir, 'data')
+        if not os.path.exists(brat_data_path):
+            os.makedirs(brat_data_path)
+
+        for doc in parser.get_doc():
+            with open(os.path.join(
+                    basic_para.out_dir, doc.docid + '.json'), 'w') as out:
+                out.write(doc.dump(indent=2))
+
+            with open(os.path.join(basic_para.text_dir,
+                                   doc.docid + '.txt'), 'w') as out:
+                out.write(doc.doc_text)
+
+            source_text, ann_text = doc.to_brat()
+            with open(os.path.join(basic_para.brat_dir, 'data',
+                                   doc.docid + '.ann'), 'w') as out:
+                out.write(ann_text)
+
+            with open(os.path.join(basic_para.brat_dir, 'data',
+                                   doc.docid + '.txt'), 'w') as out:
+                out.write(source_text)
+
+        with open(os.path.join(basic_para.brat_dir, 'annotation.conf'),
+                  'w') as out:
+            out.write(parser.corpus.get_brat_config())
 
 
 if __name__ == '__main__':
