@@ -15,24 +15,28 @@ import glob
 from collections import Counter
 
 
-def find_close_mention(evm, ent_mentions):
+def find_close_mention(event_mentions, ent_mentions):
     min_dist = None
-    closest_mention = None
+    closest_ent = None
+    closest_evm = None
 
-    for em in ent_mentions:
-        dist = em.span.begin - evm.span.end
+    for evm in event_mentions:
+        for ent in ent_mentions:
+            dist = ent.span.begin - evm.span.end
 
-        if dist < 0:
-            dist = evm.span.begin - em.span.end
+            if dist < 0:
+                dist = evm.span.begin - ent.span.end
 
-        if not min_dist:
-            min_dist = dist
-            closest_mention = em
-        elif dist < min_dist:
-            min_dist = dist
-            closest_mention = em
+            if not min_dist:
+                min_dist = dist
+                closest_ent = ent
+                closest_evm = evm
+            elif dist < min_dist:
+                min_dist = dist
+                closest_ent = ent
+                closest_evm = evm
 
-    return closest_mention, min_dist
+    return closest_ent, closest_evm, min_dist
 
 
 class Span:
@@ -123,6 +127,7 @@ class Predicate(Annotation):
 
     def add_arg(self, arg_type, ent):
         self.arguments[arg_type] = ent
+        # <ENTITY> is a generic type for argument holder.
         self.doc.add_arg_type(self.frame_type, arg_type, '<ENTITY>')
 
     def to_json(self):
@@ -250,38 +255,42 @@ class Corpus:
     def __init__(self):
         self.documents = []
         self.entity_types = set()
-        self.event_types = {}
+        self.event_ontos = {}
 
     def add_doc(self, document):
         self.documents.append(document)
+
         for ent in document.entities:
-            self.entity_types.add(ent.entity_type)
+            self.add_entity_type(ent.entity_type)
 
         for ev in document.events:
             for evm in ev:
-                self.event_types[evm.frame_type] = {}
+                self.add_event_type(evm.frame_type)
 
     def add_entity_type(self, entity_type):
         self.entity_types.add(entity_type)
 
-    def add_event_type(self, frame_type):
-        self.event_types[frame_type] = defaultdict(set)
+    def add_event_type(self, event_type):
+        if event_type not in self.event_ontos:
+            self.event_ontos[event_type] = defaultdict(set)
 
     def add_arg_type(self, evm_type, arg_type, entity_type):
-        self.event_types[evm_type][arg_type].add(entity_type)
+        self.event_ontos[evm_type][arg_type].add(entity_type)
 
     def get_brat_config(self):
         print("This corpus contains %d entity types." % len(self.entity_types))
-        print("This corpus contains %d event types." % len(self.event_types))
+        print("This corpus contains %d event types." % len(self.event_ontos))
 
         config = '[entities]\n'
         config += '\n'.join(self.entity_types)
 
         config += '\n\n[relations]\n'
+        config += 'Event_Coref\tArg1:<EVENT>, Arg2:<EVENT>\n'
+        config += 'Entity_Coref\tArg1:<ENTITY>, Arg2:<ENTITY>\n'
 
         config += '\n\n[events]\n'
 
-        for t, arg_types in self.event_types.items():
+        for t, arg_types in self.event_ontos.items():
             config += t
             config += '\t'
 
@@ -461,9 +470,11 @@ class DEDocument:
 
     def to_brat(self):
         ann_text = ''
+        relation_text = ''
 
         t_count = 1
         e_count = 1
+        r_count = 1
 
         ent_map = {}
 
@@ -481,7 +492,20 @@ class DEDocument:
 
             return ';'.join(['%d %d' % (s[0], s[1]) for s in brat_spans])
 
+        def get_links(cluster):
+            if len(cluster) == 1:
+                return []
+
+            chain = sorted(cluster)
+            links = []
+            for i, j in zip(range(len(chain) - 1), range(1, len(chain))):
+                ei = chain[i][1]
+                ej = chain[j][1]
+                links.append((ei, ej))
+            return links
+
         for ent in self.entities:
+            ent_cluster = []
             for e in ent.mentions:
                 tid = 'T%d' % t_count
                 t_count += 1
@@ -495,7 +519,15 @@ class DEDocument:
 
                 ent_map[e.aid] = tid
 
+                ent_cluster.append((e.span.begin, tid))
+
+            for e1, e2 in get_links(ent_cluster):
+                # relation_text += 'R%d\tEntity_Coref Arg1:%s Arg2:%s\n' % (
+                #     r_count, e1, e2)
+                r_count += 1
+
         for event in self.events:
+            evm_cluster = []
             for e in event.mentions:
                 tid = 'T%d' % t_count
                 t_count += 1
@@ -512,15 +544,25 @@ class DEDocument:
                         ent_tid = ent_map[ent]
                         args.append('%s:%s' % (arg_type, ent_tid))
 
+                eid = 'E%d' % e_count
+                e_count += 1
+
                 event_info = [
-                    'E%d' % e_count,
+                    eid,
                     '%s:%s %s' % (e.frame_type, tid, ' '.join(args))
                 ]
 
-                e_count += 1
-
                 ann_text += '\t'.join(text_bound) + '\n'
                 ann_text += '\t'.join(event_info) + '\n'
+
+                evm_cluster.append((e.span.begin, eid))
+
+            for e1, e2 in get_links(evm_cluster):
+                # relation_text += 'R%d\tEvent_Coref Arg1:%s Arg2:%s\n' % (
+                #     r_count, e1, e2)
+                r_count += 1
+
+        ann_text += relation_text
 
         return self.doc_text, ann_text
 
@@ -866,8 +908,9 @@ class ACE(DataLoader):
 
                     hopper = doc.add_hopper(event_node.attrib['ID'])
 
+                    event_mentions = []
+
                     for evm_node in event_node:
-                        evm = None
                         for anchor in evm_node.iter('anchor'):
                             for charseq in anchor.iter('charseq'):
                                 start = int(charseq.attrib['START'])
@@ -880,17 +923,18 @@ class ACE(DataLoader):
                                     validate=False,
                                 )
 
-                        if evm:
-                            for em_arg in event_node.iter('event_argument'):
-                                role = em_arg.attrib['ROLE']
-                                arg_id = em_arg.attrib['REFID']
+                                event_mentions.append(evm)
 
-                                mentions = entity2mention[arg_id]
+                    for em_arg in event_node.iter('event_argument'):
+                        role = em_arg.attrib['ROLE']
+                        arg_id = em_arg.attrib['REFID']
 
-                                if len(mentions) > 0:
-                                    closest_mention, _ = find_close_mention(
-                                        evm, mentions)
-                                    evm.add_arg(role, closest_mention.aid)
+                        entity_mentions = entity2mention[arg_id]
+
+                        if len(entity_mentions) > 0:
+                            closest_ent, closest_evm, _ = find_close_mention(
+                                event_mentions, entity_mentions)
+                            closest_evm.add_arg(role, closest_ent.aid)
 
                 return doc
 
