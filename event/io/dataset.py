@@ -11,6 +11,11 @@ from traitlets import (
     Bool,
 )
 import glob
+from nltk.corpus import (
+    NombankCorpusReader,
+    BracketParseCorpusReader,
+)
+from nltk.data import FileSystemPathPointer
 
 from collections import Counter
 
@@ -1045,14 +1050,40 @@ class Conll(DataLoader):
                         yield doc
 
 
+class NomBank(DataLoader):
+    def __init__(self, params):
+        super().__init__(params)
+
+        wsj_treebank = BracketParseCorpusReader(
+            root=params.wsj_path,
+            fileids=params.wsj_file_pattern,
+            tagset='wsj',
+            encoding='ascii'
+        )
+
+        self.nombank = NombankCorpusReader(
+            root=FileSystemPathPointer(params.nombank_path),
+            nomfile=params.nomfile,
+            framefiles=params.frame_file_pattern,
+            nounsfile=params.nombank_nouns_file,
+            parse_fileid_xform=lambda s: s[4:],
+            parse_corpus=wsj_treebank
+        )
+
+    def get_doc(self):
+        pass
+
+
 def main(data_format, args):
     from event.util import basic_console_log
-    from event.util import load_command_line_config
+    from event.util import load_file_config, load_config_with_cmd
 
-    class EreConf(Configurable):
+    class DataConf(Configurable):
+        out_dir = Unicode(help='Output directory').tag(config=True)
+
+    class EreConf(DataConf):
         source = Unicode(help='Plain source input directory').tag(config=True)
         ere = Unicode(help='ERE input data').tag(config=True)
-        out_dir = Unicode(help='Output directory').tag(config=True)
         src_ext = Unicode(help='Source file extension',
                           default_value='.xml').tag(config=True)
         ere_ext = Unicode(help='Ere file extension',
@@ -1062,35 +1093,55 @@ def main(data_format, args):
         ignore_quote = Bool(help='model name', default_value=False).tag(
             config=True)
 
-    class FrameNetConf(Configurable):
+    class FrameNetConf(DataConf):
         fn_path = Unicode(help='FrameNet dataset path.').tag(config=True)
-        out_dir = Unicode(help='Output directory').tag(config=True)
 
-    class ConllConf(Configurable):
+    class ConllConf(DataConf):
         in_dir = Unicode(help='Conll file input directory').tag(config=True)
-        out_dir = Unicode(help='Output directory').tag(config=True)
 
-    class AceConf(Configurable):
+    class AceConf(DataConf):
         in_dir = Unicode(help='Conll file input directory').tag(config=True)
         out_dir = Unicode(help='Output directory').tag(config=True)
         text_dir = Unicode(help='Raw Text Output directory').tag(config=True)
         brat_dir = Unicode(help='Brat Output directory').tag(config=True)
 
+    class NomBankConfig(DataConf):
+        nombank_path = Unicode(help='Nombank corpus.').tag(config=True)
+        nomfile = Unicode(help='Nombank file.').tag(config=True)
+        frame_file_pattern = Unicode(help='Frame file pattern.').tag(
+            config=True)
+        nombank_nouns_file = Unicode(help='Nomank nous.').tag(config=True)
+
+        # PennTree Bank config.
+        wsj_path = Unicode(help='PennTree Bank path.').tag(config=True)
+        wsj_file_pattern = Unicode(help='File pattern to read PTD data').tag(
+            config=True)
+
+        implicit_path = Unicode(help='Implicit annotation xml path.').tag(
+            config=True)
+
     basic_console_log()
-    cl_conf = load_command_line_config(args)
+
+    if os.path.exists(args[0]):
+        config = load_config_with_cmd(args)
+    else:
+        config = load_file_config(args[0])
 
     if data_format == 'rich_ere':
-        basic_para = EreConf(config=cl_conf)
+        basic_para = EreConf(config=config)
         parser = RichERE(basic_para)
     elif data_format == 'framenet':
-        basic_para = FrameNetConf(config=cl_conf)
+        basic_para = FrameNetConf(config=config)
         parser = FrameNet(basic_para)
     elif data_format == 'conll':
-        basic_para = ConllConf(config=cl_conf)
+        basic_para = ConllConf(config=config)
         parser = Conll(basic_para)
     elif data_format == 'ace':
-        basic_para = AceConf(config=cl_conf)
+        basic_para = AceConf(config=config)
         parser = ACE(basic_para)
+    elif data_format == 'nombank':
+        basic_para = NomBankConfig(config=config)
+        parser = NomBank(basic_para)
     else:
         parser = None
 

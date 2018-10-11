@@ -70,12 +70,20 @@ def load_command_line_config(args):
     return cl_loader.load_config(args)
 
 
-def load_config_with_cmd(args):
-    cl_conf = load_command_line_config(args[2:])
-    loader = PyFileConfigLoader(args[1])
+def load_file_config(config_path):
+    loader = PyFileConfigLoader(config_path)
     conf = loader.load_config()
-    conf.merge(cl_conf)
     return conf
+
+
+def load_config_with_cmd(args):
+    file_conf = load_file_config(args[1])
+
+    if len(args) > 1:
+        cl_conf = load_command_line_config(args[2:])
+        file_conf.merge(cl_conf)
+
+    return file_conf
 
 
 def load_with_sub_config(args):
