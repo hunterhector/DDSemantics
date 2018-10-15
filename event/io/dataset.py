@@ -1054,11 +1054,17 @@ class NomBank(DataLoader):
     def __init__(self, params):
         super().__init__(params)
 
-        wsj_treebank = BracketParseCorpusReader(
+        logging.info('Loading WSJ Treebank.')
+
+        self.wsj_treebank = BracketParseCorpusReader(
             root=params.wsj_path,
             fileids=params.wsj_file_pattern,
             tagset='wsj',
             encoding='ascii'
+        )
+
+        logging.info(
+            'Found {} treebank files.'.format(len(self.wsj_treebank.fileids()))
         )
 
         self.nombank = NombankCorpusReader(
@@ -1067,11 +1073,88 @@ class NomBank(DataLoader):
             framefiles=params.frame_file_pattern,
             nounsfile=params.nombank_nouns_file,
             parse_fileid_xform=lambda s: s[4:],
-            parse_corpus=wsj_treebank
+            parse_corpus=self.wsj_treebank
         )
 
+        logging.info("Loading G&C annotations")
+        self.load_gc_annotations()
+
+    class TreeNode:
+        def __init__(self, sent_id, wordnum, height):
+            self.sent_id = sent_id
+            self.wordnum = wordnum
+            self.height = height
+
+    def get_wsj_data(self, fileid):
+        sents = self.wsj_treebank.sents(fileids=fileid)
+        parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
+
+        return sents, parsed_sents
+
+    def load_gc_annotations(self):
+        tree = ET.parse(self.params.implicit_path)
+        root = tree.getroot()
+
+        gc_annotations = {}
+
+        for annotations in root:
+            for_node = annotations.attrib['for_node']
+
+            article_id, sent_id, terminal_id, height = for_node.split(':')
+
+            predicate_node = NomBank.TreeNode(sent_id, terminal_id, height)
+
+            if article_id not in gc_annotations:
+                gc_annotations[article_id] = {}
+
+            args = {}
+
+            for annotation in annotations:
+                arg_type = annotation.attrib['value']
+                arg_node = annotation.attrib['node']
+
+                print(arg_type)
+                print(arg_node)
+
+                (arg_article_id, arg_sent_id, arg_terminal_id,
+                 arg_height) = arg_node.split(':')
+
+                arg_node = NomBank.TreeNode(arg_sent_id, terminal_id, height)
+
+                # args[(arg_type, arg_node)] =
+
+                for attribute in annotation[0]:
+                    print(attribute)
+                    print(attribute.text)
+
+            gc_annotations[article_id][(sent_id, terminal_id, height)] = args
+
+            input('loading gc annotations.')
+
     def get_doc(self):
-        pass
+        for nb_instance in self.nombank.instances():
+            print(nb_instance.fileid)
+
+            sents, parsed_sents = self.get_wsj_data(nb_instance.fileid)
+
+            print(nb_instance.sentnum)
+            print(nb_instance.wordnum)
+
+            print(nb_instance.baseform)
+            print(nb_instance.predicate)
+
+            sent = sents[nb_instance.sentnum]
+
+            predicate = sent[nb_instance.wordnum]
+
+            print('predicate: ' + predicate)
+
+            for argloc, argid in nb_instance.arguments:
+                arg_word = sent[argloc.wordnum]
+                print(argloc, arg_word, argid)
+
+            input('nombank')
+            print('')
 
 
 def main(data_format, args):
@@ -1080,6 +1163,8 @@ def main(data_format, args):
 
     class DataConf(Configurable):
         out_dir = Unicode(help='Output directory').tag(config=True)
+        text_dir = Unicode(help='Text output directory').tag(config=True)
+        brat_dir = Unicode(help='Brat visualization directory').tag(config=True)
 
     class EreConf(DataConf):
         source = Unicode(help='Plain source input directory').tag(config=True)
@@ -1123,9 +1208,9 @@ def main(data_format, args):
     basic_console_log()
 
     if os.path.exists(args[0]):
-        config = load_config_with_cmd(args)
-    else:
         config = load_file_config(args[0])
+    else:
+        config = load_config_with_cmd(args)
 
     if data_format == 'rich_ere':
         basic_para = EreConf(config=config)

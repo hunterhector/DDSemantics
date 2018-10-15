@@ -12,7 +12,8 @@ if 'implicit_corpus' not in os.environ:
 else:
     working = os.environ['implicit_corpus']
 
-c.NomBankConfig.out_dir = os.path.join(working, 'nombank_with_gc')
+c.NomBankConfig.out_dir = os.path.join(working, 'nombank_with_gc', 'annotation')
+c.NomBankConfig.text_dir = os.path.join(working, 'nombank_with_gc', 'text')
 
 c.NomBankConfig.nombank_path = os.path.join(base, 'nombank.1.0')
 c.NomBankConfig.nomfile = os.path.join(base, 'nombank.1.0/nombank.1.0')
