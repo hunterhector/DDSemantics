@@ -19,6 +19,12 @@ from nltk.data import FileSystemPathPointer
 
 from collections import Counter
 
+from nltk.corpus.reader.nombank import (
+    NombankChainTreePointer,
+    NombankSplitTreePointer,
+    NombankTreePointer,
+)
+
 
 def find_close_mention(event_mentions, ent_mentions):
     min_dist = None
@@ -1051,6 +1057,15 @@ class Conll(DataLoader):
 
 
 class NomBank(DataLoader):
+    """
+    # TODO
+    1. Figure out height
+    2. Check if there is missing explicit
+    3. Check dupliciate labels
+    4. Filter incorporated args: arg which is the the predicate itself
+    5. Remove implicit args following the predicate
+    """
+
     def __init__(self, params):
         super().__init__(params)
 
@@ -1077,19 +1092,58 @@ class NomBank(DataLoader):
         )
 
         logging.info("Loading G&C annotations")
-        self.load_gc_annotations()
+        self.gc_annos = self.load_gc_annotations()
 
-    class TreeNode:
-        def __init__(self, sent_id, wordnum, height):
+    class NomElement:
+        def __init__(self, article_id, sent_id):
+            self.article_id = article_id
             self.sent_id = sent_id
-            self.wordnum = wordnum
-            self.height = height
+            self.pointers = []
+
+        @staticmethod
+        def from_text(pointer_text):
+            parts = pointer_text.split(':')
+            if len(parts) != 4:
+                raise ValueError("Invalid pointer text.")
+
+            node = NomBank.NomElement(parts[0], int(parts[1]))
+            node.add_pointer(NombankTreePointer(int(parts[2]), int(parts[3])))
+
+        def add_pointer(self, tree_pointer):
+            self.pointers.append(tree_pointer)
+
+        def __str__(self):
+            return 'Node-%s-%s:%s' % (
+                self.article_id, self.sent_id, self.pointers.__repr__())
+
+        def __hash__(self):
+            return hash(
+                (self.article_id, self.sent_id, self.pointers)
+            )
+
+        def __eq__(self, other):
+            return other and other.__str__() == self.__str__()
+
+        __repr__ = __str__
 
     def get_wsj_data(self, fileid):
         sents = self.wsj_treebank.sents(fileids=fileid)
         parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
-
         return sents, parsed_sents
+
+    def merge_split(self, pointers):
+        all_pointers = []
+        split_pointers = []
+
+        for pointer, is_split in pointers:
+            if is_split:
+                split_pointers.append(pointer)
+            else:
+                all_pointers.append([pointer])
+
+        all_pointers.append(split_pointers)
+
+        return all_pointers
 
     def load_gc_annotations(self):
         tree = ET.parse(self.params.implicit_path)
@@ -1098,63 +1152,168 @@ class NomBank(DataLoader):
         gc_annotations = {}
 
         for annotations in root:
-            for_node = annotations.attrib['for_node']
+            predicate = NomBank.NomElement.from_text(
+                annotations.attrib['for_node']
+            )
 
-            article_id, sent_id, terminal_id, height = for_node.split(':')
-
-            predicate_node = NomBank.TreeNode(sent_id, terminal_id, height)
-
+            article_id = predicate.article_id
             if article_id not in gc_annotations:
                 gc_annotations[article_id] = {}
 
-            args = {}
+            arg_annos = defaultdict(list)
 
             for annotation in annotations:
                 arg_type = annotation.attrib['value']
-                arg_node = annotation.attrib['node']
-
-                print(arg_type)
-                print(arg_node)
+                arg_node_pos = annotation.attrib['node']
 
                 (arg_article_id, arg_sent_id, arg_terminal_id,
-                 arg_height) = arg_node.split(':')
+                 arg_height) = arg_node_pos.split(':')
 
-                arg_node = NomBank.TreeNode(arg_sent_id, terminal_id, height)
-
-                # args[(arg_type, arg_node)] =
+                is_split = False
+                is_explicit = False
 
                 for attribute in annotation[0]:
-                    print(attribute)
-                    print(attribute.text)
+                    if attribute.text == 'Split':
+                        is_split = True
+                    elif attribute.text == 'Explicit':
+                        is_explicit = True
 
-            gc_annotations[article_id][(sent_id, terminal_id, height)] = args
+                if not is_explicit:
+                    p = NombankTreePointer(arg_terminal_id, arg_height)
+                    arg_annos[(arg_sent_id, arg_type)].append((p, is_split))
 
-            input('loading gc annotations.')
+            all_args = []
 
-    def get_doc(self):
-        for nb_instance in self.nombank.instances():
-            print(nb_instance.fileid)
+            for (arg_sent_id, arg_type), l_pointers in arg_annos:
+                arg_element = NomBank.NomElement(article_id, arg_sent_id)
+                for p in self.merge_split(l_pointers):
+                    arg_element.add_pointer(p)
+                all_args.append(arg_element)
 
-            sents, parsed_sents = self.get_wsj_data(nb_instance.fileid)
+            gc_annotations[article_id][predicate] = all_args
 
-            print(nb_instance.sentnum)
-            print(nb_instance.wordnum)
+        return gc_annotations
 
-            print(nb_instance.baseform)
-            print(nb_instance.predicate)
+    def add_nombank_arg(self, doc, sents, parsed_sents, predicate, nodes):
+        print("Adding predicate")
+        print(predicate)
 
-            sent = sents[nb_instance.sentnum]
+        print("Adding arg nodes")
+        print(nodes)
 
-            predicate = sent[nb_instance.wordnum]
+    def get_normal_pointers(self, tree_pointer):
+        pointers = []
+        if isinstance(tree_pointer, NombankSplitTreePointer) or isinstance(
+                tree_pointer, NombankChainTreePointer):
+            for p in tree_pointer.pieces:
+                pointers.extend(self.get_normal_pointers(p))
+        else:
+            pointers.append(tree_pointer)
+        return pointers
 
-            print('predicate: ' + predicate)
+    def build_tree(self, tree, tree_pointer):
+        pointers = self.get_normal_pointers(tree_pointer)
+
+        all_word_idx = []
+        all_word_surface = []
+
+        for pointer in pointers:
+            treepos = pointer.treepos(tree)
+
+            idx_list = []
+            word_list = []
+            for idx in range(len(tree.leaves())):
+                if tree.leaf_treeposition(idx)[:len(treepos)] == treepos:
+                    idx_list.append(idx)
+                    word_list.append(tree.leaves()[idx])
+
+            all_word_idx.append(idx_list)
+            all_word_surface.append(word_list)
+
+        return all_word_idx, all_word_surface
+
+    def get_all_annotations(self, doc, nb_instances, fileid):
+        sents, parsed_sents = self.get_wsj_data(fileid)
+
+        for nb_instance in nb_instances:
+            predicate_node = NomBank.NomElement(
+                fileid, nb_instance.sentnum, nb_instance.wordnum
+            )
+
+            print("Predicate %s: %s is found in sentence %d." % (
+                predicate_node,
+                sents[nb_instance.sentnum][predicate_node.wordnum],
+                nb_instance.sentnum,
+            ))
+
+            tree = parsed_sents[nb_instance.sentnum]
 
             for argloc, argid in nb_instance.arguments:
-                arg_word = sent[argloc.wordnum]
-                print(argloc, arg_word, argid)
+                print("Building tree for an argument")
+                all_word_idx, all_word_surface = self.build_tree(tree, argloc)
 
-            input('nombank')
-            print('')
+                if len(all_word_idx) > 1:
+                    print(all_word_surface)
+                    print(all_word_idx)
+                    print("Multiple spans")
+
+                    input('wait')
+
+                # argloc_pointers = []
+                # if isinstance(argloc, NombankChainTreePointer):
+                #     for argloci in argloc.pieces:
+                #         argloc_pointers.append(argloci)
+                # else:
+                #     argloc_pointers.append(argloc)
+
+                # arg_nodes = []
+                # for p in argloc_pointers:
+                #     arg_nodes.append(
+                #         NomBank.TreeNode(
+                #             fileid, nb_instance.sentnum, p.wordnum, p.height
+                #         )
+                #     )
+
+                # self.add_nombank_arg(
+                #     doc, sents, parsed_sents, predicate_node, arg_nodes)
+
+        if doc.docid in self.gc_annos:
+            gc_data = self.gc_annos[fileid]
+            for predicate_node, arg_nodes in gc_data:
+                print("Adding implicit")
+                self.add_nombank_arg(doc, sents, parsed_sents, predicate_node,
+                                     arg_nodes)
+                input("Implicit added.")
+
+    def get_wsj_text(self, fileid):
+        return ' '.join(self.wsj_treebank.words(fileid))
+
+    def get_doc(self):
+        last_file = None
+        doc_instances = []
+
+        for nb_instance in self.nombank.instances():
+            if last_file and not last_file == nb_instance.fileid:
+                doc = DEDocument(self.corpus)
+                doc.set_id(nb_instance.fileid.split('/')[1])
+                doc.set_text(self.get_wsj_text(nb_instance.fileid))
+
+                self.get_all_annotations(doc, doc_instances, last_file)
+
+                doc_instances.clear()
+                yield doc
+
+            doc_instances.append(nb_instance)
+
+            last_file = nb_instance.fileid
+
+        if len(doc_instances) > 0:
+            doc = DEDocument(self.corpus)
+            doc.set_id(last_file.split('/')[1])
+            self.get_all_annotations(doc, doc_instances, last_file)
+            doc.set_text(self.get_wsj_text(last_file))
+
+            yield doc
 
 
 def main(data_format, args):
