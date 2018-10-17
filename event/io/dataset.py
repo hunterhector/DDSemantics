@@ -137,6 +137,7 @@ class Predicate(Annotation):
         self.doc = doc
 
     def add_arg(self, arg_type, ent):
+        assert isinstance(arg_type, str)
         self.arguments[arg_type] = ent
         # <ENTITY> is a generic type for argument holder.
         self.doc.add_arg_type(self.frame_type, arg_type, '<ENTITY>')
@@ -415,6 +416,9 @@ class DEDocument:
         self.events.append(event)
         return event
 
+    def __get_text_from_span(self, spans):
+        return ' '.join([self.doc_text[s.begin: s.end] for s in spans])
+
     def add_entity_mention(self, ent, offset, length, text=None,
                            eid=None, noun_type=None, entity_type=None,
                            validate=True):
@@ -424,6 +428,9 @@ class DEDocument:
         if not eid:
             eid = 'em-%d' % self.indices['entity_mention']
             self.indices['entity_mention'] += 1
+
+        if not text:
+            text = self.__get_text_from_span([Span(offset, offset + length)])
 
         em = EntityMention(eid, offset, length, text, noun_type, entity_type)
 
@@ -445,34 +452,40 @@ class DEDocument:
             eid = 'evm-%d' % self.indices['event_mention']
             self.indices['event_mention'] += 1
 
+        if not text:
+            text = self.__get_text_from_span([Span(offset, offset + length)])
+
         evm = Predicate(self, eid, offset, length, text, frame_type, realis)
         self.corpus.add_event_type(frame_type)
 
         is_valid = True
 
         if validate:
-            if text:
+            if text and self.doc_text:
                 is_valid = evm.validate(self.doc_text)
 
         if is_valid:
             hopper.add_mention(evm)
             return evm
 
-    def add_arg_type(self, evm_type, arg_type, entity_type):
-        self.corpus.add_arg_type(evm_type, arg_type, entity_type)
-
     def add_filler(self, offset, length, text, eid=None, filler_type=None):
         if eid is None:
             eid = 'em-%d' % self.indices['entity_mention']
             self.indices['entity_mention'] += 1
 
+        if not text:
+            text = self.__get_text_from_span([Span(offset, offset + length)])
+
         filler = Filler(eid, offset, length, text, filler_type)
 
-        if text:
+        if text and self.doc_text:
             if filler.validate(self.doc_text):
                 self.fillers.append(filler)
 
         return filler
+
+    def add_arg_type(self, evm_type, arg_type, entity_type):
+        self.corpus.add_arg_type(evm_type, arg_type, entity_type)
 
     def add_relation(self, rid, relation_type=None):
         relation = Relation(rid, relation_type=relation_type)
@@ -1095,10 +1108,10 @@ class NomBank(DataLoader):
         self.gc_annos = self.load_gc_annotations()
 
     class NomElement:
-        def __init__(self, article_id, sent_id):
+        def __init__(self, article_id, sent_num, tree_pointer):
             self.article_id = article_id
-            self.sent_id = sent_id
-            self.pointers = []
+            self.sent_num = sent_num
+            self.pointer = tree_pointer
 
         @staticmethod
         def from_text(pointer_text):
@@ -1106,19 +1119,18 @@ class NomBank(DataLoader):
             if len(parts) != 4:
                 raise ValueError("Invalid pointer text.")
 
-            node = NomBank.NomElement(parts[0], int(parts[1]))
-            node.add_pointer(NombankTreePointer(int(parts[2]), int(parts[3])))
-
-        def add_pointer(self, tree_pointer):
-            self.pointers.append(tree_pointer)
+            return NomBank.NomElement(
+                parts[0], int(parts[1]),
+                NombankTreePointer(int(parts[2]), int(parts[3]))
+            )
 
         def __str__(self):
             return 'Node-%s-%s:%s' % (
-                self.article_id, self.sent_id, self.pointers.__repr__())
+                self.article_id, self.sent_num, self.pointer.__repr__())
 
         def __hash__(self):
             return hash(
-                (self.article_id, self.sent_id, self.pointers)
+                (self.article_id, self.sent_num, self.pointer.__repr__())
             )
 
         def __eq__(self, other):
@@ -1131,7 +1143,7 @@ class NomBank(DataLoader):
         parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
         return sents, parsed_sents
 
-    def merge_split(self, pointers):
+    def merge_pointers(self, pointers):
         all_pointers = []
         split_pointers = []
 
@@ -1182,24 +1194,93 @@ class NomBank(DataLoader):
                     p = NombankTreePointer(arg_terminal_id, arg_height)
                     arg_annos[(arg_sent_id, arg_type)].append((p, is_split))
 
-            all_args = []
+            all_args = defaultdict(list)
 
-            for (arg_sent_id, arg_type), l_pointers in arg_annos:
-                arg_element = NomBank.NomElement(article_id, arg_sent_id)
-                for p in self.merge_split(l_pointers):
-                    arg_element.add_pointer(p)
-                all_args.append(arg_element)
+            for (arg_sent_id, arg_type), l_pointers in arg_annos.items():
+                m_pointer = NombankChainTreePointer(l_pointers)
+                arg_element = NomBank.NomElement(
+                    article_id, arg_sent_id, m_pointer)
+                all_args[arg_type].append(arg_element)
 
             gc_annotations[article_id][predicate] = all_args
 
         return gc_annotations
 
-    def add_nombank_arg(self, doc, sents, parsed_sents, predicate, nodes):
-        print("Adding predicate")
-        print(predicate)
+    def add_nombank_arg(self, doc, wsj_spans, fileid, predicate,
+                        arg_type, argument, implicit=False):
 
-        print("Adding arg nodes")
-        print(nodes)
+        print(doc.docid)
+
+        def get_span(sent_num, indice_groups):
+            spans = []
+            for indices in indice_groups:
+                start = -1
+                end = -1
+                for index in indices:
+                    s = wsj_spans[sent_num][index]
+                    if s:
+                        if start < 0:
+                            start = s[0]
+                        end = s[1]
+
+                if start > 0 and end > 0:
+                    spans.append((start, end))
+            return spans
+
+        sents, parsed_sents = self.get_wsj_data(fileid)
+        p_tree = parsed_sents[predicate.sent_num]
+        a_tree = parsed_sents[argument.sent_num]
+
+        p_word_idx, p_word_surface = self.build_tree(p_tree, predicate.pointer)
+        a_word_idx, a_word_surface = self.build_tree(a_tree, argument.pointer)
+
+        predicate_span = get_span(predicate.sent_num, p_word_idx)
+        argument_span = get_span(argument.sent_num, a_word_idx)
+
+        if len(predicate_span) == 0:
+            print("Zero length predicate found")
+            print(predicate.sent_num, p_word_idx)
+            print(doc.docid, predicate)
+            input('')
+            return
+
+        if len(argument_span) == 0:
+            print("Zero length argument found")
+            print(argument.sent_num, a_word_idx)
+            print(doc.docid, argument)
+            return
+
+        p_begin = predicate_span[0][0]
+        p_end = predicate_span[-1][1]
+
+        h = doc.add_hopper()
+        p = doc.add_predicate(h, p_begin, p_end - p_begin)
+
+        a_begin = argument_span[0][0]
+        a_end = argument_span[-1][1]
+        e = doc.add_entity('argument')
+        arg = doc.add_entity_mention(e, a_begin, a_end - a_begin)
+
+        doc_text = doc.doc_text
+        predicate_text = doc_text[p_begin: p_end]
+        arg_text = doc_text[a_begin: a_end]
+
+        if implicit:
+            print(doc.docid)
+
+            print(p_word_idx, predicate_text)
+            print(a_word_idx, arg_text, arg_type)
+
+            print("Is implicit")
+
+            input('adding predicate argument')
+
+        if p and arg:
+            p.add_arg(arg_type, arg.aid)
+
+        # print(arg.to_json())
+        #
+        # input('adding arg')
 
     def get_normal_pointers(self, tree_pointer):
         pointers = []
@@ -1232,61 +1313,55 @@ class NomBank(DataLoader):
 
         return all_word_idx, all_word_surface
 
-    def get_all_annotations(self, doc, nb_instances, fileid):
-        sents, parsed_sents = self.get_wsj_data(fileid)
-
+    def get_all_annotations(self, doc, wsj_spans, nb_instances, fileid):
         for nb_instance in nb_instances:
             predicate_node = NomBank.NomElement(
-                fileid, nb_instance.sentnum, nb_instance.wordnum
+                fileid, nb_instance.sentnum, nb_instance.predicate
             )
 
-            print("Predicate %s: %s is found in sentence %d." % (
-                predicate_node,
-                sents[nb_instance.sentnum][predicate_node.wordnum],
-                nb_instance.sentnum,
-            ))
-
-            tree = parsed_sents[nb_instance.sentnum]
-
             for argloc, argid in nb_instance.arguments:
-                print("Building tree for an argument")
-                all_word_idx, all_word_surface = self.build_tree(tree, argloc)
+                arg_node = NomBank.NomElement(
+                    fileid, nb_instance.sentnum, argloc
+                )
+                self.add_nombank_arg(doc, wsj_spans, fileid,
+                                     predicate_node, argid, arg_node)
 
-                if len(all_word_idx) > 1:
-                    print(all_word_surface)
-                    print(all_word_idx)
-                    print("Multiple spans")
+            if fileid in self.gc_annos:
+                if predicate_node in self.gc_annos[fileid]:
+                    gc_args = self.gc_annos[fileid][predicate_node]
 
-                    input('wait')
+                    for arg_type, arg_nodes in gc_args.items():
+                        for arg_node in arg_nodes:
+                            self.add_nombank_arg(
+                                doc, wsj_spans, fileid,
+                                predicate_node, arg_type, arg_node, True
+                            )
 
-                # argloc_pointers = []
-                # if isinstance(argloc, NombankChainTreePointer):
-                #     for argloci in argloc.pieces:
-                #         argloc_pointers.append(argloci)
-                # else:
-                #     argloc_pointers.append(argloc)
+    def set_wsj_text(self, doc, fileid):
+        text = ''
+        w_start = 0
 
-                # arg_nodes = []
-                # for p in argloc_pointers:
-                #     arg_nodes.append(
-                #         NomBank.TreeNode(
-                #             fileid, nb_instance.sentnum, p.wordnum, p.height
-                #         )
-                #     )
+        spans = []
+        for sent in self.wsj_treebank.sents(fileid):
+            word_spans = []
 
-                # self.add_nombank_arg(
-                #     doc, sents, parsed_sents, predicate_node, arg_nodes)
+            for word in sent:
+                if not word.startswith('*'):
+                    text += word + ' '
+                    word_spans.append((w_start, w_start + len(word)))
+                    w_start += len(word) + 1
+                else:
+                    # Ignoring these words.
+                    word_spans.append(None)
 
-        if doc.docid in self.gc_annos:
-            gc_data = self.gc_annos[fileid]
-            for predicate_node, arg_nodes in gc_data:
-                print("Adding implicit")
-                self.add_nombank_arg(doc, sents, parsed_sents, predicate_node,
-                                     arg_nodes)
-                input("Implicit added.")
+            text += '\n'
+            w_start += 1
 
-    def get_wsj_text(self, fileid):
-        return ' '.join(self.wsj_treebank.words(fileid))
+            spans.append(word_spans)
+
+        doc.set_text(text)
+
+        return spans
 
     def get_doc(self):
         last_file = None
@@ -1295,11 +1370,11 @@ class NomBank(DataLoader):
         for nb_instance in self.nombank.instances():
             if last_file and not last_file == nb_instance.fileid:
                 doc = DEDocument(self.corpus)
-                doc.set_id(nb_instance.fileid.split('/')[1])
-                doc.set_text(self.get_wsj_text(nb_instance.fileid))
+                doc.set_id(last_file.split('/')[1])
+                wsj_spans = self.set_wsj_text(doc, last_file)
 
-                self.get_all_annotations(doc, doc_instances, last_file)
-
+                self.get_all_annotations(doc, wsj_spans, doc_instances,
+                                         last_file)
                 doc_instances.clear()
                 yield doc
 
@@ -1310,8 +1385,8 @@ class NomBank(DataLoader):
         if len(doc_instances) > 0:
             doc = DEDocument(self.corpus)
             doc.set_id(last_file.split('/')[1])
-            self.get_all_annotations(doc, doc_instances, last_file)
-            doc.set_text(self.get_wsj_text(last_file))
+            wsj_spans = self.set_wsj_text(doc, last_file)
+            self.get_all_annotations(doc, wsj_spans, doc_instances, last_file)
 
             yield doc
 
