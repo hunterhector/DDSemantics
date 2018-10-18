@@ -25,6 +25,8 @@ from nltk.corpus.reader.nombank import (
     NombankTreePointer,
 )
 
+from event.util import ensure_dir
+
 
 def find_close_mention(event_mentions, ent_mentions):
     min_dist = None
@@ -74,137 +76,10 @@ class Span:
         return '[Span] %d:%d' % (self.begin, self.end)
 
 
-class Annotation:
-    def __init__(self, aid, anno_type, text, begin, length):
-        self.aid = aid
-        self.text = text.replace('\n', ' ')
-        self.anno_type = anno_type
-
-        if begin is not None and length is not None:
-            self.span = Span(int(begin), int(begin) + int(length))
-        else:
-            self.span = None
-
-    def validate(self, doc_text):
-        source_anno = doc_text[self.span.begin: self.span.end
-                      ].replace('\n', ' ')
-        if not source_anno == self.text:
-            logging.warning(
-                "Non-matching mention at [%s] between doc [%s] and "
-                "provided [%s]" % (self.span, source_anno, self.text))
-            return False
-        return True
-
-    def fix_spaces(self, source_text):
-        source_anno = source_text[
-                      self.span.begin: self.span.end].replace('\n', ' ')
-
-        if not source_anno == self.text:
-            if source_anno.strip() == self.text:
-                leadings = len(source_anno) - len(source_anno.lstrip())
-                trailings = len(source_anno) - len(source_anno.rstrip())
-
-                begin, end = self.span.begin, self.span.end
-                self.span = Span(begin + leadings, end - trailings)
-
-                logging.warning(
-                    "Fixing space only mismatch from [{}:{}] to "
-                    "[{}]".format(begin, end, self.span))
-
-    def to_json(self):
-        data = {
-            'id': self.aid,
-            'annotation': self.anno_type,
-        }
-
-        if self.text:
-            data['text'] = self.text
-
-        if self.span:
-            data['begin'] = self.span.begin
-            data['end'] = self.span.end
-
-        return data
-
-
-class Predicate(Annotation):
-    def __init__(self, doc, eid, begin, length, text, frame_type=None,
-                 realis=None):
-        super().__init__(eid, 'Predicate', text, begin, length)
-        self.arguments = {}
-        self.frame_type = frame_type
-        self.realis = realis
-        self.doc = doc
-
-    def add_arg(self, arg_type, ent):
-        assert isinstance(arg_type, str)
-        self.arguments[arg_type] = ent
-        # <ENTITY> is a generic type for argument holder.
-        self.doc.add_arg_type(self.frame_type, arg_type, '<ENTITY>')
-
-    def to_json(self):
-        data = super().to_json()
-        more = {
-            'type': self.frame_type,
-            'realis': self.realis,
-            'arguments': {},
-        }
-
-        for key, value in self.arguments.items():
-            more['arguments'][key] = value
-
-        data.update(more)
-        return data
-
-
-class EntityMention(Annotation):
-    def __init__(self, eid, begin, length, text, noun_type=None,
-                 entity_type=None):
-        super().__init__(eid, 'EntityMention', text, begin, length)
-        self.entity_type = entity_type
-        self.noun_type = noun_type
-
-    def to_json(self):
-        data = super().to_json()
-        if self.entity_type:
-            data['type'] = self.entity_type
-
-        if self.noun_type:
-            data['noun_type'] = self.noun_type
-
-        return data
-
-
-class Filler(Annotation):
-    def __init__(self, eid, begin, length, text, filler_type=None):
-        super().__init__(eid, 'Filler', text, begin, length)
-        self.entity_type = filler_type
-
-    def to_json(self):
-        data = super().to_json()
-
-        if self.entity_type:
-            data['type'] = self.entity_type
-        return data
-
-
-class RelationMention(Annotation):
-    def __init__(self, rid, begin, length, text, realis):
-        super().__init__(rid, 'RelationMention', text, begin, length)
-        self.args = {}
-        self.realis = realis
-
-    def add_arg(self, role, entity_id):
-        self.args[role] = entity_id
-
-    def to_json(self):
-        data = super().to_json()
-        more = {
-            'args': self.args,
-            'realis': self.realis,
-        }
-        data.update(more)
-        return data
+def get_text_from_span(doc_text, spans):
+    if isinstance(spans, Span):
+        spans = [spans]
+    return ' '.join([doc_text[s.begin: s.end] for s in spans])
 
 
 class Top:
@@ -226,8 +101,208 @@ class Top:
 
         return data
 
+    def get_mentions(self):
+        return self.mentions
+
     def add_mention(self, mention):
+        assert isinstance(mention, Annotation)
         self.mentions.append(mention)
+
+
+class Annotation:
+    def __init__(self, aid, anno_type, text, spans):
+        self.aid = aid
+        self.text = text.replace('\n', ' ').strip()
+        self.anno_type = anno_type
+
+        if isinstance(spans, Span):
+            self.spans = [spans]
+        else:
+            self.spans = [s for s in spans]
+
+    def get_unique_key(self):
+        """
+        Use spans as a key
+        :return:
+        """
+        return hash(tuple(self.spans))
+
+    def validate(self, doc_text):
+        source_anno = get_text_from_span(doc_text, self.spans)
+        if not source_anno == self.text:
+            logging.warning(
+                "Non-matching mention at [%s] between doc [%s] and "
+                "provided [%s]" % (self.spans, source_anno, self.text))
+            return False
+        return True
+
+    def fix_spaces(self, source_text):
+        all_spans = []
+
+        for s in self.spans:
+            source_anno = source_text[s.begin: s.end]
+            leadings = len(source_anno) - len(source_anno.lstrip())
+            trailings = len(source_anno) - len(source_anno.rstrip())
+
+            new_span = Span(s.begin + leadings, s.end - trailings)
+
+            all_spans.append(new_span)
+
+            if leadings > 0 or trailings > 0:
+                logging.warning("Stripping space from text")
+
+        self.spans = all_spans
+
+    def merge(self, anno_b):
+        """
+        Merge with another annotation
+        :param anno_b:
+        :return:
+        """
+        pass
+
+    def to_json(self):
+        data = {
+            'id': self.aid,
+            'annotation': self.anno_type,
+        }
+
+        if self.text:
+            data['text'] = self.text
+
+        if self.spans:
+            data['spans'] = {}
+            for span in self.spans:
+                data['spans']['begin'] = span.begin
+                data['spans']['end'] = span.end
+
+        return data
+
+
+class Argument(Top):
+    def __init__(self, aid, predicate, arg, arg_type):
+        super().__init__(aid, 'Argument')
+        self.meta = {}
+        self.predicate = predicate
+        self.arg = arg
+        self.arg_type = arg_type
+
+    def add_meta(self, name, value):
+        self.meta[name] = value
+
+    def to_json(self):
+        return {
+            'arg': self.arg,
+            'role': self.arg_type,
+            'meta': self.meta,
+        }
+
+
+class Predicate(Annotation):
+    def __init__(self, doc, eid, spans, text, frame_type=None, realis=None):
+        super().__init__(eid, 'Predicate', text, spans)
+        self.arguments = defaultdict(list)
+        self.frame_type = frame_type
+        self.realis = realis
+        self.doc = doc
+
+    def get_unique_key(self):
+        return super().get_unique_key(), self.frame_type
+
+    def add_arg(self, argument):
+        assert isinstance(argument, Argument)
+        self.arguments[argument.arg_type].append(argument)
+        self.doc.add_arg_type(self.frame_type, argument.arg_type, 'Entity')
+
+    def merge(self, anno_b):
+        assert isinstance(anno_b, Predicate)
+        for key, value in anno_b.arguments.items():
+            self.arguments[key].append(value)
+
+    def to_json(self):
+        data = super().to_json()
+
+        if self.frame_type:
+            data['type'] = self.frame_type
+
+        if self.realis:
+            data['realis'] = self.realis
+
+        data['arguments'] = {}
+        for key, l_arg in self.arguments.items():
+            data['arguments'][key] = [arg.to_json() for arg in l_arg]
+
+        return data
+
+
+class EntityMention(Annotation):
+    def __init__(self, eid, spans, text, noun_type=None,
+                 entity_type=None):
+        super().__init__(eid, 'EntityMention', text, spans)
+        self.entity_type = entity_type
+        self.noun_type = noun_type
+
+    def get_unique_key(self):
+        return 'entity', super().get_unique_key(), self.entity_type
+
+    def merge(self, anno_b):
+        assert isinstance(anno_b, EntityMention)
+
+    def to_json(self):
+        data = super().to_json()
+
+        if self.entity_type:
+            data['type'] = self.entity_type
+
+        if self.noun_type:
+            data['noun_type'] = self.noun_type
+
+        return data
+
+
+class Filler(Annotation):
+    def __init__(self, eid, spans, text, filler_type=None):
+        super().__init__(eid, 'Filler', text, spans)
+        self.entity_type = filler_type
+
+    def get_unique_key(self):
+        return super().get_unique_key(), self.entity_type
+
+    def merge(self, anno_b):
+        assert isinstance(anno_b, Filler)
+
+    def to_json(self):
+        data = super().to_json()
+        if self.entity_type:
+            data['type'] = self.entity_type
+        return data
+
+
+class RelationMention(Annotation):
+    def __init__(self, rid, spans, text, realis=None, relation_type=None):
+        super().__init__(rid, 'RelationMention', text, spans)
+        self.args = {}
+        self.relation_type = relation_type
+        self.realis = realis
+
+    def merge(self, anno_b):
+        raise ValueError("Do not support duplicate relation mention.")
+
+    def add_arg(self, role, entity_id):
+        self.args[role] = entity_id
+
+    def to_json(self):
+        data = super().to_json()
+        more = {'args': self.args, }
+
+        if self.realis:
+            data['realis'] = self.realis
+
+        if self.relation_type:
+            data['relation_type'] = self.relation_type
+
+        data.update(more)
+        return data
 
 
 class Entity(Top):
@@ -322,10 +397,15 @@ class Corpus:
 class DEDocument:
     def __init__(self, corpus, text=None, ranges=None, ignore_quote=False):
         self.corpus = corpus
+
         self.entities = []
         self.events = []
-        self.fillers = []
         self.relations = []
+
+        self.span_mentions = {}
+
+        self.fillers = []
+
         self.ranges = ranges
         self.doc_text = text
         self.doc_type = None
@@ -394,7 +474,7 @@ class DEDocument:
     def set_text(self, text):
         self.doc_text = text
 
-    def add_entity(self, entity_type=None, eid=None):
+    def add_entity(self, entity_type='Entity', eid=None):
         if eid is None:
             eid = 'ent-%d' % self.indices['entity']
             self.indices['entity'] += 1
@@ -416,10 +496,33 @@ class DEDocument:
         self.events.append(event)
         return event
 
-    def __get_text_from_span(self, spans):
-        return ' '.join([self.doc_text[s.begin: s.end] for s in spans])
+    def __add_mention_with_check(self, mention, cluster, validate=True):
+        key = mention.get_unique_key()
+        if key in self.span_mentions:
+            self.span_mentions[key].merge(mention)
+            return self.span_mentions[key]
+        else:
+            mention.fix_spaces(self.doc_text)
+            is_valid = True
 
-    def add_entity_mention(self, ent, offset, length, text=None,
+            if validate:
+                is_valid = mention.validate(self.doc_text)
+
+            if is_valid:
+                self.span_mentions[key] = mention
+                if cluster:
+                    cluster.add_mention(mention)
+                return mention
+
+    def add_argument_mention(self, predicate, filler, arg_type, aid=None):
+        if not aid:
+            aid = 'arg-%d' % self.indices['argument']
+            self.indices['argument'] += 1
+        arg = Argument(aid, predicate, filler, arg_type)
+        predicate.add_arg(arg)
+        return arg
+
+    def add_entity_mention(self, ent, spans, text=None,
                            eid=None, noun_type=None, entity_type=None,
                            validate=True):
         if entity_type is None:
@@ -430,59 +533,36 @@ class DEDocument:
             self.indices['entity_mention'] += 1
 
         if not text:
-            text = self.__get_text_from_span([Span(offset, offset + length)])
+            text = get_text_from_span(self.doc_text, spans)
 
-        em = EntityMention(eid, offset, length, text, noun_type, entity_type)
+        em = EntityMention(eid, spans, text, noun_type, entity_type)
+        self.corpus.add_entity_type(entity_type)
+        return self.__add_mention_with_check(em, ent, validate)
 
-        em.fix_spaces(self.doc_text)
-
-        is_valid = True
-
-        if validate:
-            if text and self.doc_text:
-                is_valid = em.validate(self.doc_text)
-
-        if is_valid:
-            ent.add_mention(em)
-            return em
-
-    def add_predicate(self, hopper, offset, length, text=None,
-                      eid=None, frame_type=None, realis=None, validate=True):
+    def add_predicate(self, hopper, spans, text=None,
+                      eid=None, frame_type='Event', realis=None, validate=True):
         if eid is None:
             eid = 'evm-%d' % self.indices['event_mention']
             self.indices['event_mention'] += 1
 
         if not text:
-            text = self.__get_text_from_span([Span(offset, offset + length)])
+            text = get_text_from_span(self.doc_text, spans)
 
-        evm = Predicate(self, eid, offset, length, text, frame_type, realis)
+        evm = Predicate(self, eid, spans, text, frame_type, realis)
         self.corpus.add_event_type(frame_type)
+        return self.__add_mention_with_check(evm, hopper, validate)
 
-        is_valid = True
-
-        if validate:
-            if text and self.doc_text:
-                is_valid = evm.validate(self.doc_text)
-
-        if is_valid:
-            hopper.add_mention(evm)
-            return evm
-
-    def add_filler(self, offset, length, text, eid=None, filler_type=None):
+    def add_filler(self, spans, text, eid=None, filler_type=None):
         if eid is None:
             eid = 'em-%d' % self.indices['entity_mention']
             self.indices['entity_mention'] += 1
 
         if not text:
-            text = self.__get_text_from_span([Span(offset, offset + length)])
+            text = get_text_from_span(self.doc_text, spans)
 
-        filler = Filler(eid, offset, length, text, filler_type)
-
-        if text and self.doc_text:
-            if filler.validate(self.doc_text):
-                self.fillers.append(filler)
-
-        return filler
+        filler = Filler(eid, spans, text, filler_type)
+        self.corpus.add_entity_type(filler_type)
+        return self.__add_mention_with_check(filler, None, True)
 
     def add_arg_type(self, evm_type, arg_type, entity_type):
         self.corpus.add_arg_type(evm_type, arg_type, entity_type)
@@ -502,17 +582,20 @@ class DEDocument:
 
         ent_map = {}
 
-        def get_brat_span(span):
-            brat_spans = [[span.begin, -1]]
+        def get_brat_span(spans):
+            brat_spans = []
 
-            span_text = self.doc_text[span.begin: span.end]
+            for span in spans:
+                brat_spans.append([span.begin, -1])
 
-            for i_offset, c in enumerate(span_text):
-                if c == '\n':
-                    offset = span.begin + i_offset
-                    brat_spans[-1][1] = offset
-                    brat_spans.append([offset + 1, -1])
-            brat_spans[-1][1] = span.end
+                span_text = self.doc_text[span.begin: span.end]
+
+                for i_offset, c in enumerate(span_text):
+                    if c == '\n':
+                        offset = span.begin + i_offset
+                        brat_spans[-1][1] = offset
+                        brat_spans.append([offset + 1, -1])
+                brat_spans[-1][1] = span.end
 
             return ';'.join(['%d %d' % (s[0], s[1]) for s in brat_spans])
 
@@ -530,20 +613,20 @@ class DEDocument:
 
         for ent in self.entities:
             ent_cluster = []
-            for e in ent.mentions:
+            for em in ent.get_mentions():
                 tid = 'T%d' % t_count
                 t_count += 1
 
                 text_bound = [
                     tid,
-                    '%s %s' % (e.entity_type, get_brat_span(e.span)),
-                    e.text,
+                    '%s %s' % (em.entity_type, get_brat_span(em.spans)),
+                    em.text,
                 ]
                 ann_text += '\t'.join(text_bound) + '\n'
 
-                ent_map[e.aid] = tid
+                ent_map[em.aid] = tid
 
-                ent_cluster.append((e.span.begin, tid))
+                ent_cluster.append((em.spans[0].begin, tid))
 
             for e1, e2 in get_links(ent_cluster):
                 # relation_text += 'R%d\tEntity_Coref Arg1:%s Arg2:%s\n' % (
@@ -552,34 +635,36 @@ class DEDocument:
 
         for event in self.events:
             evm_cluster = []
-            for e in event.mentions:
+            for em in event.get_mentions():
                 tid = 'T%d' % t_count
                 t_count += 1
 
                 text_bound = [
                     tid,
-                    '%s %s' % (e.frame_type, get_brat_span(e.span)),
-                    e.text,
+                    '%s %s' % (em.frame_type, get_brat_span(em.spans)),
+                    em.text,
                 ]
 
                 args = []
-                for arg_type, ent in e.arguments.items():
-                    if ent in ent_map:
-                        ent_tid = ent_map[ent]
-                        args.append('%s:%s' % (arg_type, ent_tid))
+                for arg_type, l_arg in em.arguments.items():
+                    for arg in l_arg:
+                        ent = arg.arg
+                        if ent in ent_map:
+                            ent_tid = ent_map[ent]
+                            args.append('%s:%s' % (arg_type, ent_tid))
 
                 eid = 'E%d' % e_count
                 e_count += 1
 
                 event_info = [
                     eid,
-                    '%s:%s %s' % (e.frame_type, tid, ' '.join(args))
+                    '%s:%s %s' % (em.frame_type, tid, ' '.join(args))
                 ]
 
                 ann_text += '\t'.join(text_bound) + '\n'
                 ann_text += '\t'.join(event_info) + '\n'
 
-                evm_cluster.append((e.span.begin, eid))
+                evm_cluster.append((em.spans[0].begin, eid))
 
             for e1, e2 in get_links(evm_cluster):
                 # relation_text += 'R%d\tEvent_Coref Arg1:%s Arg2:%s\n' % (
@@ -636,8 +721,10 @@ class RichERE(DataLoader):
 
                 entity_text = entity_mention.find('mention_text').text
 
+                entity_span = Span(ent_info['offset'], ent_info['length'])
+
                 doc.add_entity_mention(
-                    ent, ent_info['offset'], ent_info['length'], entity_text,
+                    ent, entity_span, entity_text,
                     ent_info['id'],
                     noun_type=ent_info['noun_type'],
                     entity_type=ent_info.get('type', None),
@@ -645,9 +732,12 @@ class RichERE(DataLoader):
 
         for filler in root.find('fillers'):
             filler_info = filler.attrib
+            b = int(filler_info['offset'])
+            l = int(filler_info['length'])
             doc.add_filler(
-                filler_info['offset'], filler_info['length'], filler.text,
-                eid=filler_info['id'], filler_type=filler_info['type'])
+                Span(b, b + l), filler.text,
+                eid=filler_info['id'], filler_type=filler_info['type']
+            )
 
         for event_node in root.find('hoppers'):
             evm_ids = []
@@ -664,7 +754,8 @@ class RichERE(DataLoader):
                 length = trigger.attrib['length']
 
                 evm = doc.add_predicate(
-                    event, offset, length, trigger_text, eid=evm_info['id'],
+                    event, Span(offset, offset + length), trigger_text,
+                    eid=evm_info['id'],
                     frame_type=evm_info['type'] + '_' + evm_info['subtype'],
                     realis=evm_info['realis'])
 
@@ -679,7 +770,7 @@ class RichERE(DataLoader):
 
                     role = arg_info['role']
 
-                    evm.add_arg(role, arg_ent_mention)
+                    doc.add_argument_mention(evm, arg_ent_mention, role)
 
         for relation_node in root.find('relations'):
             relation_info = relation_node.attrib
@@ -714,9 +805,11 @@ class RichERE(DataLoader):
                     trigger_begin = None
                     trigger_len = None
 
-                rel_mention = RelationMention(rel_mention_id, trigger_begin,
-                                              trigger_len, trigger_text,
-                                              rel_realis)
+                rel_mention = RelationMention(
+                    rel_mention_id, Span(trigger_begin, trigger_len),
+                    trigger_text, rel_realis
+                )
+
                 for role, ent in args.items():
                     rel_mention.add_arg(role, ent)
 
@@ -838,12 +931,13 @@ class FrameNet(DataLoader):
             ev = doc.add_hopper()
             target_start, target_end, text = target
             evm = doc.add_predicate(
-                ev, target_start, target_end - target_start, text=text,
-                frame_type=frame_name)
+                ev, Span(target_start, target_end), text=text,
+                frame_type=frame_name
+            )
 
             for start, end, fe_text, role in fes:
-                filler = doc.add_filler(start, end - start, fe_text)
-                evm.add_arg(role, filler.aid)
+                filler = doc.add_filler(Span(start, end), fe_text)
+                doc.add_argument_mention(evm, filler.aid, role)
 
         return doc
 
@@ -913,8 +1007,10 @@ class ACE(DataLoader):
                                 start = int(charseq.attrib['START'])
                                 end = int(charseq.attrib['END'])
 
+                                entity_span = Span(start, end + 1)
+
                                 ent_mention = doc.add_entity_mention(
-                                    ent, start, end - start + 1,
+                                    ent, entity_span,
                                     charseq.text,
                                     em.attrib['ID'],
                                     entity_type=full_type,
@@ -941,7 +1037,7 @@ class ACE(DataLoader):
                                 end = int(charseq.attrib['END'])
 
                                 evm = doc.add_predicate(
-                                    hopper, start, end - start + 1,
+                                    hopper, Span(start, end + 1),
                                     charseq.text, eid=evm_node.attrib['ID'],
                                     frame_type=event_type + '_' + event_subtype,
                                     validate=False,
@@ -958,7 +1054,8 @@ class ACE(DataLoader):
                         if len(entity_mentions) > 0:
                             closest_ent, closest_evm, _ = find_close_mention(
                                 event_mentions, entity_mentions)
-                            closest_evm.add_arg(role, closest_ent.aid)
+                            doc.add_argument_mention(
+                                closest_evm, closest_ent.aid, role)
 
                 return doc
 
@@ -1035,14 +1132,12 @@ class Conll(DataLoader):
             hopper = doc.add_hopper()
 
             pred = doc.add_predicate(
-                hopper, p_start, p_end - p_start, p_token)
+                hopper, Span(p_start, p_end), p_token)
 
             if pred is not None:
                 for role, arg_start, arg_end, arg_text in args:
-                    filler = doc.add_filler(
-                        arg_start, arg_end - arg_start, arg_text)
-
-                    pred.add_arg(role, filler.aid)
+                    filler = doc.add_filler(Span(arg_start, arg_end), arg_text)
+                    doc.add_argument_mention(pred, filler.aid, role)
 
         return doc
 
@@ -1072,9 +1167,9 @@ class Conll(DataLoader):
 class NomBank(DataLoader):
     """
     # TODO
-    1. Figure out height
+    1. Figure out height DONE
     2. Check if there is missing explicit
-    3. Check dupliciate labels
+    3. Check duplicate labels
     4. Filter incorporated args: arg which is the the predicate itself
     5. Remove implicit args following the predicate
     """
@@ -1110,7 +1205,7 @@ class NomBank(DataLoader):
     class NomElement:
         def __init__(self, article_id, sent_num, tree_pointer):
             self.article_id = article_id
-            self.sent_num = sent_num
+            self.sent_num = int(sent_num)
             self.pointer = tree_pointer
 
         @staticmethod
@@ -1119,8 +1214,11 @@ class NomBank(DataLoader):
             if len(parts) != 4:
                 raise ValueError("Invalid pointer text.")
 
+            read_id = parts[0]
+            full_id = read_id.split('_')[1][:2] + '/' + read_id + '.mrg'
+
             return NomBank.NomElement(
-                parts[0], int(parts[1]),
+                full_id, int(parts[1]),
                 NombankTreePointer(int(parts[2]), int(parts[3]))
             )
 
@@ -1143,25 +1241,26 @@ class NomBank(DataLoader):
         parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
         return sents, parsed_sents
 
-    def merge_pointers(self, pointers):
-        all_pointers = []
-        split_pointers = []
-
-        for pointer, is_split in pointers:
-            if is_split:
-                split_pointers.append(pointer)
-            else:
-                all_pointers.append([pointer])
-
-        all_pointers.append(split_pointers)
-
-        return all_pointers
-
     def load_gc_annotations(self):
         tree = ET.parse(self.params.implicit_path)
         root = tree.getroot()
 
         gc_annotations = {}
+
+        def merge_split_pointers(pointers):
+            all_pointers = []
+            split_pointers = []
+
+            for pointer, is_split in pointers:
+                if is_split:
+                    split_pointers.append(pointer)
+                else:
+                    all_pointers.append(pointer)
+
+            if len(split_pointers) > 0:
+                all_pointers.append(NombankChainTreePointer(split_pointers))
+
+            return all_pointers
 
         for annotations in root:
             predicate = NomBank.NomElement.from_text(
@@ -1191,16 +1290,16 @@ class NomBank(DataLoader):
                         is_explicit = True
 
                 if not is_explicit:
-                    p = NombankTreePointer(arg_terminal_id, arg_height)
+                    p = NombankTreePointer(int(arg_terminal_id),
+                                           int(arg_height))
                     arg_annos[(arg_sent_id, arg_type)].append((p, is_split))
 
             all_args = defaultdict(list)
 
             for (arg_sent_id, arg_type), l_pointers in arg_annos.items():
-                m_pointer = NombankChainTreePointer(l_pointers)
-                arg_element = NomBank.NomElement(
-                    article_id, arg_sent_id, m_pointer)
-                all_args[arg_type].append(arg_element)
+                for p in merge_split_pointers(l_pointers):
+                    arg_element = NomBank.NomElement(article_id, arg_sent_id, p)
+                    all_args[arg_type].append(arg_element)
 
             gc_annotations[article_id][predicate] = all_args
 
@@ -1208,9 +1307,6 @@ class NomBank(DataLoader):
 
     def add_nombank_arg(self, doc, wsj_spans, fileid, predicate,
                         arg_type, argument, implicit=False):
-
-        print(doc.docid)
-
         def get_span(sent_num, indice_groups):
             spans = []
             for indices in indice_groups:
@@ -1223,7 +1319,7 @@ class NomBank(DataLoader):
                             start = s[0]
                         end = s[1]
 
-                if start > 0 and end > 0:
+                if start >= 0 and end >= 0:
                     spans.append((start, end))
             return spans
 
@@ -1238,49 +1334,38 @@ class NomBank(DataLoader):
         argument_span = get_span(argument.sent_num, a_word_idx)
 
         if len(predicate_span) == 0:
-            print("Zero length predicate found")
-            print(predicate.sent_num, p_word_idx)
-            print(doc.docid, predicate)
-            input('')
+            logging.warn("Zero length predicate found")
             return
 
         if len(argument_span) == 0:
-            print("Zero length argument found")
-            print(argument.sent_num, a_word_idx)
-            print(doc.docid, argument)
+            # Some arguments are empty nodes, they will be ignored.
             return
 
         p_begin = predicate_span[0][0]
         p_end = predicate_span[-1][1]
 
         h = doc.add_hopper()
-        p = doc.add_predicate(h, p_begin, p_end - p_begin)
+        p = doc.add_predicate(h, Span(p_begin, p_end))
 
         a_begin = argument_span[0][0]
         a_end = argument_span[-1][1]
-        e = doc.add_entity('argument')
-        arg = doc.add_entity_mention(e, a_begin, a_end - a_begin)
+        e = doc.add_entity()
+        arg_em = doc.add_entity_mention(e, Span(a_begin, a_end))
 
-        doc_text = doc.doc_text
-        predicate_text = doc_text[p_begin: p_end]
-        arg_text = doc_text[a_begin: a_end]
+        if p and arg_em:
+            if implicit:
+                arg_type = 'i_' + arg_type
 
-        if implicit:
-            print(doc.docid)
+            arg_mention = doc.add_argument_mention(p, arg_em.aid, arg_type)
 
-            print(p_word_idx, predicate_text)
-            print(a_word_idx, arg_text, arg_type)
+            if implicit:
+                arg_mention.add_meta('implicit', True)
 
-            print("Is implicit")
+                if argument.sent_num > predicate.sent_num:
+                    arg_mention.add_meta('delayed', True)
 
-            input('adding predicate argument')
-
-        if p and arg:
-            p.add_arg(arg_type, arg.aid)
-
-        # print(arg.to_json())
-        #
-        # input('adding arg')
+            if predicate.pointer == argument.pointer:
+                arg_mention.add_meta('incorporated', True)
 
     def get_normal_pointers(self, tree_pointer):
         pointers = []
@@ -1313,7 +1398,7 @@ class NomBank(DataLoader):
 
         return all_word_idx, all_word_surface
 
-    def get_all_annotations(self, doc, wsj_spans, nb_instances, fileid):
+    def add_all_annotations(self, doc, wsj_spans, nb_instances, fileid):
         for nb_instance in nb_instances:
             predicate_node = NomBank.NomElement(
                 fileid, nb_instance.sentnum, nb_instance.predicate
@@ -1342,11 +1427,11 @@ class NomBank(DataLoader):
         w_start = 0
 
         spans = []
-        for sent in self.wsj_treebank.sents(fileid):
+        for tagged_sent in self.wsj_treebank.tagged_sents(fileid):
             word_spans = []
 
-            for word in sent:
-                if not word.startswith('*'):
+            for word, tag in tagged_sent:
+                if not tag == '-NONE-':
                     text += word + ' '
                     word_spans.append((w_start, w_start + len(word)))
                     w_start += len(word) + 1
@@ -1368,12 +1453,15 @@ class NomBank(DataLoader):
         doc_instances = []
 
         for nb_instance in self.nombank.instances():
+            if self.params.gc_only and nb_instance.fileid not in self.gc_annos:
+                continue
+
             if last_file and not last_file == nb_instance.fileid:
                 doc = DEDocument(self.corpus)
                 doc.set_id(last_file.split('/')[1])
                 wsj_spans = self.set_wsj_text(doc, last_file)
 
-                self.get_all_annotations(doc, wsj_spans, doc_instances,
+                self.add_all_annotations(doc, wsj_spans, doc_instances,
                                          last_file)
                 doc_instances.clear()
                 yield doc
@@ -1386,7 +1474,7 @@ class NomBank(DataLoader):
             doc = DEDocument(self.corpus)
             doc.set_id(last_file.split('/')[1])
             wsj_spans = self.set_wsj_text(doc, last_file)
-            self.get_all_annotations(doc, wsj_spans, doc_instances, last_file)
+            self.add_all_annotations(doc, wsj_spans, doc_instances, last_file)
 
             yield doc
 
@@ -1422,7 +1510,6 @@ def main(data_format, args):
         in_dir = Unicode(help='Conll file input directory').tag(config=True)
         out_dir = Unicode(help='Output directory').tag(config=True)
         text_dir = Unicode(help='Raw Text Output directory').tag(config=True)
-        brat_dir = Unicode(help='Brat Output directory').tag(config=True)
 
     class NomBankConfig(DataConf):
         nombank_path = Unicode(help='Nombank corpus.').tag(config=True)
@@ -1438,6 +1525,7 @@ def main(data_format, args):
 
         implicit_path = Unicode(help='Implicit annotation xml path.').tag(
             config=True)
+        gc_only = Bool(help='Only use GC arguments.').tag(config=True)
 
     basic_console_log()
 
@@ -1462,6 +1550,7 @@ def main(data_format, args):
         basic_para = NomBankConfig(config=config)
         parser = NomBank(basic_para)
     else:
+        basic_para = None
         parser = None
 
     if parser:
@@ -1476,25 +1565,31 @@ def main(data_format, args):
             os.makedirs(brat_data_path)
 
         for doc in parser.get_doc():
-            with open(os.path.join(
-                    basic_para.out_dir, doc.docid + '.json'), 'w') as out:
+            out_path = os.path.join(basic_para.out_dir, doc.docid + '.json')
+            ensure_dir(out_path)
+            with open(out_path, 'w') as out:
                 out.write(doc.dump(indent=2))
 
-            with open(os.path.join(basic_para.text_dir,
-                                   doc.docid + '.txt'), 'w') as out:
+            out_path = os.path.join(basic_para.text_dir, doc.docid + '.txt')
+            ensure_dir(out_path)
+            with open(out_path, 'w') as out:
                 out.write(doc.doc_text)
 
             source_text, ann_text = doc.to_brat()
-            with open(os.path.join(basic_para.brat_dir, 'data',
-                                   doc.docid + '.ann'), 'w') as out:
+            out_path = os.path.join(basic_para.brat_dir, 'data',
+                                    doc.docid + '.ann')
+            ensure_dir(out_path)
+            with open(out_path, 'w') as out:
                 out.write(ann_text)
 
-            with open(os.path.join(basic_para.brat_dir, 'data',
-                                   doc.docid + '.txt'), 'w') as out:
+            out_path = os.path.join(basic_para.brat_dir, 'data',
+                                    doc.docid + '.txt')
+            ensure_dir(out_path)
+            with open(out_path, 'w') as out:
                 out.write(source_text)
 
-        with open(os.path.join(basic_para.brat_dir, 'annotation.conf'),
-                  'w') as out:
+        out_path = os.path.join(basic_para.brat_dir, 'annotation.conf')
+        with open(out_path, 'w') as out:
             out.write(parser.corpus.get_brat_config())
 
 
