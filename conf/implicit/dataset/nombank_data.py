@@ -6,11 +6,11 @@ if 'eval_corpus' not in os.environ:
 else:
     base = os.environ['eval_corpus']
 
-if 'implicit_corpus' not in os.environ:
+if 'data_path' not in os.environ:
     raise KeyError("Please supply the main working directory as environment "
-                   "variable: 'implicit_corpus'")
+                   "variable: 'data_path'")
 else:
-    working = os.environ['implicit_corpus']
+    working = os.environ['data_path']
 
 c.NomBankConfig.out_dir = os.path.join(working, 'nombank_with_gc', 'annotation')
 c.NomBankConfig.text_dir = os.path.join(working, 'nombank_with_gc', 'text')

@@ -181,7 +181,7 @@ class NomBank(DataLoader):
                                 start, end, fileid))
                         input('error')
                     else:
-                        spans.append((start, end))
+                        spans.append(Span(start, end))
             return spans
 
         arg_type = arg_type.lower()
@@ -204,17 +204,11 @@ class NomBank(DataLoader):
             # Some arguments are empty nodes, they will be ignored.
             return
 
-        p_begin = predicate_span[0][0]
-        p_end = predicate_span[-1][1]
-
         h = doc.add_hopper()
-        p = doc.add_predicate(h, Span(p_begin, p_end), frame_type='NOMINAL')
+        p = doc.add_predicate(h, predicate_span, frame_type='NOMINAL')
 
-        a_begin = argument_span[0][0]
-        a_end = argument_span[-1][1]
         e = doc.add_entity()
-        arg_em = doc.add_entity_mention(e, Span(a_begin, a_end),
-                                        entity_type='ARG')
+        arg_em = doc.add_entity_mention(e, argument_span, entity_type='ARG')
 
         if p and arg_em:
             if implicit:

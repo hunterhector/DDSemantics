@@ -176,11 +176,12 @@ class Annotation:
             data['text'] = self.text
 
         if self.spans:
-            data['spans'] = {}
+            data['spans'] = []
             for span in self.spans:
-                data['spans']['begin'] = span.begin
-                data['spans']['end'] = span.end
-
+                data['spans'].append({
+                    'begin': span.begin,
+                    'end': span.end,
+                })
         return data
 
 
@@ -233,9 +234,10 @@ class Predicate(Annotation):
         if self.realis:
             data['realis'] = self.realis
 
-        data['arguments'] = {}
+        data['arguments'] = []
         for key, l_arg in self.arguments.items():
-            data['arguments'][key] = [arg.to_json() for arg in l_arg]
+            for arg in l_arg:
+                data['arguments'].append(arg.to_json())
 
         return data
 
@@ -699,5 +701,3 @@ class DataLoader:
 
     def get_doc(self):
         pass
-
-
