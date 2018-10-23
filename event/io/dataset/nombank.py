@@ -193,6 +193,13 @@ class NomBank(DataLoader):
         p_word_idx, p_word_surface = self.make_words(p_tree, predicate.pointer)
         a_word_idx, a_word_surface = self.make_words(a_tree, argument.pointer)
 
+        docid = fileid.split('/')[1].split('.')[0]
+
+        pred_node_repr = "%s:%d:%s" % (
+            docid, predicate.sent_num, predicate.pointer)
+        arg_node_repr = "%s:%d:%s" % (
+            docid, argument.sent_num, argument.pointer)
+
         predicate_span = get_span(predicate.sent_num, p_word_idx)
         argument_span = get_span(argument.sent_num, a_word_idx)
 
@@ -211,10 +218,13 @@ class NomBank(DataLoader):
         arg_em = doc.add_entity_mention(e, argument_span, entity_type='ARG')
 
         if p and arg_em:
+            p.add_meta('node', pred_node_repr)
+
             if implicit:
                 arg_type = 'i_' + arg_type
 
             arg_mention = doc.add_argument_mention(p, arg_em.aid, arg_type)
+            arg_mention.add_meta('node', arg_node_repr)
 
             if implicit:
                 arg_mention.add_meta('implicit', True)
@@ -271,16 +281,14 @@ class NomBank(DataLoader):
                 self.add_nombank_arg(doc, wsj_spans, fileid,
                                      predicate_node, argid, arg_node)
 
-            if fileid in self.gc_annos:
-                if predicate_node in self.gc_annos[fileid]:
-                    gc_args = self.gc_annos[fileid][predicate_node]
-
-                    for arg_type, arg_nodes in gc_args.items():
-                        for arg_node in arg_nodes:
-                            self.add_nombank_arg(
-                                doc, wsj_spans, fileid,
-                                predicate_node, arg_type, arg_node, True
-                            )
+        if fileid in self.gc_annos:
+            for predicate_node, gc_args in self.gc_annos[fileid].items():
+                for arg_type, arg_nodes in gc_args.items():
+                    for arg_node in arg_nodes:
+                        self.add_nombank_arg(
+                            doc, wsj_spans, fileid,
+                            predicate_node, arg_type, arg_node, True
+                        )
 
     def set_wsj_text(self, doc, fileid):
         text = ''

@@ -93,12 +93,17 @@ class Top:
         self.top_type = top_type
         self.object_type = object_type
         self.mentions = []
+        self.meta = {}
+
+    def add_meta(self, name, value):
+        self.meta[name] = value
 
     def to_json(self):
         data = {
             'id': self.eid,
             'annotation': self.top_type,
-            'mentions': [m.to_json() for m in self.mentions]
+            'mentions': [m.to_json() for m in self.mentions],
+            'meta': self.meta,
         }
 
         if self.object_type:
@@ -124,6 +129,10 @@ class Annotation:
             self.spans = [spans]
         else:
             self.spans = [s for s in spans]
+        self.meta = {}
+
+    def add_meta(self, name, value):
+        self.meta[name] = value
 
     def get_unique_key(self):
         """
@@ -170,6 +179,7 @@ class Annotation:
         data = {
             'id': self.aid,
             'annotation': self.anno_type,
+            'meta': self.meta,
         }
 
         if self.text:
@@ -193,15 +203,13 @@ class Argument(Top):
         self.arg = arg
         self.arg_type = arg_type
 
-    def add_meta(self, name, value):
-        self.meta[name] = value
-
     def to_json(self):
-        return {
-            'arg': self.arg,
-            'role': self.arg_type,
-            'meta': self.meta,
-        }
+        data = super().to_json()
+
+        data['arg'] = self.arg
+        data['role'] = self.arg_type
+
+        return data
 
 
 class Predicate(Annotation):
