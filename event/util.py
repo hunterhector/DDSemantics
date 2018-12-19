@@ -101,7 +101,14 @@ def load_with_sub_config(args):
 
     # Since subconfig will be merged to and override the base.
     loader.load_subconfig(main_conf)
-    return loader.config
+
+    all_conf = loader.config
+
+    if len(args) > 2:
+        cl_conf = load_command_line_config(args[3:])
+        all_conf.merge(cl_conf)
+
+    return all_conf
 
 
 def file_md5(file):

@@ -3,7 +3,8 @@ from event.arguments.impicit_arg_params import ArgModelPara
 from event.arguments.arg_models import EventPairCompositionModel
 from traitlets import (
     Unicode,
-    Integer
+    Integer,
+    Bool,
 )
 import torch
 from torch.nn import functional as F
@@ -20,6 +21,20 @@ import os
 from event import torch_util
 import pickle
 import shutil
+
+
+def data_gen(data_path):
+    if os.path.isdir(data_path):
+        for f in os.listdir(data_path):
+            logging.info("Reading from {}".format(f))
+            with smart_open(os.path.join(data_path, f)) as fin:
+                for line in fin:
+                    yield line
+    else:
+        with smart_open(data_path) as fin:
+            logging.info("Reading from {}".format(data_path))
+            for line in fin:
+                yield line
 
 
 class ArgRunner(Configurable):
@@ -100,6 +115,7 @@ class ArgRunner(Configurable):
             batch_instance['gold'],
             batch_info,
         )
+
         cross_coh = self.model(
             batch_instance['cross'],
             batch_info,
@@ -178,6 +194,43 @@ class ArgRunner(Configurable):
 
         self._get_loss(batch_instance, batch_info)
 
+    def test(self, test_in, model_dir):
+        logging.info(
+            "Conducting test on [%s] with model at [%s]" % (test_in, model_dir))
+
+        for batch_data in self.reader.read_test_docs(data_gen(test_in)):
+            batch_instance, batch_info, n_instance = batch_data
+
+            correct_coh = self.model(
+                batch_instance['gold'],
+                batch_info,
+            )
+
+            cross_coh = self.model(
+                batch_instance['cross'],
+                batch_info,
+            )
+
+            inside_coh = self.model(
+                batch_instance['inside'],
+                batch_info,
+            )
+
+            outputs = [correct_coh, cross_coh, inside_coh]
+            labels = [1, 0, 0]
+
+            loss = self.__loss(labels, outputs)
+
+            return loss
+
+            # Compute test loss as well.
+            loss = self._get_loss(batch_instance, batch_info)
+
+        cross_coh = self.model(
+            batch_instance['cross'],
+            batch_info,
+        )
+
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False):
         logging.info("Training with data from [%s]", train_in)
@@ -226,19 +279,6 @@ class ArgRunner(Configurable):
         worse = 0
 
         log_freq = 100
-
-        def data_gen(data_path):
-            if os.path.isdir(data_path):
-                for f in os.listdir(data_path):
-                    logging.info("Reading from {}".format(f))
-                    with smart_open(os.path.join(data_path, f)) as fin:
-                        for line in fin:
-                            yield line
-            else:
-                with smart_open(data_path) as fin:
-                    logging.info("Reading from {}".format(data_path))
-                    for line in fin:
-                        yield line
 
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
@@ -354,14 +394,20 @@ if __name__ == '__main__':
             config=True)
         model_dir = Unicode(help='model directory').tag(config=True)
         log_dir = Unicode(help='logging directory').tag(config=True)
+        do_training = Bool(help='Flag for conducting training.',
+                           default_value=True).tag(config=True)
+        do_test = Bool(help='Flag for conducting testing.',
+                       default_value=False).tag(config=True)
 
 
     from event.util import load_config_with_cmd, load_with_sub_config
     import json
+    import pprint
 
-    print(sys.argv)
     conf = load_with_sub_config(sys.argv)
-    print(conf)
+
+    pp = pprint.PrettyPrinter(indent=2)
+    pp.pprint(conf)
 
     basic_para = Basic(config=conf)
 
@@ -371,9 +417,16 @@ if __name__ == '__main__':
     timestamp = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
 
     if basic_para.log_dir:
+        mode = ''
+
+        if basic_para.do_training:
+            mode += '_train'
+        if basic_para.do_test:
+            mode += '_test'
+
         log_path = os.path.join(
             basic_para.log_dir,
-            basic_para.model_name + '_' + timestamp + '.log')
+            basic_para.model_name + '_' + timestamp + mode + '.log')
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
@@ -392,9 +445,16 @@ if __name__ == '__main__':
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
         os.makedirs(basic_para.debug_dir)
 
-    runner.train(
-        basic_para.train_in,
-        validation_size=basic_para.validation_size,
-        validation_in=basic_para.valid_in,
-        resume=True
-    )
+    if basic_para.do_training:
+        runner.train(
+            basic_para.train_in,
+            validation_size=basic_para.validation_size,
+            validation_in=basic_para.valid_in,
+            resume=True
+        )
+
+    if basic_para.do_test:
+        runner.test(
+            test_in=basic_para.test_in,
+            model_dir=basic_para.model_dir,
+        )

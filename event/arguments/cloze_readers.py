@@ -54,6 +54,68 @@ class ClozeSampler:
         return sampled_item
 
 
+def get_distance_signature(
+        current_evm_id, entity_mentions, event, sent_id):
+    """
+    Compute the distance signature of the instance's other mentions to the
+    sentence.
+    :param current_evm_id:
+    :param entity_mentions:
+    :param event:
+    :param sent_id:
+    :return:
+    """
+    distances = []
+
+    # Now use a large distance to represent Infinity.
+    # Infinity: if the entity cannot be found again, or it is not an entity.
+    # A number is arbitrarily decided since most document is shorter than
+    # this.
+    inf = 30.0
+
+    for current_slot, slot_info in event['args'].items():
+        entity_id = slot_info.get('entity_id', -1)
+
+        if entity_id == -1:
+            # This is an empty slot.
+            distances.append((inf, inf, inf))
+            continue
+
+        max_dist = 0.0
+        min_dist = inf
+        total_dist = 0.0
+        total_pair = 0.0
+
+        for evm_id, slot, sid in entity_mentions[entity_id]:
+            if evm_id == current_evm_id:
+                # Do not compute mentions at the same event.
+                continue
+
+            distance = abs(sid - sent_id)
+
+            # We make a ceiling for the distance calculation.
+            distance = min(distance, inf - 1)
+
+            if distance < min_dist:
+                min_dist = distance
+            if distance > max_dist:
+                max_dist = distance
+            total_dist += distance
+            total_pair += 1.0
+
+        if total_pair > 0:
+            distances.append((max_dist, min_dist, total_dist / total_pair))
+            # print(max_dist, min_dist, total_dist / total_pair)
+        else:
+            # This argument is not seen elsewhere, it should be a special
+            # distance label.
+            distances.append((inf, inf, inf))
+            # print("No other mentions found")
+
+    # Flatten the (argument x type) distances into a flat list.
+    return [d for l in distances for d in l]
+
+
 class HashedClozeReader:
     def __init__(self, resources, batch_size, from_hashed=True,
                  multi_context=False, max_events=200, max_cloze=150, gpu=True):
@@ -266,25 +328,58 @@ class HashedClozeReader:
 
         return features_by_eid, entity_heads
 
+    def read_test_docs(self, test_in):
+        """
+        Load test data. Importantly, this will create alternative cloze
+         filling for ranking.
+        :param test_in: Test data path.
+        :return:
+        """
+        for line in test_in:
+            doc_info = json.loads(line)
+            features_by_eid, entity_heads = self.collect_features(doc_info)
+
+            print(features_by_eid)
+            print(entity_heads)
+
+            input('key')
+
+            event_data = []
+            for evm_index, event_info in enumerate(doc_info['events']):
+                sentence_id = event_info.get('sentence_id', None)
+
+            gold_event_data = {'rep': [], 'distances': [], 'features': []}
+
+            # Filled candidates will be a list of instances similar to the shape
+            # of the gold_event_data, but with empty slots filled.
+            filled_candidates = []
+
     def parse_docs(self, data_in, from_line=None, until_line=None):
 
-        linenum = 0
+        line_num = 0
         for line in data_in:
-            linenum += 1
+            line_num += 1
 
-            if from_line and linenum <= from_line:
+            if from_line and line_num <= from_line:
                 continue
 
-            if until_line and linenum > until_line:
+            if until_line and line_num > until_line:
                 break
 
             doc_info = json.loads(line)
             features_by_eid, entity_heads = self.collect_features(doc_info)
 
             # Organize all the arguments.
+
+            # List of event info.
             event_data = []
 
+            # Map from: entity id (eid)
+            # to: A list of tuples: [(evm_index, slot, sentence_id)]
             entity_mentions = defaultdict(list)
+
+            # Unique set of (evm_index, slot, sentence_id) tuples.
+            # This is used to sample a slot to create clozes.
             arg_entities = set()
             eid_count = Counter()
 
@@ -383,7 +478,7 @@ class HashedClozeReader:
                         doc_info, evm_index, cross_args)
                     cross_rep = self._take_event_parts(cross_info)
                     cross_features = features_by_eid[cross_filler_id]
-                    cross_distances = self.compute_distances(
+                    cross_distances = get_distance_signature(
                         evm_index, entity_mentions, cross_info, current_sent,
                     )
 
@@ -392,13 +487,13 @@ class HashedClozeReader:
                         doc_info, evm_index, inside_args)
                     inside_rep = self._take_event_parts(inside_info)
                     inside_features = features_by_eid[inside_filler_id]
-                    inside_distances = self.compute_distances(
+                    inside_distances = get_distance_signature(
                         evm_index, entity_mentions, inside_info, current_sent,
                     )
 
                     gold_rep = self._take_event_parts(event_info)
                     gold_features = features_by_eid[correct_id]
-                    gold_distances = self.compute_distances(
+                    gold_distances = get_distance_signature(
                         evm_index, entity_mentions, event_info, current_sent,
                     )
 
@@ -453,61 +548,6 @@ class HashedClozeReader:
                     'entity_id': arg_info['entity_id'],
                 }
         return full_info
-
-    def compute_distances(self, current_evm_id, entity_sents, event, sent_id):
-        """
-        Compute the distance signature of the instance's other mentions to the
-        sentence.
-        :param current_evm_id:
-        :param entity_sents:
-        :param event:
-        :param sent_id:
-        :return:
-        """
-        distances = []
-
-        # Now use a large distance to represent Indefinite.
-        # Infinity: if the entity cannot be found again, or it is not an entity.
-        # Arbitrarily use 50 since most document is shorter than this.
-        inf = 30.0
-
-        for current_slot, slot_info in event['args'].items():
-            entity_id = slot_info.get('entity_id', -1)
-
-            if entity_id == -1:
-                # This is an empty slot.
-                distances.append((inf, inf, inf))
-                continue
-
-            max_dist = 0.0
-            min_dist = inf
-            total_dist = 0.0
-            total_pair = 0.0
-
-            for evm_id, slot, sid in entity_sents[entity_id]:
-                if evm_id == current_evm_id:
-                    # Do not compute mentions at the same event.
-                    continue
-
-                distance = abs(sid - sent_id)
-                if distance < min_dist:
-                    min_dist = distance
-                if distance > max_dist:
-                    max_dist = distance
-                total_dist += distance
-                total_pair += 1.0
-
-            if total_pair > 0:
-                distances.append((max_dist, min_dist, total_dist / total_pair))
-                # print(max_dist, min_dist, total_dist / total_pair)
-            else:
-                # This argument is not seen elsewhere, it should be a special
-                # distance label.
-                distances.append((inf, inf, inf))
-                # print("No other mentions found")
-
-        # Flatten the (argument x type) distances into a flat list.
-        return [d for l in distances for d in l]
 
     def replace_slot(self, instance, slot, new_eid, new_text, fe=None):
         slot_info = instance[slot]
