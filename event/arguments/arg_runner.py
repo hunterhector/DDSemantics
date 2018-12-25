@@ -37,6 +37,22 @@ def data_gen(data_path):
                 yield line
 
 
+class NullArgDetector:
+    def __init__(self):
+        pass
+
+    def get_slot_to_fill(self, doc_info):
+        pass
+
+
+class GoldNullArgDetector(NullArgDetector):
+    def __index__(self):
+        super(NullArgDetector, self).__init__()
+
+    def get_filling_slot(self, doc_info):
+        pass
+
+
 class ArgRunner(Configurable):
 
     def __init__(self, **kwargs):
@@ -77,6 +93,12 @@ class ArgRunner(Configurable):
                                         self.para.max_events,
                                         self.para.max_cloze)
 
+        # Set up Null Instantiation.
+        if self.para.nid_method == 'gold':
+            self.nid_detector = GoldNullArgDetector()
+        else:
+            self.nid_detector = GoldNullArgDetector()
+
     def _assert(self):
         if self.resources.word_embedding:
             assert self.para.word_vocab_size == \
@@ -107,10 +129,6 @@ class ArgRunner(Configurable):
             raise NotImplementedError
 
     def _get_loss(self, batch_instance, batch_info):
-        # print("Before loss")
-        # torch_util.show_tensors()
-        # torch_util.gpu_mem_report()
-
         correct_coh = self.model(
             batch_instance['gold'],
             batch_info,
@@ -198,7 +216,8 @@ class ArgRunner(Configurable):
         logging.info(
             "Conducting test on [%s] with model at [%s]" % (test_in, model_dir))
 
-        for batch_data in self.reader.read_test_docs(data_gen(test_in)):
+        for batch_data in self.reader.read_test_docs(
+                data_gen(test_in), self.nid_detector):
             batch_instance, batch_info, n_instance = batch_data
 
             correct_coh = self.model(
@@ -220,8 +239,6 @@ class ArgRunner(Configurable):
             labels = [1, 0, 0]
 
             loss = self.__loss(labels, outputs)
-
-            return loss
 
             # Compute test loss as well.
             loss = self._get_loss(batch_instance, batch_info)

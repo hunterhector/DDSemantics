@@ -328,21 +328,17 @@ class HashedClozeReader:
 
         return features_by_eid, entity_heads
 
-    def read_test_docs(self, test_in):
+    def read_test_docs(self, test_in, nid_detector):
         """
         Load test data. Importantly, this will create alternative cloze
          filling for ranking.
         :param test_in: Test data path.
+        :param nid_detector: Null Instantiation Detector.
         :return:
         """
         for line in test_in:
             doc_info = json.loads(line)
             features_by_eid, entity_heads = self.collect_features(doc_info)
-
-            print(features_by_eid)
-            print(entity_heads)
-
-            input('key')
 
             event_data = []
             for evm_index, event_info in enumerate(doc_info['events']):

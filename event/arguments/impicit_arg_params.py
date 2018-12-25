@@ -76,3 +76,9 @@ class ArgModelPara(Configurable):
         help='Method to compute the coherence between two events',
         default_value='attentive'
     ).tag(config=True)
+
+    # Null Instantiation Detector
+    nid_method = Unicode(
+        help='The method for Null Instantiation Detector',
+        default_value='logistic'
+    ).tag(config=True)

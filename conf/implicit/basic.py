@@ -20,6 +20,9 @@ c.ArgModelPara.vote_pooling = 'kernel'
 # c.ArgModelPara.encode_distance = 'gaussian'
 c.ArgModelPara.num_distance_features = 9
 
+# Null Instantiation.
+c.ArgModelPara.nid_method = 'gold'
+
 # ImplicitArgResources
 # c.ImplicitArgResources.base = '/home/zhengzhl/workspace/implicit/gigaword_corpus/'
 
@@ -39,6 +42,8 @@ c.ImplicitArgResources.word_vocab_path = os.path.join(
 c.ImplicitArgResources.raw_lookup_path = os.path.join(base, 'vocab/')
 # Runner parameters
 c.Basic.train_in = os.path.join(base, 'hashed')
+# TODO: need to pin down the format quick.
+c.Basic.test_in = os.path.join(base, 'hashed', 'partat.gz')
 # c.Basic.train_until = 1946546
 c.Basic.validation_size = 10000
 c.Basic.debug_dir = os.path.join(base, 'debug')
@@ -46,4 +51,3 @@ c.Basic.log_dir = os.path.join(base, 'logs')
 c.Basic.model_dir = os.path.join(base, 'models')
 
 c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
-
