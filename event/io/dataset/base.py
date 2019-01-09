@@ -261,6 +261,8 @@ class EntityMention(Annotation):
         return 'entity', super().get_unique_key(), self.entity_type
 
     def merge(self, anno_b):
+        # If two entities are have the same unique key, then they should have
+        # the same type so we don't do any real merging.
         assert isinstance(anno_b, EntityMention)
 
     def to_json(self):
@@ -511,11 +513,17 @@ class DEDocument:
         self.events.append(event)
         return event
 
-    def __add_mention_with_check(self, mention, cluster, validate=True):
+    def __get_existed_mention(self, mention):
         key = mention.get_unique_key()
         if key in self.span_mentions:
-            self.span_mentions[key].merge(mention)
             return self.span_mentions[key]
+
+    def __add_mention_with_check(self, mention, cluster, validate=True):
+        existed_mention = self.__get_existed_mention(mention)
+
+        if existed_mention:
+            existed_mention.merge(mention)
+            return existed_mention
         else:
             mention.fix_spaces(self.doc_text)
             is_valid = True
@@ -524,7 +532,7 @@ class DEDocument:
                 is_valid = mention.validate(self.doc_text)
 
             if is_valid:
-                self.span_mentions[key] = mention
+                self.span_mentions[mention.get_unique_key()] = mention
                 if cluster:
                     cluster.add_mention(mention)
                 return mention
@@ -541,7 +549,9 @@ class DEDocument:
                            eid=None, noun_type=None, entity_type=None,
                            validate=True):
         if entity_type is None:
-            entity_type = ent.object_type
+            entity_type = 'Entity'
+
+        self.corpus.add_entity_type(entity_type)
 
         if not eid:
             eid = 'em-%d' % self.indices['entity_mention']
@@ -551,11 +561,23 @@ class DEDocument:
             text = get_text_from_span(self.doc_text, spans)
 
         em = EntityMention(eid, spans, text, noun_type, entity_type)
-        self.corpus.add_entity_type(entity_type)
-        return self.__add_mention_with_check(em, ent, validate)
+
+        existed = self.__get_existed_mention(em)
+
+        if existed:
+            return existed
+        else:
+            if ent is None:
+                # Provide a pseudo entity to each mention (singleton entity).
+                ent = self.add_entity()
+            return self.__add_mention_with_check(em, ent, validate)
 
     def add_predicate(self, hopper, spans, text=None,
                       eid=None, frame_type='Event', realis=None, validate=True):
+        if hopper is None:
+            # Provide a pseudo entity to each mention (singleton entity).
+            hopper = self.add_hopper()
+
         if eid is None:
             eid = 'evm-%d' % self.indices['event_mention']
             self.indices['event_mention'] += 1

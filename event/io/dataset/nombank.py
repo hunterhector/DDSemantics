@@ -203,6 +203,11 @@ class NomBank(DataLoader):
         predicate_span = get_span(predicate.sent_num, p_word_idx)
         argument_span = get_span(argument.sent_num, a_word_idx)
 
+        # if len(a_word_idx) > 1:
+        #     print("Argument index", a_word_idx, argument_span)
+        #     print(a_word_surface)
+        #     input('waiting for predicate argument.')
+
         if len(predicate_span) == 0:
             logging.warning("Zero length predicate found")
             return
@@ -211,11 +216,9 @@ class NomBank(DataLoader):
             # Some arguments are empty nodes, they will be ignored.
             return
 
-        h = doc.add_hopper()
-        p = doc.add_predicate(h, predicate_span, frame_type='NOMINAL')
-
-        e = doc.add_entity()
-        arg_em = doc.add_entity_mention(e, argument_span, entity_type='ARG')
+        p = doc.add_predicate(None, predicate_span, frame_type='NOMINAL')
+        arg_em = doc.add_entity_mention(None, argument_span,
+                                        entity_type='ARG_ENT')
 
         if p and arg_em:
             p.add_meta('node', pred_node_repr)
@@ -260,11 +263,16 @@ class NomBank(DataLoader):
                 if tree.leaf_treeposition(idx)[:len(treepos)] == treepos:
                     idx_list.append(idx)
 
-            all_word_idx.append(idx_list)
             idx_list.sort()
             word_list = [tree.leaves()[idx] for idx in idx_list]
 
-            all_word_surface.append(word_list)
+            if len(all_word_idx) > 0 and \
+                    idx_list[0] - 1 == all_word_idx[-1][-1]:
+                all_word_idx[-1].extend(idx_list)
+                all_word_surface[-1].extend(word_list)
+            else:
+                all_word_idx.append(idx_list)
+                all_word_surface.append(word_list)
 
         return all_word_idx, all_word_surface
 
