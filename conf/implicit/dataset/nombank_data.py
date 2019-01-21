@@ -18,12 +18,12 @@ c.NomBankConfig.brat_dir = os.path.join(working, 'nombank_with_gc', 'brat')
 
 c.NomBankConfig.nombank_path = os.path.join(base, 'nombank.1.0')
 # The sorted version group data of the same doc together.
-c.NomBankConfig.nomfile = os.path.join(base, 'nombank.1.0/nombank.1.0.sorted')
+c.NomBankConfig.nomfile = os.path.join(base, 'nombank.1.0/nombank.1.0')
 c.NomBankConfig.frame_file_pattern = 'frames/.*\.xml'
 c.NomBankConfig.nombank_nouns_file = 'nombank.1.0.words'
 
 c.NomBankConfig.wsj_path = os.path.join(
-    base, 'penn-treebank-rel3/parsed/mrg/wsj')
+    base, 'treebank_3/parsed/mrg/wsj')
 c.NomBankConfig.wsj_file_pattern = '\d\d/wsj_.*\.mrg'
 
 c.NomBankConfig.implicit_path = os.path.join(
