@@ -13,7 +13,7 @@ from event.arguments.util import (batch_combine, to_torch)
 import event.arguments.prepare.event_vocab as vocab_util
 import math
 from event import torch_util
-from event.arguments.prepare.create_argument_training import (
+from event.arguments.prepare.hash_cloze_data import (
     hash_arg,
     hash_context,
     read_entity_features,
