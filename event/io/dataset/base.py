@@ -415,6 +415,9 @@ class DEDocument:
     def __init__(self, corpus, text=None, ranges=None, ignore_quote=False):
         self.corpus = corpus
 
+        self.token_spans = []
+        self.parsed_sents = []
+
         self.entities = []
         self.events = []
         self.relations = []
@@ -434,6 +437,18 @@ class DEDocument:
 
         if ignore_quote:
             self.remove_quote()
+
+    def set_token_spans(self, token_spans):
+        self.token_spans = token_spans
+
+    def get_token_spans(self):
+        return self.token_spans
+
+    def set_parsed_sents(self, parsed_sents):
+        self.parsed_sents = parsed_sents
+
+    def get_parsed_sents(self):
+        return self.parsed_sents
 
     def remove_quote(self):
         lqs = []
@@ -725,9 +740,11 @@ class DEDocument:
 
 
 class DataLoader:
-    def __init__(self, params):
+    def __init__(self, params, with_doc=False):
         self.params = params
         self.corpus = Corpus()
+        self.with_doc = with_doc
 
     def get_doc(self):
-        pass
+        if not self.with_doc:
+            raise NotImplementedError

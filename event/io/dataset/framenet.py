@@ -10,8 +10,8 @@ from event.io.dataset.base import (
 
 
 class FrameNet(DataLoader):
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, params, with_doc=False):
+        super().__init__(params, with_doc)
         self.params = params
         self.ns = {
             'icsi': 'http://framenet.icsi.berkeley.edu',
@@ -95,6 +95,8 @@ class FrameNet(DataLoader):
         return doc
 
     def get_doc(self):
+        super().get_doc()
+
         full_text_dir = os.path.join(self.params.fn_path, 'fulltext')
 
         for full_text_path in glob.glob(full_text_dir + '/*.xml'):
@@ -103,4 +105,3 @@ class FrameNet(DataLoader):
             doc.set_id(docid)
             self.parse_full_text(full_text_path, doc)
             yield doc
-

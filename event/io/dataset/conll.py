@@ -9,8 +9,8 @@ from event.io.dataset.base import (
 
 
 class Conll(DataLoader):
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, params, with_doc=False):
+        super().__init__(params, with_doc)
         self.params = params
 
     def parse_conll_data(self, corpus, conll_in):
@@ -90,6 +90,7 @@ class Conll(DataLoader):
         return doc
 
     def get_doc(self):
+        super().get_doc()
         for dirname in os.listdir(self.params.in_dir):
             full_dir = os.path.join(self.params.in_dir, dirname)
             for root, dirs, files in os.walk(full_dir):

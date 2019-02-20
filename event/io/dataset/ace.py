@@ -13,12 +13,14 @@ from event.io.dataset.base import (
 
 
 class ACE(DataLoader):
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, params, with_doc=False):
+        super().__init__(params, with_doc)
         self.params = params
         logging.info('Loading ACE data.')
 
     def get_doc(self):
+        super().get_doc()
+
         ace_folder = self.params.in_dir
         text_files = glob.glob(ace_folder + '/English/*/timex2norm/*.sgm')
 

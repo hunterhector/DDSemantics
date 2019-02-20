@@ -6,16 +6,6 @@ if 'eval_corpus' not in os.environ:
 else:
     corpus_path = os.environ['eval_corpus']
 
-if 'data_path' not in os.environ:
-    raise KeyError("Please supply the main working directory as environment "
-                   "variable: 'data_path'")
-else:
-    working = os.environ['data_path']
-
-c.NomBankConfig.out_dir = os.path.join(working, 'nombank_with_gc', 'annotation')
-c.NomBankConfig.text_dir = os.path.join(working, 'nombank_with_gc', 'text')
-c.NomBankConfig.brat_dir = os.path.join(working, 'nombank_with_gc', 'brat')
-
 c.NomBankConfig.nombank_path = os.path.join(corpus_path, 'nombank.1.0')
 # The sorted version group data of the same doc together.
 c.NomBankConfig.nomfile = os.path.join(corpus_path, 'nombank.1.0/nombank.1.0')
@@ -23,7 +13,7 @@ c.NomBankConfig.frame_file_pattern = 'frames/.*\.xml'
 c.NomBankConfig.nombank_nouns_file = 'nombank.1.0.words'
 
 c.NomBankConfig.wsj_path = os.path.join(
-    corpus_path, 'treebank_3/parsed/mrg/wsj')
+    corpus_path, 'penn-treebank-rel3/parsed/mrg/wsj')
 c.NomBankConfig.wsj_file_pattern = '\d\d/wsj_.*\.mrg'
 
 c.NomBankConfig.implicit_path = os.path.join(

@@ -12,8 +12,8 @@ from event.io.dataset.base import (
 
 
 class RichERE(DataLoader):
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, params, with_doc=False):
+        super().__init__(params, with_doc)
         self.params = params
 
     def parse_ere(self, ere_file, doc):
@@ -141,6 +141,8 @@ class RichERE(DataLoader):
                     return doc
 
     def get_doc(self):
+        super().get_doc()
+
         sources = {}
         eres = defaultdict(list)
         annotate_ranges = defaultdict(list)

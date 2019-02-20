@@ -6,8 +6,14 @@ from event.io.dataset.base import (
 )
 
 from nltk.corpus import (
-    PropbankCorpusReader
+    PropbankCorpusReader,
+    BracketParseCorpusReader,
 )
+
+from nltk.data import FileSystemPathPointer
+from collections import defaultdict
+
+from event.io.dataset import utils
 
 
 class PropBank(DataLoader):
@@ -15,11 +21,71 @@ class PropBank(DataLoader):
     Load PropBank data.
     """
 
-    def __init__(self, params):
-        super.__init__(params)
-
+    def __init__(self, params, with_doc=False):
+        super().__init__(params)
         logging.info('Initialize PropBank reader.')
 
+        if with_doc:
+            self.wsj_treebank = BracketParseCorpusReader(
+                root=params.wsj_path,
+                fileids=params.wsj_file_pattern,
+                tagset='wsj',
+                encoding='ascii'
+            )
 
-    def add_propbank_annotations(self, doc, fileid):
-        pass
+            logging.info(
+                'Found {} treebank files.'.format(
+                    len(self.wsj_treebank.fileids()))
+            )
+
+        self.propbank = PropbankCorpusReader(
+            root=FileSystemPathPointer(params.root),
+            propfile=params.propfile,
+            framefiles=params.frame_files,
+            verbsfile=params.verbs_file,
+        )
+
+        self.propbank_annos = defaultdict(list)
+        logging.info("Loading PropBank Data.")
+        for inst in self.propbank.instances():
+            docid = inst.fileid.split('/')[-1]
+            self.propbank_annos[docid].append(inst)
+
+    def add_all_annotations(self, doc):
+        logging.info("Adding propbank annotations for " + doc.docid)
+
+        instances = self.propbank_annos[doc.docid]
+
+        for inst in instances:
+            parsed_sents = doc.get_parsed_sents()
+
+            tree = parsed_sents[inst.sentnum]
+
+            p_word_idx = utils.make_nombank_words(tree, inst.predicate)
+            pred_span = utils.get_nltk_span(doc.get_token_spans(),
+                                            inst.sentnum, p_word_idx)
+
+            pred_node_repr = "%s:%d:%s" % (
+                doc.docid, inst.sentnum, inst.predicate)
+
+            for argloc, arg_slot in inst.arguments:
+                a_word_idx = utils.make_nombank_words(tree, argloc)
+                arg_span = utils.get_nltk_span(doc.get_token_spans(),
+                                               inst.sentnum,
+                                               a_word_idx)
+
+                if len(arg_span) == 0:
+                    continue
+
+                p = doc.add_predicate(None, pred_span, frame_type='PROPBANK')
+                arg_em = doc.add_entity_mention(None, arg_span,
+                                                entity_type='ARG_ENT')
+                arg_node_repr = "%s:%d:%s" % (
+                    doc.docid, inst.sentnum, argloc)
+
+                if p and arg_em:
+                    p.add_meta('node', pred_node_repr)
+
+                    arg_mention = doc.add_argument_mention(p, arg_em.aid,
+                                                           arg_slot)
+                    arg_mention.add_meta('node', arg_node_repr)
