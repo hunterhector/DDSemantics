@@ -28,14 +28,7 @@ class NomBank(DataLoader):
     def __init__(self, params):
         super().__init__(params)
 
-        logging.info('Loading WSJ Treebank.')
-
-        self.wsj_treebank = BracketParseCorpusReader(
-            root=params.wsj_path,
-            fileids=params.wsj_file_pattern,
-            tagset='wsj',
-            encoding='ascii'
-        )
+        self.wsj_treebank = self.load_treebank()
 
         logging.info(
             'Found {} treebank files.'.format(len(self.wsj_treebank.fileids()))
@@ -52,6 +45,17 @@ class NomBank(DataLoader):
 
         logging.info("Loading G&C annotations")
         self.gc_annos = self.load_gc_annotations()
+
+    def load_treebank(self):
+        logging.info('Loading WSJ Treebank.')
+
+        return BracketParseCorpusReader(
+            root=params.wsj_path,
+            fileids=params.wsj_file_pattern,
+            tagset='wsj',
+            encoding='ascii'
+        )
+
 
     class NomElement:
         def __init__(self, article_id, sent_num, tree_pointer):
