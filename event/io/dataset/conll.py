@@ -9,8 +9,8 @@ from event.io.dataset.base import (
 
 
 class Conll(DataLoader):
-    def __init__(self, params, with_doc=False):
-        super().__init__(params, with_doc)
+    def __init__(self, params, corpus, with_doc=False):
+        super().__init__(params, corpus, with_doc)
         self.params = params
 
     def parse_conll_data(self, corpus, conll_in):

@@ -13,6 +13,7 @@ from event.io.dataset.nombank import NomBank
 from event.io.dataset.richere import RichERE
 from event.io.dataset.propbank import PropBank
 from event.util import ensure_dir
+from event.io.dataset.base import Corpus
 
 
 def main(data_formats, config_files, output_config_file):
@@ -87,30 +88,30 @@ def main(data_formats, config_files, output_config_file):
     if not os.path.exists(brat_data_path):
         os.makedirs(brat_data_path)
 
+    corpus = Corpus()
+
     for index, (data_format, config_file) in enumerate(
             zip(data_formats, config_files)):
-        # TODO: Double check how to deal with split pointers.
-        # TODO: Check empty events.
         config = load_file_config(config_file)
         with_doc = index == 0
         if data_format == 'rich_ere':
             basic_param = EreConf(config=config)
-            parser = RichERE(basic_param, with_doc)
+            parser = RichERE(basic_param, corpus, with_doc)
         elif data_format == 'framenet':
             basic_param = FrameNetConf(config=config)
-            parser = FrameNet(basic_param, with_doc)
+            parser = FrameNet(basic_param, corpus, with_doc)
         elif data_format == 'conll':
             basic_param = ConllConf(config=config)
-            parser = Conll(basic_param, with_doc)
+            parser = Conll(basic_param, corpus, with_doc)
         elif data_format == 'ace':
             basic_param = AceConf(config=config)
-            parser = ACE(basic_param, with_doc)
+            parser = ACE(basic_param, corpus, with_doc)
         elif data_format == 'nombank':
             basic_param = NomBankConfig(config=config)
-            parser = NomBank(basic_param, with_doc)
+            parser = NomBank(basic_param, corpus, with_doc)
         elif data_format == 'propbank':
             basic_param = PropBankConfig(config=config)
-            parser = PropBank(basic_param, with_doc)
+            parser = PropBank(basic_param, corpus, with_doc)
         else:
             raise NotImplementedError("Selected format unknown.")
 
@@ -149,7 +150,7 @@ def main(data_formats, config_files, output_config_file):
     # Write brat configs.
     out_path = os.path.join(output_param.brat_dir, 'annotation.conf')
     with open(out_path, 'w') as out:
-        out.write(parsers[-1].corpus.get_brat_config())
+        out.write(corpus.get_brat_config())
 
 
 if __name__ == '__main__':

@@ -21,8 +21,8 @@ class PropBank(DataLoader):
     Load PropBank data.
     """
 
-    def __init__(self, params, with_doc=False):
-        super().__init__(params)
+    def __init__(self, params, corpus, with_doc=False):
+        super().__init__(params, corpus)
         logging.info('Initialize PropBank reader.')
 
         if with_doc:
@@ -61,7 +61,7 @@ class PropBank(DataLoader):
 
             tree = parsed_sents[inst.sentnum]
 
-            p_word_idx = utils.make_nombank_words(tree, inst.predicate)
+            p_word_idx = utils.make_words_from_pointer(tree, inst.predicate)
             pred_span = utils.get_nltk_span(doc.get_token_spans(),
                                             inst.sentnum, p_word_idx)
 
@@ -69,10 +69,9 @@ class PropBank(DataLoader):
                 doc.docid, inst.sentnum, inst.predicate)
 
             for argloc, arg_slot in inst.arguments:
-                a_word_idx = utils.make_nombank_words(tree, argloc)
-                arg_span = utils.get_nltk_span(doc.get_token_spans(),
-                                               inst.sentnum,
-                                               a_word_idx)
+                a_word_idx = utils.make_words_from_pointer(tree, argloc)
+                arg_span = utils.get_nltk_span(
+                    doc.get_token_spans(), inst.sentnum, a_word_idx)
 
                 if len(arg_span) == 0:
                     continue
@@ -86,6 +85,6 @@ class PropBank(DataLoader):
                 if p and arg_em:
                     p.add_meta('node', pred_node_repr)
 
-                    arg_mention = doc.add_argument_mention(p, arg_em.aid,
-                                                           arg_slot)
+                    arg_mention = doc.add_argument_mention(
+                        p, arg_em.aid, arg_slot.lower())
                     arg_mention.add_meta('node', arg_node_repr)

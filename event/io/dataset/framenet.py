@@ -10,8 +10,8 @@ from event.io.dataset.base import (
 
 
 class FrameNet(DataLoader):
-    def __init__(self, params, with_doc=False):
-        super().__init__(params, with_doc)
+    def __init__(self, params, corpus, with_doc=False):
+        super().__init__(params, corpus, with_doc)
         self.params = params
         self.ns = {
             'icsi': 'http://framenet.icsi.berkeley.edu',

@@ -27,8 +27,8 @@ class NomBank(DataLoader):
     Loading Nombank data and implicit argument annotations.
     """
 
-    def __init__(self, params, with_doc=False):
-        super().__init__(params, with_doc)
+    def __init__(self, params, corpus, with_doc=False):
+        super().__init__(params, corpus, with_doc)
 
         if with_doc:
             self.wsj_treebank = BracketParseCorpusReader(
@@ -152,6 +152,7 @@ class NomBank(DataLoader):
                 if not is_explicit:
                     p = NombankTreePointer(int(arg_terminal_id),
                                            int(arg_height))
+                    # Arguments are group by their sentences.
                     arg_annos[(arg_sent_id, arg_type)].append((p, is_split))
 
             all_args = defaultdict(list)
@@ -173,8 +174,8 @@ class NomBank(DataLoader):
         p_tree = parsed_sents[predicate.sent_num]
         a_tree = parsed_sents[argument.sent_num]
 
-        p_word_idx = utils.make_nombank_words(p_tree, predicate.pointer)
-        a_word_idx = utils.make_nombank_words(a_tree, argument.pointer)
+        p_word_idx = utils.make_words_from_pointer(p_tree, predicate.pointer)
+        a_word_idx = utils.make_words_from_pointer(a_tree, argument.pointer)
 
         pred_node_repr = "%s:%d:%s" % (
             doc.docid, predicate.sent_num, predicate.pointer)
@@ -201,7 +202,6 @@ class NomBank(DataLoader):
                                         entity_type='ARG_ENT')
 
         if p and arg_em:
-
             if implicit:
                 arg_type = 'i_' + arg_type
 
@@ -221,7 +221,6 @@ class NomBank(DataLoader):
         logging.info("Adding nombank annotation for " + doc.docid)
         nb_instances = self.nombank_annos[doc.docid]
 
-        fileid = None
         for nb_instance in nb_instances:
             predicate_node = NomBank.NomElement(
                 doc.docid, nb_instance.sentnum, nb_instance.predicate
@@ -286,7 +285,6 @@ class NomBank(DataLoader):
 
             fileid = docid.split('_')[-1][:2] + '/' + docid
 
-            sents = self.wsj_treebank.sents(fileids=fileid)
             parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
             doc.set_parsed_sents(parsed_sents)
 

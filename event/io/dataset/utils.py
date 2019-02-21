@@ -26,8 +26,21 @@ def get_tree_pointers(tree_pointer):
     return sorted(pointers, key=lambda pt: pt.wordnum)
 
 
-def make_nombank_words(tree, tree_pointer):
+def make_words_from_pointer(tree, tree_pointer):
+    """
+    Create words from tree pointer (NLTK).
+    :param tree: The tree for the whole sentence.
+    :param tree_pointer: The tree pointer that point to some nodes.
+    :return:
+    """
     pointers = get_tree_pointers(tree_pointer)
+
+    print("check sent num of pointers")
+    for pointer in pointers:
+        print(pointer.sentnum)
+
+    input("Pause")
+
 
     all_word_idx = []
     all_word_surface = []
