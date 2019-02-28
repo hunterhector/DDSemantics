@@ -16,6 +16,7 @@ from traitlets import (
 from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
 import sys
+import logging
 
 
 def hash_context(word_vocab, context):
@@ -167,13 +168,17 @@ def get_args(event, frame_args, arg_frames):
     def get_position(dep):
         p = dep.split('_')[0]
         if p == 'iobj':
-            # 'iobj' is not often, we put it to the 'prep' slot.
+            # 'iobj' is not seen frequently, we put it to the 'prep' slot.
             p = 'prep'
         return p
 
     for arg in args:
         dep = arg.get('dep', 'NA')
         fe = arg.get('fe', 'NA')
+
+        if not dep == 'NA' and get_position(dep) not in arg_candidates:
+            # If dep is an known but not in our target list, ignore them.
+            continue
 
         if not dep == 'NA':
             dep_slots[dep] = ((frame, fe), get_arg_content(arg))
@@ -202,7 +207,6 @@ def get_args(event, frame_args, arg_frames):
                 # In this case, we place an empty FE name here.
                 arg_candidates[position].append((dep, None, arg, 'no_impute'))
         else:
-            # TODO Problem in position.
             arg_candidates[position].append((dep, full_fe, arg, 'origin'))
 
     imputed_deps = defaultdict(Counter)
@@ -236,6 +240,9 @@ def get_args(event, frame_args, arg_frames):
             final_args[position] = candidate_args[0]
         else:
             final_args[position] = None
+
+    # print(final_args)
+    # input("look at args")
 
     return final_args
 
@@ -347,7 +354,9 @@ if __name__ == '__main__':
             help='Output path of the hashed data.').tag(config=True)
 
 
-    from event.util import load_command_line_config
+    from event.util import load_command_line_config, set_basic_log
+
+    set_basic_log()
 
     cl_conf = load_command_line_config(sys.argv[2:])
     conf = PyFileConfigLoader(sys.argv[1]).load_config()

@@ -166,6 +166,8 @@ class EventReader:
                     else:
                         represent = arg_info['representText']
 
+                    print(arg_info)
+
                     arg = {
                         'dep': arg_info['dep'],
                         'fe': arg_info['feName'],

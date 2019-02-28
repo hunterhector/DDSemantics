@@ -128,8 +128,6 @@ class NomBank(DataLoader):
             )
 
             article_id = predicate.article_id
-            # if article_id not in gc_annotations:
-            #     gc_annotations[article_id] = {}
 
             arg_annos = defaultdict(list)
 
