@@ -241,9 +241,6 @@ def get_args(event, frame_args, arg_frames):
         else:
             final_args[position] = None
 
-    # print(final_args)
-    # input("look at args")
-
     return final_args
 
 

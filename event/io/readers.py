@@ -166,10 +166,8 @@ class EventReader:
                     else:
                         represent = arg_info['representText']
 
-                    print(arg_info)
-
                     arg = {
-                        'dep': arg_info['dep'],
+                        'dep': arg_info.get('dep', 'NA'),
                         'fe': arg_info['feName'],
                         'arg_context': arg_context,
                         'represent': represent,
@@ -177,6 +175,7 @@ class EventReader:
                         'resolvable': False,
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
+                        'role': arg_info.get('argument_role', 'NA')
                     }
 
                     eid_count[arg_info['entityId']] += 1
