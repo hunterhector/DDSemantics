@@ -286,6 +286,9 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
 
         context = hash_context(word_vocab, event['predicate_context'])
 
+        print(event)
+        input('wait')
+
         hashed_doc['events'].append({
             'predicate': pid,
             'frame': fid,

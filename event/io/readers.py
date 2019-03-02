@@ -97,11 +97,6 @@ class EventReader:
 
     @staticmethod
     def get_context(sentence, start, end, window_size=5):
-        # TODO: Some argument span are wrong from the very beginning,
-        #  fixing that from the generation side.
-        print(sentence)
-        print(start, end)
-
         right_tokens = sentence[end:].strip().split()
         right_win = min(window_size, len(right_tokens))
         right_context = right_tokens[:right_win]
@@ -112,9 +107,6 @@ class EventReader:
 
         left_context = left_tokens[:left_win]
         left_context.reverse()
-
-        print(right_tokens)
-        print(right_win)
 
         return left_context, right_context
 
@@ -162,25 +154,21 @@ class EventReader:
                 events.append(event)
 
                 for arg_info in event_info['arguments']:
-                    if 'argStart' in arg_info:
-                        arg_context = self.get_context(
-                            sent, arg_info['argStart'], arg_info['argEnd']
-                        )
-                        print("Getting arg context")
-                        print(arg_context)
-                    else:
-                        left, right = arg_info['context'].split('___')
-                        arg_context = left.split(), right.split()
+                    # if 'argStart' in arg_info:
+                    #     arg_context = self.get_context(
+                    #         sent, arg_info['argStart'], arg_info['argEnd']
+                    #     )
+                    #     print("Getting arg context")
+                    #     print(arg_context)
+                    # else:
+
+                    left, right = arg_info['context'].split('___')
+                    arg_context = left.split(), right.split()
 
                     if entity_heads:
                         represent = entity_heads[arg_info['entityId']]
                     else:
                         represent = arg_info['representText']
-
-                    print(arg_info)
-                    print(arg_context)
-
-                    input('checking context')
 
                     arg = {
                         'dep': arg_info.get('dep', 'NA'),
