@@ -5,7 +5,7 @@ from event.arguments.prepare.event_vocab import (
     make_arg,
     make_fe,
     load_vocab,
-    get_word,
+    get_vocab_word,
 )
 from event.arguments import consts, util
 from collections import defaultdict, Counter
@@ -55,12 +55,11 @@ def load_frame_map(frame_map_file):
     return fmap, counts
 
 
-def get_arg_content(arg_info):
+def remove_slot_info(arg_info):
     content = {}
     for k, v in arg_info.items():
         if not (k == 'dep' or k == 'fe'):
             content[k] = v
-
     return content
 
 
@@ -120,14 +119,16 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
         dep, full_fe, content, source = arg
 
         if dep.startswith('prep'):
-            dep = get_word(dep, 'preposition', lookups, oovs)
-        arg_text = get_word(content['represent'], 'argument', lookups, oovs)
+            dep = get_vocab_word(dep, 'preposition', lookups, oovs)
 
-        arg_id = hash_arg_role(arg_text, dep, event_vocab, oovs)
+        arg_text = get_vocab_word(
+            content['represent'], 'argument', lookups, oovs)
+
+        arg_role_id = hash_arg_role(arg_text, dep, event_vocab, oovs)
 
         if full_fe is not None:
             frame, fe = full_fe
-            fe_name = get_word(make_fe(frame, fe), 'fe', lookups, oovs)
+            fe_name = get_vocab_word(make_fe(frame, fe), 'fe', lookups, oovs)
             if fe_name in event_vocab:
                 fe_id = event_vocab[fe_name]
             else:
@@ -139,10 +140,11 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
         hashed_context = hash_context(word_vocab, content['arg_context'])
 
         return {
-            'arg_role': arg_id,
+            'arg_role': arg_role_id,
             'fe': fe_id,
             'context': hashed_context,
             'entity_id': content['entity_id'],
+            'implicit': content['implicit'],
             'resolvable': content['resolvable'],
             'text': arg_text,
             'dep': dep,
@@ -181,10 +183,10 @@ def get_args(event, frame_args, arg_frames):
             continue
 
         if not dep == 'NA':
-            dep_slots[dep] = ((frame, fe), get_arg_content(arg))
+            dep_slots[dep] = ((frame, fe), remove_slot_info(arg))
 
         if not fe == 'NA':
-            frame_slots[(frame, fe)] = (dep, get_arg_content(arg))
+            frame_slots[(frame, fe)] = (dep, remove_slot_info(arg))
 
     imputed_fes = defaultdict(Counter)
     for dep, (full_fe, arg) in dep_slots.items():
@@ -248,7 +250,7 @@ def read_entity_features(entities, lookups, oovs):
     hashed_entities = {}
 
     for eid, entity in entities.items():
-        entity_head = get_word(
+        entity_head = get_vocab_word(
             entity['representEntityHead'], 'argument', lookups, oovs)
         hashed_entities[eid] = {
             'features': entity['features'],
@@ -259,7 +261,7 @@ def read_entity_features(entities, lookups, oovs):
 
 def get_predicate(predicate, lookups, oovs):
     return make_predicate(
-        get_word(predicate, 'predicate', lookups, oovs)
+        get_vocab_word(predicate, 'predicate', lookups, oovs)
     )
 
 
@@ -285,9 +287,6 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
                 arg, event_vocab, word_vocab, lookups, oovs)
 
         context = hash_context(word_vocab, event['predicate_context'])
-
-        print(event)
-        input('wait')
 
         hashed_doc['events'].append({
             'predicate': pid,

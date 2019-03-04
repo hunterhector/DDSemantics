@@ -8,7 +8,7 @@ import logging
 from event.arguments import consts
 
 
-def get_word(word, key, lookups, oovs):
+def get_vocab_word(word, key, lookups, oovs):
     if not word:
         return oovs[key]
 
@@ -58,9 +58,9 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
             for event in doc_info['events']:
                 event_count += 1
 
-                pred = get_word(event['predicate'], 'predicate', lookups, oovs)
+                pred = get_vocab_word(event['predicate'], 'predicate', lookups, oovs)
                 frame_name = event.get('frame')
-                frame = get_word(frame_name, 'frame', lookups, oovs)
+                frame = get_vocab_word(frame_name, 'frame', lookups, oovs)
 
                 sentence.append(make_predicate(pred))
 
@@ -76,17 +76,17 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
 
                     eid = arg['entityId']
                     text = represent_by_id.get(eid, arg['text'])
-                    arg_text = get_word(text, 'argument', lookups, oovs)
+                    arg_text = get_vocab_word(text, 'argument', lookups, oovs)
 
                     if dep.startswith('prep'):
-                        dep = get_word(dep, 'preposition', lookups, oovs)
+                        dep = get_vocab_word(dep, 'preposition', lookups, oovs)
 
                     arg_role = make_arg(arg_text, dep)
 
                     sentence.append(arg_role)
 
                     if include_frame:
-                        fe_name = get_word(
+                        fe_name = get_vocab_word(
                             make_fe(frame_name, fe), 'fe', lookups, oovs
                         )
                         sentence.append(fe_name)

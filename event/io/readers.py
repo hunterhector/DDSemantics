@@ -154,14 +154,6 @@ class EventReader:
                 events.append(event)
 
                 for arg_info in event_info['arguments']:
-                    # if 'argStart' in arg_info:
-                    #     arg_context = self.get_context(
-                    #         sent, arg_info['argStart'], arg_info['argEnd']
-                    #     )
-                    #     print("Getting arg context")
-                    #     print(arg_context)
-                    # else:
-
                     left, right = arg_info['context'].split('___')
                     arg_context = left.split(), right.split()
 
@@ -170,6 +162,8 @@ class EventReader:
                     else:
                         represent = arg_info['representText']
 
+                    role = arg_info.get('argument_role', 'NA')
+
                     arg = {
                         'dep': arg_info.get('dep', 'NA'),
                         'fe': arg_info['feName'],
@@ -177,9 +171,10 @@ class EventReader:
                         'represent': represent,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
+                        'implicit': role.startswith('i_'),
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
-                        'role': arg_info.get('argument_role', 'NA')
+                        'role': role
                     }
 
                     eid_count[arg_info['entityId']] += 1

@@ -1,24 +1,21 @@
-import os
-import logging
-from collections import defaultdict
-import torch
-import numpy as np
-import pickle
-import random
 import json
-from collections import Counter
-from event.arguments import consts
-from event.io.io_utils import pad_2d_list
-from event.arguments.util import (batch_combine, to_torch)
-import event.arguments.prepare.event_vocab as vocab_util
+import logging
 import math
-from event import torch_util
+import random
+from collections import Counter
+from collections import defaultdict
+
+import numpy as np
+import torch
+
+from event.arguments import consts
 from event.arguments.prepare.hash_cloze_data import (
-    hash_arg,
-    hash_context,
-    read_entity_features,
     hash_arg_role,
 )
+from event.arguments.util import (batch_combine, to_torch)
+from event.io.io_utils import pad_2d_list
+
+from pprint import pprint
 
 
 class ClozeSampler:
@@ -317,7 +314,8 @@ class HashedClozeReader:
     def parse_origin(self):
         pass
 
-    def collect_features(self, doc_info):
+    @staticmethod
+    def collect_features(doc_info):
         # Collect all features.
         features_by_eid = {}
         entity_heads = {}
@@ -327,6 +325,81 @@ class HashedClozeReader:
             entity_heads[int(eid)] = content['entity_head']
 
         return features_by_eid, entity_heads
+
+    def create_test_instance(self, target_evm_id, target_slot, args,
+                             arg_entities):
+        test_rank_list = []
+
+        gold_eid = args[target_slot]['entity_id']
+
+        # Replace the target slot with other entities for generating this.
+        for evm, eid, arg_text in arg_entities:
+            # Make a copy of the original slots.
+            cand_args = {}
+            for slot, content in args.items():
+                cand_args[slot] = {}
+                cand_args[slot].update(content)
+
+            if evm == target_evm_id and eid == gold_eid:
+                # This is the correct answer.
+                continue
+
+            # Replace with another entity.
+            self.replace_slot(cand_args, target_slot, eid, arg_text)
+            test_rank_list.append((cand_args, eid))
+
+        return test_rank_list
+
+    def get_one_test_docs(self, doc_info):
+        test_data = {'rep': [], 'distances': [], 'features': []}
+
+        # Collect information such as features and entity positions.
+        features_by_eid, entity_heads = self.collect_features(doc_info)
+        all_event_reps = [self._take_event_parts(e) for e in doc_info['events']]
+
+        # Some need to be done in iteration.
+        entity_positions = defaultdict(list)
+        arg_entities = set()
+
+        for evm_index, event in enumerate(doc_info['events']):
+
+            sentence_id = event.get('sentence_id', None)
+
+            for slot, arg in event['args'].items():
+                if len(arg) > 0:
+                    eid = arg['entity_id']
+                    arg_entities.add((evm_index, eid, arg['text']))
+                    entity_positions[eid].append((evm_index, slot, sentence_id))
+
+        cloze_event_indices = []
+        cloze_slot_indices = []
+
+        for evm_index, event in enumerate(doc_info['events']):
+            current_sent = event['sentence_id']
+
+            for slot, arg in event['args'].items():
+                if len(arg) > 0 and arg.get('implicit', False
+                                            ) and arg['resolvable']:
+                    test_rank_list = self.create_test_instance(
+                        evm_index, slot, event['args'], arg_entities)
+
+                    for cand_args, filler_eid in test_rank_list:
+                        cand_info = self.update_arguments(doc_info, evm_index,
+                                                          cand_args)
+                        self.assemble_instance(
+                            features_by_eid, entity_positions, evm_index,
+                            current_sent, cand_info, test_data, filler_eid)
+
+                        cloze_event_indices.append(evm_index)
+                        cloze_slot_indices.append(self.slot_names.index(slot))
+
+        common_data = {
+            'context': all_event_reps,
+            'event_indices': cloze_event_indices,
+            'slot_indices': cloze_slot_indices,
+        }
+
+        return test_data, common_data
 
     def read_test_docs(self, test_in, nid_detector):
         """
@@ -338,20 +411,166 @@ class HashedClozeReader:
         """
         for line in test_in:
             doc_info = json.loads(line)
-            features_by_eid, entity_heads = self.collect_features(doc_info)
+            yield self.get_one_test_docs(doc_info)
 
-            event_data = []
-            for evm_index, event_info in enumerate(doc_info['events']):
-                sentence_id = event_info.get('sentence_id', None)
+    def create_training_data(self, data_line):
+        doc_info = json.loads(data_line)
+        features_by_eid, entity_heads = self.collect_features(doc_info)
 
-            gold_event_data = {'rep': [], 'distances': [], 'features': []}
+        # Map from: entity id (eid) ->
+        # A list of tuples that represent an argument position:
+        # [(evm_index, slot, sentence_id)]
+        entity_positions = defaultdict(list)
 
-            # Filled candidates will be a list of instances similar to the shape
-            # of the gold_event_data, but with empty slots filled.
-            filled_candidates = []
+        # Unique set of (evm_index, slot, sentence_id) tuples.
+        # This is used to sample a slot to create clozes.
+        arg_entities = set()
+        eid_count = Counter()
+
+        for evm_index, event in enumerate(doc_info['events']):
+            if evm_index == self.max_events:
+                # Ignore documents that are too long.
+                break
+
+            sentence_id = event.get('sentence_id', None)
+
+            arg_info = {}
+            for slot, arg in event['args'].items():
+                if not arg or arg['entity_id'] == -1:
+                    arg_info[slot] = {}
+                else:
+                    # Argument for n-th event, at slot position 'slot'.
+                    eid = arg['entity_id']
+
+                    # From eid to entity information.
+                    # TODO: it is wrong to use sentence_id as entity_positions
+                    entity_positions[eid].append(
+                        (evm_index, slot, sentence_id)
+                    )
+                    arg_entities.add((evm_index, eid, arg['text']))
+                    eid_count[eid] += 1
+
+        all_event_reps = [self._take_event_parts(e) for e in doc_info['events']]
+        arg_entities = list(arg_entities)
+
+        if len(arg_entities) <= 1:
+            # There no enough arguments to sample from.
+            return None
+
+        # We current sample the predicate based on unigram distribution.
+        # A better learning strategy is to select one
+        # cross instance that is difficult. We can have two
+        # strategies here:
+        # 1. Again use unigram distribution to sample items.
+        # 2. Select items based on classifier output.
+
+        gold_event_data = {'rep': [], 'distances': [], 'features': []}
+        cross_event_data = {'rep': [], 'distances': [], 'features': []}
+        inside_event_data = {'rep': [], 'distances': [], 'features': []}
+        cloze_event_indices = []
+        cloze_slot_indices = []
+
+        for evm_index, event_info in enumerate(doc_info['events']):
+            event_info = doc_info['events'][evm_index]
+
+            pred = event_info['predicate']
+            if pred == self.event_vocab[consts.unk_predicate]:
+                continue
+
+            keep_pred = self.subsample_pred(pred)
+
+            if not keep_pred:
+                # Too frequent word will be ignore.
+                continue
+
+            current_sent = event_info['sentence_id']
+
+            for slot_index, slot in enumerate(self.slot_names):
+                arg = event_info['args'][slot]
+
+                correct_id = arg.get('entity_id', -1)
+
+                # Apparently, singleton and unks are not resolvable.
+                if correct_id < 0:
+                    continue
+
+                if eid_count[correct_id] <= 1:
+                    continue
+
+                if entity_heads[correct_id] == consts.unk_arg_word:
+                    continue
+
+                cross_sample = self.cross_cloze(
+                    doc_info['events'][evm_index]['args'], arg_entities,
+                    evm_index, slot
+                )
+
+                if not cross_sample:
+                    continue
+
+                inside_sample = self.inside_cloze(
+                    doc_info['events'][evm_index]['args'], slot
+                )
+
+                if not inside_sample:
+                    continue
+
+                cross_args, cross_filler_id = cross_sample
+                cross_info = self.update_arguments(
+                    doc_info, evm_index, cross_args)
+                self.assemble_instance(
+                    features_by_eid, entity_positions, evm_index,
+                    current_sent, cross_info, cross_event_data, cross_filler_id)
+
+                inside_args, inside_filler_id = inside_sample
+                inside_info = self.update_arguments(
+                    doc_info, evm_index, inside_args)
+
+                self.assemble_instance(
+                    features_by_eid, entity_positions, evm_index,
+                    current_sent, inside_info, inside_event_data,
+                    inside_filler_id
+                )
+
+                self.assemble_instance(
+                    features_by_eid, entity_positions, evm_index,
+                    current_sent, event_info, gold_event_data, correct_id
+                )
+
+                cloze_event_indices.append(evm_index)
+                cloze_slot_indices.append(slot_index)
+
+        if len(cloze_slot_indices) == 0:
+            # This document do not contains training instance.
+            return None
+
+        instance_data = {
+            'gold': gold_event_data,
+            'cross': cross_event_data,
+            'inside': inside_event_data,
+        }
+
+        common_data = {
+            'context': all_event_reps,
+            'event_indices': cloze_event_indices,
+            'slot_indices': cloze_slot_indices,
+        }
+
+        return instance_data, common_data
+
+    def assemble_instance(
+            self, features_by_eid, entity_positions, evm_index, current_sent,
+            instance_info, instance_data, filler_eid):
+        instance_rep = self._take_event_parts(instance_info)
+        instance_features = features_by_eid[filler_eid]
+        instance_distances = get_distance_signature(
+            evm_index, entity_positions, instance_info, current_sent)
+
+        instance_data['rep'].append(instance_rep)
+        instance_data['features'].append(instance_features)
+        instance_data['distances'].append(instance_distances)
 
     def parse_docs(self, data_in, from_line=None, until_line=None):
-
         line_num = 0
         for line in data_in:
             line_num += 1
@@ -362,168 +581,12 @@ class HashedClozeReader:
             if until_line and line_num > until_line:
                 break
 
-            doc_info = json.loads(line)
-            features_by_eid, entity_heads = self.collect_features(doc_info)
+            parsed_output = self.create_training_data(line)
 
-            # Organize all the arguments.
-
-            # List of event info.
-            event_data = []
-
-            # Map from: entity id (eid)
-            # to: A list of tuples: [(evm_index, slot, sentence_id)]
-            entity_mentions = defaultdict(list)
-
-            # Unique set of (evm_index, slot, sentence_id) tuples.
-            # This is used to sample a slot to create clozes.
-            arg_entities = set()
-            eid_count = Counter()
-
-            for evm_index, event in enumerate(doc_info['events']):
-                if evm_index == self.max_events:
-                    break
-
-                event_data.append(event)
-                sentence_id = event.get('sentence_id', None)
-
-                arg_info = {}
-                for slot, arg in event['args'].items():
-                    if not arg or arg['entity_id'] == -1:
-                        arg_info[slot] = {}
-                    else:
-                        # Argument for nth event, at slot position 'slot'.
-                        eid = arg['entity_id']
-
-                        # From eid to entity information.
-                        entity_mentions[eid].append(
-                            (evm_index, slot, sentence_id)
-                        )
-                        arg_entities.add((evm_index, eid, arg['text']))
-                        eid_count[eid] += 1
-
-            all_event_reps = [self._take_event_parts(e) for e in event_data]
-            arg_entities = list(arg_entities)
-
-            if len(arg_entities) <= 1:
-                # There no enough arguments to sample from.
+            if parsed_output is None:
                 continue
 
-            # We current sample the predicate based on unigram distribution.
-            # A better learning strategy is to select one
-            # cross instance that is difficult. We can have two
-            # strategies here:
-            # 1. Again use unigram distribution to sample items.
-            # 2. Select items based on classifier output.
-
-            gold_event_data = {'rep': [], 'distances': [], 'features': []}
-            cross_event_data = {'rep': [], 'distances': [], 'features': []}
-            inside_event_data = {'rep': [], 'distances': [], 'features': []}
-            cloze_event_indices = []
-            cloze_slot_indices = []
-
-            for evm_index, event_info in enumerate(event_data):
-                event_info = event_data[evm_index]
-
-                pred = event_info['predicate']
-                if pred == self.event_vocab[consts.unk_predicate]:
-                    continue
-
-                keep_pred = self.subsample_pred(pred)
-
-                if not keep_pred:
-                    # Too frequent word will be ignore.
-                    continue
-
-                # import pprint
-                # pp = pprint.PrettyPrinter(indent=2)
-
-                current_sent = event_info['sentence_id']
-
-                for slot_index, slot in enumerate(self.slot_names):
-                    arg = event_info['args'][slot]
-
-                    correct_id = arg.get('entity_id', -1)
-
-                    # Apparently, singleton and unks are not resolvable.
-                    if correct_id < 0:
-                        continue
-
-                    if eid_count[correct_id] <= 1:
-                        continue
-
-                    if entity_heads[correct_id] == consts.unk_arg_word:
-                        continue
-
-                    cross_sample = self.cross_cloze(
-                        event_data[evm_index]['args'], arg_entities,
-                        evm_index, slot
-                    )
-
-                    if not cross_sample:
-                        continue
-
-                    inside_sample = self.inside_cloze(
-                        event_data[evm_index]['args'], slot
-                    )
-
-                    if not inside_sample:
-                        continue
-
-                    cross_args, cross_filler_id = cross_sample
-                    cross_info = self.update_arguments(
-                        doc_info, evm_index, cross_args)
-                    cross_rep = self._take_event_parts(cross_info)
-                    cross_features = features_by_eid[cross_filler_id]
-                    cross_distances = get_distance_signature(
-                        evm_index, entity_mentions, cross_info, current_sent,
-                    )
-
-                    inside_args, inside_filler_id = inside_sample
-                    inside_info = self.update_arguments(
-                        doc_info, evm_index, inside_args)
-                    inside_rep = self._take_event_parts(inside_info)
-                    inside_features = features_by_eid[inside_filler_id]
-                    inside_distances = get_distance_signature(
-                        evm_index, entity_mentions, inside_info, current_sent,
-                    )
-
-                    gold_rep = self._take_event_parts(event_info)
-                    gold_features = features_by_eid[correct_id]
-                    gold_distances = get_distance_signature(
-                        evm_index, entity_mentions, event_info, current_sent,
-                    )
-
-                    cloze_event_indices.append(evm_index)
-                    cloze_slot_indices.append(slot_index)
-
-                    cross_event_data['rep'].append(cross_rep)
-                    cross_event_data['features'].append(cross_features)
-                    cross_event_data['distances'].append(cross_distances)
-
-                    inside_event_data['rep'].append(inside_rep)
-                    inside_event_data['features'].append(inside_features)
-                    inside_event_data['distances'].append(inside_distances)
-
-                    gold_event_data['rep'].append(gold_rep)
-                    gold_event_data['features'].append(gold_features)
-                    gold_event_data['distances'].append(gold_distances)
-
-            if len(cloze_slot_indices) == 0:
-                # This document do not contains training instance.
-                continue
-
-            instance_data = {
-                'gold': gold_event_data,
-                'cross': cross_event_data,
-                'inside': inside_event_data,
-            }
-
-            common_data = {
-                'context': all_event_reps,
-                'event_indices': cloze_event_indices,
-                'slot_indices': cloze_slot_indices,
-            }
-
+            instance_data, common_data = parsed_output
             yield instance_data, common_data
 
     def update_arguments(self, doc_info, evm_index, arguments):

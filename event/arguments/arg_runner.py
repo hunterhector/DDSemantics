@@ -49,8 +49,8 @@ class GoldNullArgDetector(NullArgDetector):
     def __index__(self):
         super(NullArgDetector, self).__init__()
 
-    def get_filling_slot(self, doc_info):
-        pass
+    def get_filling_slot(self, arg_info):
+        return arg_info['to_fill']
 
 
 class ArgRunner(Configurable):
@@ -97,7 +97,7 @@ class ArgRunner(Configurable):
         if self.para.nid_method == 'gold':
             self.nid_detector = GoldNullArgDetector()
         else:
-            self.nid_detector = GoldNullArgDetector()
+            raise NotImplementedError
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -415,6 +415,8 @@ if __name__ == '__main__':
                            default_value=True).tag(config=True)
         do_test = Bool(help='Flag for conducting testing.',
                        default_value=False).tag(config=True)
+        cmd_log = Bool(help='Log on command prompt only.',
+                       default_value=False).tag(config=True)
 
 
     from event.util import load_config_with_cmd, load_with_sub_config
@@ -433,7 +435,7 @@ if __name__ == '__main__':
 
     timestamp = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
 
-    if basic_para.log_dir:
+    if not basic_para.cmd_log and basic_para.log_dir:
         mode = ''
 
         if basic_para.do_training:
