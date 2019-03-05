@@ -21,6 +21,9 @@ import os
 from event import torch_util
 import pickle
 import shutil
+from pprint import pprint
+from itertools import groupby
+from operator import itemgetter
 
 
 def data_gen(data_path):
@@ -128,21 +131,12 @@ class ArgRunner(Configurable):
         elif self.para.loss == 'pairwise_letor':
             raise NotImplementedError
 
-    def _get_loss(self, batch_instance, batch_info):
-        correct_coh = self.model(
-            batch_instance['gold'],
-            batch_info,
-        )
+    def _get_loss(self, batch_instance, batch_common):
+        correct_coh = self.model(batch_instance['gold'], batch_common)
 
-        cross_coh = self.model(
-            batch_instance['cross'],
-            batch_info,
-        )
+        cross_coh = self.model(batch_instance['cross'], batch_common)
 
-        inside_coh = self.model(
-            batch_instance['inside'],
-            batch_info,
-        )
+        inside_coh = self.model(batch_instance['inside'], batch_common)
 
         outputs = [correct_coh, cross_coh, inside_coh]
         labels = [1, 0, 0]
@@ -178,8 +172,8 @@ class ArgRunner(Configurable):
         num_instances = 0
 
         for batch_data in generator:
-            batch_instance, batch_info, n_instance = batch_data
-            loss = self._get_loss(batch_instance, batch_info)
+            batch_instance, batch_common, n_instance = batch_data
+            loss = self._get_loss(batch_instance, batch_common)
             if not loss:
                 raise ValueError('Error in computing loss.')
             dev_loss += loss.item()
@@ -216,37 +210,23 @@ class ArgRunner(Configurable):
         logging.info(
             "Conducting test on [%s] with model at [%s]" % (test_in, model_dir))
 
-        for batch_data in self.reader.read_test_docs(
+        for instances, common_data, gold_labels in self.reader.read_test_docs(
                 data_gen(test_in), self.nid_detector):
-            batch_instance, batch_info, n_instance = batch_data
+            coh = self.model(instances, common_data)
 
-            correct_coh = self.model(
-                batch_instance['gold'],
-                batch_info,
-            )
+            event_indices = common_data['event_indices'].data.numpy()[0]
+            slot_indices = common_data['slot_indices'].data.numpy()[0]
+            coh_scores = coh.data.numpy()[0]
 
-            cross_coh = self.model(
-                batch_instance['cross'],
-                batch_info,
-            )
+            for (event_idx, slot_idx), result in groupby(
+                    zip(zip(event_indices, slot_indices),
+                        zip(coh_scores, gold_labels)), key=itemgetter(0)):
+                score_list = [r[1] for r in result]
 
-            inside_coh = self.model(
-                batch_instance['inside'],
-                batch_info,
-            )
+            print("Sizes: events %d, slots %d, coh, %d" % (
+                len(event_indices), len(slot_indices), len(coh_scores)))
 
-            outputs = [correct_coh, cross_coh, inside_coh]
-            labels = [1, 0, 0]
-
-            loss = self.__loss(labels, outputs)
-
-            # Compute test loss as well.
-            loss = self._get_loss(batch_instance, batch_info)
-
-        cross_coh = self.model(
-            batch_instance['cross'],
-            batch_info,
-        )
+            input("Wait for this document.")
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False):
@@ -421,12 +401,10 @@ if __name__ == '__main__':
 
     from event.util import load_config_with_cmd, load_with_sub_config
     import json
-    import pprint
 
     conf = load_with_sub_config(sys.argv)
 
-    pp = pprint.PrettyPrinter(indent=2)
-    pp.pprint(conf)
+    pprint(conf)
 
     basic_para = Basic(config=conf)
 

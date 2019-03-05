@@ -99,7 +99,7 @@ def main(config):
 
     detector.predict(test_reader, res_collector)
 
-    res_collector.write()
+    res_collector.run()
 
 
 if __name__ == '__main__':

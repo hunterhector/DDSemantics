@@ -198,9 +198,7 @@ class HashedClozeReader:
             if key == 'context':
                 padded = self.__batch_pad(key, value, max_context_size)
                 vectorized = to_torch(padded, self.__data_types[key])
-                common_data['context'] = batch_combine(
-                    vectorized, self.device
-                )
+                common_data[key] = batch_combine(vectorized, self.device)
             else:
                 padded = self.__batch_pad(key, value, max_instance_size)
                 vectorized = to_torch(padded, self.__data_types[key])
@@ -218,7 +216,6 @@ class HashedClozeReader:
                 sizes[key] = len(padded)
 
         b_size = sizes['context']
-
         for key, s in sizes.items():
             assert s == b_size
 
@@ -251,6 +248,8 @@ class HashedClozeReader:
                 data_in, from_line, until_line):
 
             gold_event_data = instance_data['gold']
+
+            # Debug purpose only.
             predicate_text = []
             for gold_rep in gold_event_data['rep']:
                 eid = gold_rep[0]
@@ -275,8 +274,7 @@ class HashedClozeReader:
 
             doc_count += 1
 
-            # Each document is a full instance since we do multiple product at
-            # once.
+            # Each document is considered as one single instance since.
             if doc_count == self.batch_size:
                 yield self.create_batch(b_common_data, b_instance_data,
                                         max_context_size, max_instance_size)
@@ -373,25 +371,35 @@ class HashedClozeReader:
 
         cloze_event_indices = []
         cloze_slot_indices = []
+        gold_labels = []
 
         for evm_index, event in enumerate(doc_info['events']):
             current_sent = event['sentence_id']
 
             for slot, arg in event['args'].items():
-                if len(arg) > 0 and arg.get('implicit', False
-                                            ) and arg['resolvable']:
+                is_implicit = arg.get('implicit', False)
+                if len(arg) > 0 and is_implicit and arg['resolvable']:
                     test_rank_list = self.create_test_instance(
-                        evm_index, slot, event['args'], arg_entities)
+                        evm_index, slot, event['args'], arg_entities
+                    )
 
                     for cand_args, filler_eid in test_rank_list:
-                        cand_info = self.update_arguments(doc_info, evm_index,
-                                                          cand_args)
+                        cand_info = self.update_arguments(
+                            doc_info, evm_index, cand_args
+                        )
                         self.assemble_instance(
                             features_by_eid, entity_positions, evm_index,
-                            current_sent, cand_info, test_data, filler_eid)
-
+                            current_sent, cand_info, test_data, filler_eid
+                        )
                         cloze_event_indices.append(evm_index)
                         cloze_slot_indices.append(self.slot_names.index(slot))
+
+                        gold_labels.append(
+                            1 if filler_eid == arg['entity_id'] else 0
+                        )
+
+        if len(cloze_event_indices) == 0:
+            return None
 
         common_data = {
             'context': all_event_reps,
@@ -399,7 +407,7 @@ class HashedClozeReader:
             'slot_indices': cloze_slot_indices,
         }
 
-        return test_data, common_data
+        return test_data, common_data, gold_labels
 
     def read_test_docs(self, test_in, nid_detector):
         """
@@ -411,7 +419,26 @@ class HashedClozeReader:
         """
         for line in test_in:
             doc_info = json.loads(line)
-            yield self.get_one_test_docs(doc_info)
+            test_data = self.get_one_test_docs(doc_info)
+
+            if not test_data:
+                continue
+
+            doc_instances, common_data, gold_labels = test_data
+
+            b_common_data = {}
+            b_instance_data = {}
+
+            # Create a pseudo batch with one instance.
+            for key, value in common_data.items():
+                vectorized = to_torch([value], self.__data_types[key])
+                b_common_data[key] = batch_combine(vectorized, self.device)
+
+            for key, value in doc_instances.items():
+                vectorized = to_torch([value], self.__data_types[key])
+                b_instance_data[key] = batch_combine(vectorized, self.device)
+
+            yield b_instance_data, b_common_data, gold_labels
 
     def create_training_data(self, data_line):
         doc_info = json.loads(data_line)
@@ -537,6 +564,7 @@ class HashedClozeReader:
                     current_sent, event_info, gold_event_data, correct_id
                 )
 
+                # These two list indicate where the target argument is.
                 cloze_event_indices.append(evm_index)
                 cloze_slot_indices.append(slot_index)
 
