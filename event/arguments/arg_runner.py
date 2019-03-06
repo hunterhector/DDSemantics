@@ -18,12 +18,13 @@ from smart_open import smart_open
 from event.arguments.implicit_arg_resources import ImplicitArgResources
 import math
 import os
-from event import torch_util
 import pickle
 import shutil
 from pprint import pprint
 from itertools import groupby
 from operator import itemgetter
+from event.arguments.evaluation import ImplicitEval
+from event import util
 
 
 def data_gen(data_path):
@@ -206,27 +207,41 @@ class ArgRunner(Configurable):
 
         self._get_loss(batch_instance, batch_info)
 
-    def test(self, test_in, model_dir):
+    def test(self, test_in, model_dir, eval_dir):
         logging.info(
             "Conducting test on [%s] with model at [%s]" % (test_in, model_dir))
 
-        for instances, common_data, gold_labels in self.reader.read_test_docs(
-                data_gen(test_in), self.nid_detector):
+        evaluator = ImplicitEval(eval_dir)
+
+        doc_count = 0
+
+        self.model.eval()
+
+        for test_data in self.reader.read_test_docs(data_gen(test_in),
+                                                    self.nid_detector):
+            doc_id, instances, common_data, gold_labels = test_data
             coh = self.model(instances, common_data)
 
-            event_indices = common_data['event_indices'].data.numpy()[0]
-            slot_indices = common_data['slot_indices'].data.numpy()[0]
-            coh_scores = coh.data.numpy()[0]
+            event_indices = common_data['event_indices'].data.numpy()[
+                0].tolist()
+            slot_indices = common_data['slot_indices'].data.numpy()[0].tolist()
+            coh_scores = coh.data.numpy()[0].tolist()
 
             for (event_idx, slot_idx), result in groupby(
                     zip(zip(event_indices, slot_indices),
                         zip(coh_scores, gold_labels)), key=itemgetter(0)):
                 score_list = [r[1] for r in result]
+                evaluator.add_result(doc_id, event_idx, slot_idx, score_list)
 
-            print("Sizes: events %d, slots %d, coh, %d" % (
-                len(event_indices), len(slot_indices), len(coh_scores)))
+            doc_count += 1
 
-            input("Wait for this document.")
+            if doc_count % 10 == 0:
+                logging.info("Processed %d documents." % doc_count)
+
+        logging.info("Processed %d documents." % doc_count)
+
+        logging.info("Writing evaluation output to %s." % eval_dir)
+        evaluator.run()
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False):
@@ -451,7 +466,17 @@ if __name__ == '__main__':
         )
 
     if basic_para.do_test:
+        eval_res_dir = os.path.join(
+            basic_para.log_dir, basic_para.model_name + '_results'
+        )
+
+        if not os.path.exists(eval_res_dir):
+            os.makedirs(eval_res_dir)
+
+        print("Evaluation result will be saved in: " + eval_res_dir)
+
         runner.test(
             test_in=basic_para.test_in,
             model_dir=basic_para.model_dir,
+            eval_dir=eval_res_dir,
         )

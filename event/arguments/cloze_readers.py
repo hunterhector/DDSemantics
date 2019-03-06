@@ -360,7 +360,6 @@ class HashedClozeReader:
         arg_entities = set()
 
         for evm_index, event in enumerate(doc_info['events']):
-
             sentence_id = event.get('sentence_id', None)
 
             for slot, arg in event['args'].items():
@@ -421,6 +420,8 @@ class HashedClozeReader:
             doc_info = json.loads(line)
             test_data = self.get_one_test_docs(doc_info)
 
+            doc_id = doc_info['docid']
+
             if not test_data:
                 continue
 
@@ -438,7 +439,7 @@ class HashedClozeReader:
                 vectorized = to_torch([value], self.__data_types[key])
                 b_instance_data[key] = batch_combine(vectorized, self.device)
 
-            yield b_instance_data, b_common_data, gold_labels
+            yield doc_id, b_instance_data, b_common_data, gold_labels
 
     def create_training_data(self, data_line):
         doc_info = json.loads(data_line)

@@ -99,11 +99,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
         self._vote_method = para.vote_method
 
         if self._vote_method == 'biaffine':
-            # The biaffine composition matrix.
-            # self.mtx_bilinear_comp = Parameter(
-            #     torch.Tensor(self.para.event_embedding_dim + 1,
-            #                  self.para.event_embedding_dim)
-            # )
             self.bilinear_layer = Bilinear(
                 self.para.event_embedding_dim,
                 self.para.event_embedding_dim,
