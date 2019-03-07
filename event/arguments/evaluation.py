@@ -11,17 +11,10 @@ class ImplicitEval:
         self.out_dir = out_dir
         self.cutoffs = [1, 5, 10]
 
-    def add_result(self, doc_id, event_idx, slot_idx, gold_scores):
-        gold_rank = []
-        top_k = []
-        for rank, (score, label) in enumerate(
-                sorted(gold_scores, reverse=True)):
-            if label == 1:
-                gold_rank.append(rank + 1)
-            if rank < 5:
-                top_k.append((score, label))
-
-        self.results.append((doc_id, event_idx, slot_idx, gold_rank, top_k))
+    def add_result(self, doc_id, event_idx, slot, score_labels, debug_data):
+        self.results.append(
+            (doc_id, event_idx, slot, score_labels, debug_data,)
+        )
 
     def run(self):
         detailed_path = os.path.join(self.out_dir, 'detailed_out.json')
@@ -52,8 +45,20 @@ class ImplicitEval:
 
                 overall_res['num_docs'] += 1
 
-                for _, event_idx, slot_idx, l_gold_rank, l_top_k in ref:
-                    num_correct = len(l_gold_rank)
+                for _, event_idx, slot, score_labels, debug_data in ref:
+                    gold_rank = []
+                    top_k = []
+
+                    for r, (score, label) in enumerate(
+                            sorted(score_labels, reverse=True)):
+                        if label == 1:
+                            gold_rank.append(r + 1)
+                        if r < 5:
+                            top_k.append(
+                                (score, label, debug_data['entity_heads'][r], r)
+                            )
+
+                    num_correct = len(gold_rank)
 
                     if num_correct == 0:
                         # No correct answer possible for this instance.
@@ -61,10 +66,11 @@ class ImplicitEval:
 
                     instance_res = {
                         'event_index': event_idx,
-                        'slot_index': slot_idx,
+                        'slot': slot,
                         'num_gold': num_correct,
-                        'gold_ranks': l_gold_rank,
-                        'top_k': l_top_k,
+                        'gold_ranks': gold_rank,
+                        'top_k': top_k,
+                        'gold_entity': debug_data['gold_entity'],
                         'scores': {},
                         'gold': {},
                     }
@@ -72,7 +78,7 @@ class ImplicitEval:
                     overall_res['num_instances'] += 1
 
                     for c in self.cutoffs:
-                        tp = sum([1 if v <= c else 0 for v in l_gold_rank])
+                        tp = sum([1 if v <= c else 0 for v in gold_rank])
                         p = 1.0 * tp / c
                         r = 1.0 * tp / num_correct
                         instance_res['scores']['p@%d' % c] = p

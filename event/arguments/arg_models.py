@@ -306,9 +306,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # batch x instance_size
         batch_event_indices = batch_info['event_indices']
 
-        # print(batch_event_rep.shape)
-        # print(batch_context.shape)
-
         if self.__debug_show_shapes:
             print("context shape")
             print(batch_context.shape)
@@ -323,6 +320,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
+        # TODO: It seems that slots should not be used as numbers.
         l_extracted = [batch_features, batch_slots.unsqueeze(-1)]
 
         if self._use_distance:
@@ -375,18 +373,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         scores = self._linear_combine(all_features).squeeze(-1)
 
-        # print(all_features)
-        # print(scores)
-        # print(scores.max(dim=-1))
-        # print(scores.sum())
-
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
-
-        # print(scores)
-        # print(scores.max(dim=-1))
-        # print(scores.sum())
-        # print(scores.shape)
-        # input('------------------')
 
         return scores

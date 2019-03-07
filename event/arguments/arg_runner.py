@@ -208,18 +208,16 @@ class ArgRunner(Configurable):
         self._get_loss(batch_instance, batch_info)
 
     def test(self, test_in, model_dir, eval_dir):
-        logging.info(
-            "Conducting test on [%s] with model at [%s]" % (test_in, model_dir))
+        logging.info("Test on [%s] with model at [%s]" % (test_in, model_dir))
 
         evaluator = ImplicitEval(eval_dir)
-
         doc_count = 0
-
         self.model.eval()
 
-        for test_data in self.reader.read_test_docs(data_gen(test_in),
-                                                    self.nid_detector):
-            doc_id, instances, common_data, gold_labels = test_data
+        for test_data in self.reader.read_test_docs(
+                data_gen(test_in), self.nid_detector):
+            doc_id, instances, common_data, gold_labels, debug_data = test_data
+
             coh = self.model(instances, common_data)
 
             event_indices = common_data['event_indices'].data.numpy()[
@@ -230,8 +228,11 @@ class ArgRunner(Configurable):
             for (event_idx, slot_idx), result in groupby(
                     zip(zip(event_indices, slot_indices),
                         zip(coh_scores, gold_labels)), key=itemgetter(0)):
-                score_list = [r[1] for r in result]
-                evaluator.add_result(doc_id, event_idx, slot_idx, score_list)
+                score_labels = [r[1] for r in result]
+                slot_name = self.reader.slot_names[int(slot_idx)]
+                evaluator.add_result(
+                    doc_id, event_idx, slot_name, score_labels, debug_data
+                )
 
             doc_count += 1
 
@@ -418,8 +419,6 @@ if __name__ == '__main__':
     import json
 
     conf = load_with_sub_config(sys.argv)
-
-    pprint(conf)
 
     basic_para = Basic(config=conf)
 

@@ -147,6 +147,8 @@ class HashedClozeReader:
         self.__data_types = {
             'context': np.int64,
             'event_indices': np.int64,
+            # The slot index is considered as a feature as well, so it has the
+            # same type as the features.
             'slot_indices': np.float32,
             'rep': np.int64,
             'distances': np.float32,
@@ -349,7 +351,8 @@ class HashedClozeReader:
         return test_rank_list
 
     def get_one_test_docs(self, doc_info):
-        test_data = {'rep': [], 'distances': [], 'features': []}
+        instance_data = {'rep': [], 'distances': [], 'features': []}
+        debug_data = {'entity_text': [], 'gold_entity': []}
 
         # Collect information such as features and entity positions.
         features_by_eid, entity_heads = self.collect_features(doc_info)
@@ -372,6 +375,7 @@ class HashedClozeReader:
         cloze_slot_indices = []
         gold_labels = []
 
+        # TODO: right now the features and indices are not matching
         for evm_index, event in enumerate(doc_info['events']):
             current_sent = event['sentence_id']
 
@@ -382,14 +386,24 @@ class HashedClozeReader:
                         evm_index, slot, event['args'], arg_entities
                     )
 
+                    # TODO: The test rank list have random order, but why are
+                    # results affected by it?
+
+                    debug_data['gold_entity'] = (
+                        arg['entity_id'],
+                        entity_heads[arg['entity_id']],
+                    )
+
                     for cand_args, filler_eid in test_rank_list:
                         cand_info = self.update_arguments(
                             doc_info, evm_index, cand_args
                         )
                         self.assemble_instance(
                             features_by_eid, entity_positions, evm_index,
-                            current_sent, cand_info, test_data, filler_eid
+                            current_sent, cand_info, instance_data,
+                            filler_eid
                         )
+
                         cloze_event_indices.append(evm_index)
                         cloze_slot_indices.append(self.slot_names.index(slot))
 
@@ -397,8 +411,14 @@ class HashedClozeReader:
                             1 if filler_eid == arg['entity_id'] else 0
                         )
 
+                        debug_data['entity_text'].append(
+                            entity_heads[filler_eid])
+
         if len(cloze_event_indices) == 0:
             return None
+
+        print(all_event_reps[:5])
+        input('event repres')
 
         common_data = {
             'context': all_event_reps,
@@ -406,7 +426,7 @@ class HashedClozeReader:
             'slot_indices': cloze_slot_indices,
         }
 
-        return test_data, common_data, gold_labels
+        return instance_data, common_data, gold_labels, debug_data
 
     def read_test_docs(self, test_in, nid_detector):
         """
@@ -418,14 +438,14 @@ class HashedClozeReader:
         """
         for line in test_in:
             doc_info = json.loads(line)
-            test_data = self.get_one_test_docs(doc_info)
-
             doc_id = doc_info['docid']
+
+            test_data = self.get_one_test_docs(doc_info)
 
             if not test_data:
                 continue
 
-            doc_instances, common_data, gold_labels = test_data
+            doc_instances, common_data, gold_labels, debug_data = test_data
 
             b_common_data = {}
             b_instance_data = {}
@@ -439,7 +459,13 @@ class HashedClozeReader:
                 vectorized = to_torch([value], self.__data_types[key])
                 b_instance_data[key] = batch_combine(vectorized, self.device)
 
-            yield doc_id, b_instance_data, b_common_data, gold_labels
+            yield (
+                doc_id,
+                b_instance_data,
+                b_common_data,
+                gold_labels,
+                debug_data,
+            )
 
     def create_training_data(self, data_line):
         doc_info = json.loads(data_line)
@@ -590,14 +616,10 @@ class HashedClozeReader:
     def assemble_instance(
             self, features_by_eid, entity_positions, evm_index, current_sent,
             instance_info, instance_data, filler_eid):
-        instance_rep = self._take_event_parts(instance_info)
-        instance_features = features_by_eid[filler_eid]
-        instance_distances = get_distance_signature(
-            evm_index, entity_positions, instance_info, current_sent)
-
-        instance_data['rep'].append(instance_rep)
-        instance_data['features'].append(instance_features)
-        instance_data['distances'].append(instance_distances)
+        instance_data['rep'].append(self._take_event_parts(instance_info))
+        instance_data['features'].append(features_by_eid[filler_eid])
+        instance_data['distances'].append(get_distance_signature(
+            evm_index, entity_positions, instance_info, current_sent))
 
     def parse_docs(self, data_in, from_line=None, until_line=None):
         line_num = 0
