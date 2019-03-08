@@ -123,6 +123,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         self.__debug_show_shapes = False
 
+    def debug(self):
+        self.__debug_show_shapes = True
+
     def _full_event_embedding_size(self):
         return self.para.num_event_components * self.para.event_embedding_dim
 
@@ -333,7 +336,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print("Embedded shapes")
             print(context_emb.shape)
             print(event_emb.shape)
-            print(distance_emb.shape)
+
+            if self._use_distance:
+                print(distance_emb.shape)
+
             print(extracted_features.shape)
 
         event_repr = self._event_repr(event_emb)

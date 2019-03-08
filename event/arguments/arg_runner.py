@@ -78,6 +78,8 @@ class ArgRunner(Configurable):
 
         self.checkpoint_name = 'checkpoint.pth'
 
+        self.best_model_name = 'model_best.pth'
+
         self.device = torch.device(
             "cuda" if self.para.use_gpu and torch.cuda.is_available()
             else "cpu"
@@ -191,9 +193,6 @@ class ArgRunner(Configurable):
         if os.path.isfile(checkpoint_path):
             logging.info("Loading checkpoint '{}'".format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
-
-            start_epoch = checkpoint['epoch']
-            best_loss = checkpoint['best_loss']
             self.model.load_state_dict(checkpoint['state_dict'])
 
         for name, param in self.model.named_parameters():
@@ -212,6 +211,11 @@ class ArgRunner(Configurable):
 
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
+
+        # best_model_path = os.path.join(self.model_dir, self.best_model_name)
+        # logging.info("Loading best model from '{}'".format(best_model_path))
+        # checkpoint = torch.load(best_model_path)
+        # self.model.load_state_dict(checkpoint['state_dict'])
         self.model.eval()
 
         for test_data in self.reader.read_test_docs(
@@ -220,18 +224,17 @@ class ArgRunner(Configurable):
 
             coh = self.model(instances, common_data)
 
-            event_indices = common_data['event_indices'].data.numpy()[
-                0].tolist()
-            slot_indices = common_data['slot_indices'].data.numpy()[0].tolist()
+            event_idxes = common_data['event_indices'].data.numpy()[0].tolist()
+            slot_idxes = common_data['slot_indices'].data.numpy()[0].tolist()
             coh_scores = coh.data.numpy()[0].tolist()
 
-            for (event_idx, slot_idx), result in groupby(
-                    zip(zip(event_indices, slot_indices),
+            for (event_idxes, slot_idxes), result in groupby(
+                    zip(zip(event_idxes, slot_idxes),
                         zip(coh_scores, gold_labels)), key=itemgetter(0)):
                 score_labels = [r[1] for r in result]
-                slot_name = self.reader.slot_names[int(slot_idx)]
+                slot_name = self.reader.slot_names[int(slot_idxes)]
                 evaluator.add_result(
-                    doc_id, event_idx, slot_name, score_labels, debug_data
+                    doc_id, event_idxes, slot_name, score_labels, debug_data
                 )
 
             doc_count += 1

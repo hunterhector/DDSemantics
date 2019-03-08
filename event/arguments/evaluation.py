@@ -55,7 +55,7 @@ class ImplicitEval:
                             gold_rank.append(r + 1)
                         if r < 5:
                             top_k.append(
-                                (score, label, debug_data['entity_heads'][r], r)
+                                (score, label, debug_data['entity_text'][r], r)
                             )
 
                     num_correct = len(gold_rank)

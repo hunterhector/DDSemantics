@@ -371,13 +371,16 @@ class HashedClozeReader:
                     arg_entities.add((evm_index, eid, arg['text']))
                     entity_positions[eid].append((evm_index, slot, sentence_id))
 
+        # Make sure this order is the same everytime.
+        arg_entities = sorted(list(arg_entities))
+
         cloze_event_indices = []
         cloze_slot_indices = []
         gold_labels = []
 
         # TODO: right now the features and indices are not matching
         for evm_index, event in enumerate(doc_info['events']):
-            current_sent = event['sentence_id']
+            pred_sent = event['sentence_id']
 
             for slot, arg in event['args'].items():
                 is_implicit = arg.get('implicit', False)
@@ -395,14 +398,12 @@ class HashedClozeReader:
                     )
 
                     for cand_args, filler_eid in test_rank_list:
-                        cand_info = self.update_arguments(
+                        cand_event = self.update_arguments(
                             doc_info, evm_index, cand_args
                         )
                         self.assemble_instance(
-                            features_by_eid, entity_positions, evm_index,
-                            current_sent, cand_info, instance_data,
-                            filler_eid
-                        )
+                            instance_data, features_by_eid, entity_positions,
+                            evm_index, pred_sent, cand_event, filler_eid)
 
                         cloze_event_indices.append(evm_index)
                         cloze_slot_indices.append(self.slot_names.index(slot))
@@ -416,9 +417,6 @@ class HashedClozeReader:
 
         if len(cloze_event_indices) == 0:
             return None
-
-        print(all_event_reps[:5])
-        input('event repres')
 
         common_data = {
             'context': all_event_reps,
@@ -572,24 +570,23 @@ class HashedClozeReader:
                 cross_args, cross_filler_id = cross_sample
                 cross_info = self.update_arguments(
                     doc_info, evm_index, cross_args)
-                self.assemble_instance(
-                    features_by_eid, entity_positions, evm_index,
-                    current_sent, cross_info, cross_event_data, cross_filler_id)
+                self.assemble_instance(cross_event_data, features_by_eid,
+                                       entity_positions, evm_index,
+                                       current_sent, cross_info,
+                                       cross_filler_id)
 
                 inside_args, inside_filler_id = inside_sample
                 inside_info = self.update_arguments(
                     doc_info, evm_index, inside_args)
 
-                self.assemble_instance(
-                    features_by_eid, entity_positions, evm_index,
-                    current_sent, inside_info, inside_event_data,
-                    inside_filler_id
-                )
+                self.assemble_instance(inside_event_data, features_by_eid,
+                                       entity_positions, evm_index,
+                                       current_sent, inside_info,
+                                       inside_filler_id)
 
-                self.assemble_instance(
-                    features_by_eid, entity_positions, evm_index,
-                    current_sent, event_info, gold_event_data, correct_id
-                )
+                self.assemble_instance(gold_event_data, features_by_eid,
+                                       entity_positions, evm_index,
+                                       current_sent, event_info, correct_id)
 
                 # These two list indicate where the target argument is.
                 cloze_event_indices.append(evm_index)
@@ -613,13 +610,13 @@ class HashedClozeReader:
 
         return instance_data, common_data
 
-    def assemble_instance(
-            self, features_by_eid, entity_positions, evm_index, current_sent,
-            instance_info, instance_data, filler_eid):
-        instance_data['rep'].append(self._take_event_parts(instance_info))
+    def assemble_instance(self, instance_data, features_by_eid,
+                          entity_positions, evm_index, sent_id,
+                          event_words, filler_eid):
+        instance_data['rep'].append(self._take_event_parts(event_words))
         instance_data['features'].append(features_by_eid[filler_eid])
         instance_data['distances'].append(get_distance_signature(
-            evm_index, entity_positions, instance_info, current_sent))
+            evm_index, entity_positions, event_words, sent_id))
 
     def parse_docs(self, data_in, from_line=None, until_line=None):
         line_num = 0
@@ -640,7 +637,8 @@ class HashedClozeReader:
             instance_data, common_data = parsed_output
             yield instance_data, common_data
 
-    def update_arguments(self, doc_info, evm_index, arguments):
+    @staticmethod
+    def update_arguments(doc_info, evm_index, arguments):
         event = doc_info['events'][evm_index]
         full_info = {
             'predicate': event['predicate'],
