@@ -212,10 +212,10 @@ class ArgRunner(Configurable):
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
 
-        # best_model_path = os.path.join(self.model_dir, self.best_model_name)
-        # logging.info("Loading best model from '{}'".format(best_model_path))
-        # checkpoint = torch.load(best_model_path)
-        # self.model.load_state_dict(checkpoint['state_dict'])
+        best_model_path = os.path.join(self.model_dir, self.best_model_name)
+        logging.info("Loading best model from '{}'".format(best_model_path))
+        checkpoint = torch.load(best_model_path)
+        self.model.load_state_dict(checkpoint['state_dict'])
         self.model.eval()
 
         for test_data in self.reader.read_test_docs(
@@ -224,9 +224,9 @@ class ArgRunner(Configurable):
 
             coh = self.model(instances, common_data)
 
-            event_idxes = common_data['event_indices'].data.numpy()[0].tolist()
-            slot_idxes = common_data['slot_indices'].data.numpy()[0].tolist()
-            coh_scores = coh.data.numpy()[0].tolist()
+            event_idxes = common_data['event_indices'].data.cpu().numpy()[0].tolist()
+            slot_idxes = common_data['slot_indices'].data.cpu().numpy()[0].tolist()
+            coh_scores = coh.data.cpu().numpy()[0].tolist()
 
             for (event_idxes, slot_idxes), result in groupby(
                     zip(zip(event_idxes, slot_idxes),
@@ -444,8 +444,8 @@ if __name__ == '__main__':
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
-    else:
-        set_basic_log()
+
+    set_basic_log()
 
     logging.info("Started the runner at " + timestamp)
     logging.info(json.dumps(conf, indent=2))
