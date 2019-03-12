@@ -95,9 +95,9 @@ class ArgRunner(Configurable):
 
         self.reader = HashedClozeReader(self.resources,
                                         self.para.batch_size,
-                                        self.para.multi_context,
-                                        self.para.max_events,
-                                        self.para.max_cloze)
+                                        multi_context=self.para.multi_context,
+                                        max_events=self.para.max_events,
+                                        max_cloze=self.para.max_cloze)
 
         # Set up Null Instantiation.
         if self.para.nid_method == 'gold':
@@ -224,8 +224,10 @@ class ArgRunner(Configurable):
 
             coh = self.model(instances, common_data)
 
-            event_idxes = common_data['event_indices'].data.cpu().numpy()[0].tolist()
-            slot_idxes = common_data['slot_indices'].data.cpu().numpy()[0].tolist()
+            event_idxes = common_data['event_indices'].data.cpu().numpy()[
+                0].tolist()
+            slot_idxes = common_data['slot_indices'].data.cpu().numpy()[
+                0].tolist()
             coh_scores = coh.data.cpu().numpy()[0].tolist()
 
             for (event_idxes, slot_idxes), result in groupby(
@@ -255,7 +257,7 @@ class ArgRunner(Configurable):
             logging.info("Validation with data from [%s]", validation_in)
         elif validation_size:
             logging.info(
-                "Will use first [%d] sets for validation." % validation_size)
+                "Will use first [%d] lines for validation." % validation_size)
         else:
             logging.error("No validation!")
 

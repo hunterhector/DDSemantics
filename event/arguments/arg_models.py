@@ -12,6 +12,10 @@ class ArgCompatibleModel(nn.Module):
     def __init__(self, para, resources):
         super(ArgCompatibleModel, self).__init__()
         self.para = para
+
+        # This will be used to create the one-hot vector for the slots.
+        self.num_slots = para.num_slots
+
         self.event_embedding = None
         self.word_embedding = None
 
@@ -78,8 +82,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
             para.event_composition_layer_sizes
         )
 
-        # Number of extracted features, and 1 slot position feature.
-        feature_size = self.para.num_extracted_features + 1
+        # Number of extracted features, and dim for 1-hot slot position feature.
+        feature_size = self.para.num_extracted_features + self.num_slots
 
         # Config feature size.
         self._vote_pool_type = para.vote_pooling
@@ -232,6 +236,12 @@ class EventPairCompositionModel(ArgCompatibleModel):
         used.
         :return:
         """
+        if self.__debug_show_shapes:
+            print("Event Embedding shape")
+            print(event_emb.shape)
+            print("Context shape")
+            print(context_emb.shape)
+
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
 
@@ -320,11 +330,19 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print(batch_slots.shape)
             print(batch_event_indices.shape)
 
+        # Add embedding dimension at the end.
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
-        # TODO: It seems that slots should not be used as numbers.
-        l_extracted = [batch_features, batch_slots.unsqueeze(-1)]
+        # Create one hot from index.
+        one_hot = torch.zeros(batch_slots.shape)
+        one_hot.scatter_(1, batch_slots, 1)
+
+        print(one_hot)
+        print(one_hot.shape)
+        input('debug one hot')
+
+        l_extracted = [batch_features, one_hot]
 
         if self._use_distance:
             distance_emb = self._encode_distance(event_emb, batch_distances)

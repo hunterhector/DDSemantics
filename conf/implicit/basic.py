@@ -8,6 +8,7 @@ c.ArgModelPara.word_embedding_dim = 300
 c.ArgModelPara.arg_composition_layer_sizes = 600, 300
 c.ArgModelPara.event_composition_layer_sizes = 400, 200
 c.ArgModelPara.nb_epochs = 20
+c.ArgModelPara.num_slots = 3
 c.ArgModelPara.num_event_components = 8
 c.ArgModelPara.num_extracted_features = 11
 c.ArgModelPara.multi_context = True

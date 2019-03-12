@@ -34,7 +34,7 @@ class ArgModelPara(Configurable):
              'or multiple context per document').tag(
         config=True)
     max_events = Int(
-        help='Maximum number of events allowed per document',
+        help='Maximum number of events allowed per document during training',
         default_value=200).tag(config=True)
     max_cloze = Int(
         help='Maximum number of cloze to extract per document',
@@ -54,6 +54,7 @@ class ArgModelPara(Configurable):
         Int, default_value=[400, 200],
         help='Output size of the event composition layers.'
     ).tag(config=True)
+    num_slots = Int(help='Number of slots in the model.').tag(config=True)
     num_event_components = Int(
         help='Number of components per event').tag(config=True)
     num_extracted_features = Int(help='Feature size').tag(config=True)

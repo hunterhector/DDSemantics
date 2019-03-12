@@ -360,25 +360,25 @@ class HashedClozeReader:
 
         # Some need to be done in iteration.
         entity_positions = defaultdict(list)
-        arg_entities = set()
+        cand_args = set()
 
         for evm_index, event in enumerate(doc_info['events']):
             sentence_id = event.get('sentence_id', None)
 
             for slot, arg in event['args'].items():
-                if len(arg) > 0:
+                # implicit arguments will not be candidiates.
+                if len(arg) > 0 and not arg['implicit']:
                     eid = arg['entity_id']
-                    arg_entities.add((evm_index, eid, arg['text']))
+                    cand_args.add((evm_index, eid, arg['text']))
                     entity_positions[eid].append((evm_index, slot, sentence_id))
 
-        # Make sure this order is the same everytime.
-        arg_entities = sorted(list(arg_entities))
+        # Make sure this order is the same, but this should not matter.
+        cand_args = sorted(list(cand_args))
 
         cloze_event_indices = []
         cloze_slot_indices = []
         gold_labels = []
 
-        # TODO: right now the features and indices are not matching
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
 
@@ -386,11 +386,8 @@ class HashedClozeReader:
                 is_implicit = arg.get('implicit', False)
                 if len(arg) > 0 and is_implicit and arg['resolvable']:
                     test_rank_list = self.create_test_instance(
-                        evm_index, slot, event['args'], arg_entities
+                        evm_index, slot, event['args'], cand_args
                     )
-
-                    # TODO: The test rank list have random order, but why are
-                    # results affected by it?
 
                     debug_data['gold_entity'] = (
                         arg['entity_id'],
@@ -479,10 +476,14 @@ class HashedClozeReader:
         arg_entities = set()
         eid_count = Counter()
 
+        event_subset = []
+
         for evm_index, event in enumerate(doc_info['events']):
             if evm_index == self.max_events:
                 # Ignore documents that are too long.
                 break
+
+            event_subset.append(event)
 
             sentence_id = event.get('sentence_id', None)
 
@@ -495,14 +496,11 @@ class HashedClozeReader:
                     eid = arg['entity_id']
 
                     # From eid to entity information.
-                    # TODO: it is wrong to use sentence_id as entity_positions
-                    entity_positions[eid].append(
-                        (evm_index, slot, sentence_id)
-                    )
+                    entity_positions[eid].append((evm_index, slot, sentence_id))
                     arg_entities.add((evm_index, eid, arg['text']))
                     eid_count[eid] += 1
 
-        all_event_reps = [self._take_event_parts(e) for e in doc_info['events']]
+        all_event_reps = [self._take_event_parts(e) for e in event_subset]
         arg_entities = list(arg_entities)
 
         if len(arg_entities) <= 1:
@@ -522,9 +520,7 @@ class HashedClozeReader:
         cloze_event_indices = []
         cloze_slot_indices = []
 
-        for evm_index, event_info in enumerate(doc_info['events']):
-            event_info = doc_info['events'][evm_index]
-
+        for evm_index, event_info in enumerate(event_subset):
             pred = event_info['predicate']
             if pred == self.event_vocab[consts.unk_predicate]:
                 continue
@@ -553,7 +549,7 @@ class HashedClozeReader:
                     continue
 
                 cross_sample = self.cross_cloze(
-                    doc_info['events'][evm_index]['args'], arg_entities,
+                    event_info['args'], arg_entities,
                     evm_index, slot
                 )
 
@@ -561,7 +557,7 @@ class HashedClozeReader:
                     continue
 
                 inside_sample = self.inside_cloze(
-                    doc_info['events'][evm_index]['args'], slot
+                    event_info['args'], slot
                 )
 
                 if not inside_sample:
