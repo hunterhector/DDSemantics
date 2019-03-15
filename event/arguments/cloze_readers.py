@@ -149,7 +149,7 @@ class HashedClozeReader:
             'event_indices': np.int64,
             # The slot index is considered as a feature as well, so it has the
             # same type as the features.
-            'slot_indices': np.float32,
+            'slot_indices': np.int64,
             'rep': np.int64,
             'distances': np.float32,
             'features': np.float32,
@@ -248,7 +248,6 @@ class HashedClozeReader:
 
         for instance_data, common_data in self.parse_docs(
                 data_in, from_line, until_line):
-
             gold_event_data = instance_data['gold']
 
             # Debug purpose only.
@@ -278,13 +277,27 @@ class HashedClozeReader:
 
             # Each document is considered as one single instance since.
             if doc_count == self.batch_size:
-                yield self.create_batch(b_common_data, b_instance_data,
-                                        max_context_size, max_instance_size)
+                debug_data = {
+                    'predicate': batch_predicates,
+                }
+
+                train_batch = self.create_batch(
+                    b_common_data, b_instance_data, max_context_size,
+                    max_instance_size
+                )
+
+                yield train_batch, debug_data
+
                 _clear()
 
         # Yield the remaining data.
-        yield self.create_batch(b_common_data, b_instance_data,
-                                max_context_size, max_instance_size)
+        debug_data = {
+            'predicate': batch_predicates,
+        }
+        train_batch = self.create_batch(b_common_data, b_instance_data,
+                                        max_context_size, max_instance_size)
+
+        yield train_batch, debug_data
         _clear()
 
     def _take_event_parts(self, event_info):

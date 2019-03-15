@@ -25,6 +25,7 @@ from itertools import groupby
 from operator import itemgetter
 from event.arguments.evaluation import ImplicitEval
 from event import util
+from collections import Counter
 
 
 def data_gen(data_path):
@@ -250,7 +251,12 @@ class ArgRunner(Configurable):
         evaluator.run()
 
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, resume=False):
+              model_out_dir=None, resume=False, track_pred=None):
+        if track_pred is None:
+            track_pred = {}
+
+        target_pred_count = Counter()
+
         logging.info("Training with data from [%s]", train_in)
 
         if validation_in:
@@ -301,10 +307,18 @@ class ArgRunner(Configurable):
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
-            for batch_data in self.reader.read_cloze_batch(
+            for batch_data, debug_data in self.reader.read_cloze_batch(
                     data_gen(train_in), from_line=validation_size):
 
                 batch_instance, batch_info, n_instance = batch_data
+
+                for batch_preds in debug_data['predicate']:
+                    for pred in batch_preds:
+                        pred_text = pred.replace('-pred', '')
+
+                        target_pred_count['_overall_'] += 1
+                        if pred_text in track_pred:
+                            target_pred_count[pred_text] += 1
 
                 loss = self._get_loss(batch_instance, batch_info)
                 if not loss:
@@ -344,10 +358,6 @@ class ArgRunner(Configurable):
                             total_loss / batch_count)
                     )
 
-                    # for name, weight in self.model.named_parameters():
-                    #     if name.startswith('event_to_var_layer'):
-                    #         print(name, weight)
-
                     recent_loss = 0
 
             logging.info("Conducting validation.")
@@ -378,6 +388,12 @@ class ArgRunner(Configurable):
                     best=', is current best.' if is_best else '.'
                 ))
 
+            for pred, count in target_pred_count.items():
+                logging.info(
+                    "Epoch %d: %s has been observed %d times." % (
+                        epoch, pred, count)
+                )
+
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
                 worse = 0
@@ -398,6 +414,10 @@ class ArgRunner(Configurable):
                                  epoch=epoch)
                     )
                     break
+
+        for pred, count in target_pred_count.items():
+            logging.info(
+                "Overall, %s has been observed %d times." % (pred, count))
 
 
 if __name__ == '__main__':
@@ -461,12 +481,18 @@ if __name__ == '__main__':
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
         os.makedirs(basic_para.debug_dir)
 
+    target_predicates = {
+        'bid', 'sell', 'loan', 'cost', 'plan', 'price', 'invest', 'price',
+        'lose', 'invest', 'fund',
+    }
+
     if basic_para.do_training:
         runner.train(
             basic_para.train_in,
             validation_size=basic_para.validation_size,
             validation_in=basic_para.valid_in,
-            resume=True
+            resume=True,
+            track_pred=target_predicates,
         )
 
     if basic_para.do_test:
