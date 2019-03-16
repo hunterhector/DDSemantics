@@ -338,11 +338,14 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         print(batch_slots.shape)
 
+
         one_hot = torch.unsqueeze(
             torch.zeros(batch_slots.shape).to(self.device), 1)
+
         print(one_hot)
         print(one_hot.shape)
         print(batch_slots)
+
         one_hot.scatter_(1, batch_slots, 1)
 
         print(one_hot)
