@@ -505,6 +505,10 @@ class HashedClozeReader:
                 if not arg or arg['entity_id'] == -1:
                     arg_info[slot] = {}
                 else:
+
+                    input(arg)
+
+
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
 
