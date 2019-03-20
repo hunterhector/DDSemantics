@@ -114,13 +114,21 @@ class ArgRunner(Configurable):
             assert self.para.event_arg_vocab_size == \
                    self.resources.event_embedding.shape[0]
 
-    def __loss(self, l_label, l_scores):
+    def __loss(self, l_label, l_scores, mask):
         if self.para.loss == 'cross_entropy':
             total_loss = 0
+
             for label, scores in zip(l_label, l_scores):
+                masked_scores = torch.zeros(scores.shape).to(self.device)
+                masked_scores.masked_scatter_(mask, scores)
+
                 if label == 1:
-                    gold = torch.ones(scores.shape).to(self.device)
+                    # Make the coh scores close to 1 when these are actual
+                    # answers.
+                    gold = torch.zeros(scores.shape).to(
+                        self.device).masked_fill_(mask, 1)
                 else:
+                    # Make the coh score close to 0 when these are fake cases.
                     gold = torch.zeros(scores.shape).to(self.device)
 
                 # TODO: Got NaN in scores
@@ -135,18 +143,27 @@ class ArgRunner(Configurable):
         elif self.para.loss == 'pairwise_letor':
             raise NotImplementedError
 
-    def _get_loss(self, batch_instance, batch_common):
+    def _compute_coh(self, batch_instance, batch_common):
         correct_coh = self.model(batch_instance['gold'], batch_common)
-
         cross_coh = self.model(batch_instance['cross'], batch_common)
-
         inside_coh = self.model(batch_instance['inside'], batch_common)
 
-        outputs = [correct_coh, cross_coh, inside_coh]
+        # print(correct_coh)
+        # print(correct_coh.shape)
+        # print(cross_coh)
+        # print(cross_coh.shape)
+        #
+        # input('checking coherence')
+
+        return correct_coh, cross_coh, inside_coh
+
+    def _get_accuracy(self, cross_coh, inside_coh):
+        pass
+
+    def _get_loss(self, batch_instance, batch_common, mask):
+        outputs = self._compute_coh(batch_instance, batch_common)
         labels = [1, 0, 0]
-
-        loss = self.__loss(labels, outputs)
-
+        loss = self.__loss(labels, outputs, mask)
         return loss
 
     def __dump_stuff(self, key, obj):
@@ -176,8 +193,8 @@ class ArgRunner(Configurable):
         num_instances = 0
 
         for batch_data in generator:
-            batch_instance, batch_common, n_instance = batch_data
-            loss = self._get_loss(batch_instance, batch_common)
+            batch_instance, batch_common, b_size, mask = batch_data
+            loss = self._get_loss(batch_instance, batch_common, mask)
             if not loss:
                 raise ValueError('Error in computing loss.')
             dev_loss += loss.item()
@@ -207,17 +224,15 @@ class ArgRunner(Configurable):
 
         self._get_loss(batch_instance, batch_info)
 
-    def test(self, test_in, model_dir, eval_dir):
-        logging.info("Test on [%s] with model at [%s]" % (test_in, model_dir))
-
-        evaluator = ImplicitEval(eval_dir)
-        doc_count = 0
-
+    def __load_best(self):
         best_model_path = os.path.join(self.model_dir, self.best_model_name)
         logging.info("Loading best model from '{}'".format(best_model_path))
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint['state_dict'])
-        self.model.eval()
+
+    def __test(self, test_in, eval_dir=None):
+        evaluator = ImplicitEval(eval_dir)
+        doc_count = 0
 
         for test_data in self.reader.read_test_docs(
                 data_gen(test_in), self.nid_detector):
@@ -245,10 +260,18 @@ class ArgRunner(Configurable):
             if doc_count % 10 == 0:
                 logging.info("Processed %d documents." % doc_count)
 
-        logging.info("Processed %d documents." % doc_count)
+        logging.info("Finish testing %d documents." % doc_count)
 
-        logging.info("Writing evaluation output to %s." % eval_dir)
+        if eval_dir:
+            logging.info("Writing evaluation output to %s." % eval_dir)
+
         evaluator.run()
+
+    def test(self, test_in, eval_dir):
+        logging.info("Test on [%s] with model at [%s]" % test_in)
+        self.__load_best()
+        self.model.eval()
+        self.__test(test_in, eval_dir)
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False, track_pred=None):
@@ -307,10 +330,10 @@ class ArgRunner(Configurable):
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
-            for batch_data, debug_data in self.reader.read_cloze_batch(
+            for batch_data, debug_data in self.reader.read_train_batch(
                     data_gen(train_in), from_line=validation_size):
 
-                batch_instance, batch_info, n_instance = batch_data
+                batch_instance, batch_info, b_size, mask = batch_data
 
                 for batch_preds in debug_data['predicate']:
                     for pred in batch_preds:
@@ -320,7 +343,7 @@ class ArgRunner(Configurable):
                         if pred_text in track_pred:
                             target_pred_count[pred_text] += 1
 
-                loss = self._get_loss(batch_instance, batch_info)
+                loss = self._get_loss(batch_instance, batch_info, mask)
                 if not loss:
                     self.__save_checkpoint({
                         'epoch': epoch + 1,
@@ -347,7 +370,7 @@ class ArgRunner(Configurable):
                 optimizer.step()
 
                 batch_count += 1
-                instance_count += n_instance
+                instance_count += b_size
 
                 if not batch_count % log_freq:
                     logging.info(
@@ -357,23 +380,24 @@ class ArgRunner(Configurable):
                             recent_loss / log_freq,
                             total_loss / batch_count)
                     )
-
                     recent_loss = 0
 
             logging.info("Conducting validation.")
-
             dev_generator = None
-
             if validation_in:
-                dev_generator = self.reader.read_cloze_batch(
+                dev_generator = self.reader.read_train_batch(
                     data_gen(validation_in))
-
             if validation_size:
-                dev_generator = self.reader.read_cloze_batch(
+                dev_generator = self.reader.read_train_batch(
                     data_gen(train_in), until_line=validation_size)
+            dev_data = [l for l in dev_generator]
 
-            dev_loss, num_dev_batches, num_instances = self.validation(
-                dev_generator)
+            # Compute validation loss.
+            dev_loss, num_dev_batches, num_instances = self.validation(dev_data)
+            # Compute precision score on dev set.
+            self.model.eval()
+            self.__test(test_in=dev_data)
+            self.model.train()
 
             is_best = False
             if not best_loss or dev_loss < best_loss:
@@ -507,6 +531,5 @@ if __name__ == '__main__':
 
         runner.test(
             test_in=basic_para.test_in,
-            model_dir=basic_para.model_dir,
             eval_dir=eval_res_dir,
         )

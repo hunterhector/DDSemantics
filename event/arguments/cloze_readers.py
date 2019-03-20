@@ -193,11 +193,13 @@ class HashedClozeReader:
                      max_context_size, max_instance_size):
         instance_data = defaultdict(dict)
         common_data = {}
-
+        # The actual instance lengths of in each batch.
+        data_len = []
         sizes = {}
 
         for key, value in b_common_data.items():
             if key == 'context':
+                # print([len(v) for v in value])
                 padded = self.__batch_pad(key, value, max_context_size)
                 vectorized = to_torch(padded, self.__data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
@@ -210,6 +212,7 @@ class HashedClozeReader:
 
         for ins_type, ins_data in b_instance_data.items():
             for key, value in ins_data.items():
+                data_len = [len(v) for v in value]
                 padded = self.__batch_pad(key, value, max_instance_size)
                 vectorized = to_torch(padded, self.__data_types[key])
                 instance_data[ins_type][key] = batch_combine(
@@ -221,9 +224,15 @@ class HashedClozeReader:
         for key, s in sizes.items():
             assert s == b_size
 
-        return instance_data, common_data, b_size
+        mask = np.zeros([b_size, max_instance_size], dtype=int)
+        for i, l in enumerate(data_len):
+            mask[i][0: l] = 1
 
-    def read_cloze_batch(self, data_in, from_line=None, until_line=None):
+        ins_mask = to_torch(mask, np.uint8).to(self.device)
+
+        return instance_data, common_data, b_size, ins_mask
+
+    def read_train_batch(self, data_in, from_line=None, until_line=None):
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
         batch_predicates = []
@@ -440,7 +449,7 @@ class HashedClozeReader:
         """
         Load test data. Importantly, this will create alternative cloze
          filling for ranking.
-        :param test_in: Test data path.
+        :param test_in: supply lines as test data.
         :param nid_detector: Null Instantiation Detector.
         :return:
         """
@@ -505,10 +514,6 @@ class HashedClozeReader:
                 if not arg or arg['entity_id'] == -1:
                     arg_info[slot] = {}
                 else:
-
-                    input(arg)
-
-
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
 

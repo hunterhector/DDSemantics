@@ -334,22 +334,13 @@ class EventPairCompositionModel(ArgCompatibleModel):
         context_emb = self.event_embedding(batch_context)
         event_emb = self.event_embedding(batch_event_rep)
 
-        # Create one hot from index.
+        # Create one hot features from index.
+        # batch x instance_size x num_slots
+        one_hot = torch.zeros(
+            batch_slots.shape[0], batch_slots.shape[1], self.num_slots
+        ).to(self.device)
 
-        print(batch_slots.shape)
-
-
-        one_hot = torch.unsqueeze(
-            torch.zeros(batch_slots.shape).to(self.device), 1)
-
-        print(one_hot)
-        print(one_hot.shape)
-        print(batch_slots)
-
-        one_hot.scatter_(1, batch_slots, 1)
-
-        print(one_hot)
-        input('debug one hot')
+        one_hot.scatter_(2, batch_slots.unsqueeze(2), 1)
 
         l_extracted = [batch_features, one_hot]
 
