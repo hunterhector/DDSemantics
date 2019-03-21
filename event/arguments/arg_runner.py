@@ -28,17 +28,33 @@ from event import util
 from collections import Counter
 
 
-def data_gen(data_path):
+def data_gen(data_path, from_line=None, until_line=None):
+    line_num = 0
+
     if os.path.isdir(data_path):
-        for f in os.listdir(data_path):
-            logging.info("Reading from {}".format(f))
+        last_file = None
+        for f in sorted(os.listdir(data_path)):
             with smart_open(os.path.join(data_path, f)) as fin:
                 for line in fin:
+                    line_num += 1
+                    if from_line and line_num <= from_line:
+                        continue
+                    if until_line and line_num > until_line:
+                        break
+
+                    if not last_file == f:
+                        logging.info("Reading from {}".format(f))
+                        last_file = f
                     yield line
     else:
         with smart_open(data_path) as fin:
             logging.info("Reading from {}".format(data_path))
             for line in fin:
+                line_num += 1
+                if from_line and line_num <= from_line:
+                    continue
+                if until_line and line_num > until_line:
+                    break
                 yield line
 
 
@@ -192,7 +208,7 @@ class ArgRunner(Configurable):
         num_batches = 0
         num_instances = 0
 
-        for batch_data in generator:
+        for batch_data, debug_data in generator:
             batch_instance, batch_common, b_size, mask = batch_data
             loss = self._get_loss(batch_instance, batch_common, mask)
             if not loss:
@@ -230,12 +246,12 @@ class ArgRunner(Configurable):
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint['state_dict'])
 
-    def __test(self, test_in, eval_dir=None):
+    def __test(self, test_lines, eval_dir=None):
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
 
-        for test_data in self.reader.read_test_docs(
-                data_gen(test_in), self.nid_detector):
+        for test_data in self.reader.read_test_docs(test_lines,
+                                                    self.nid_detector):
             doc_id, instances, common_data, gold_labels, debug_data = test_data
 
             coh = self.model(instances, common_data)
@@ -271,7 +287,7 @@ class ArgRunner(Configurable):
         logging.info("Test on [%s] with model at [%s]" % test_in)
         self.__load_best()
         self.model.eval()
-        self.__test(test_in, eval_dir)
+        self.__test(data_gen(test_in), eval_dir)
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False, track_pred=None):
@@ -319,6 +335,16 @@ class ArgRunner(Configurable):
                         checkpoint_path)
                 )
 
+        # Read development lines.
+        dev_lines = None
+        if validation_in:
+            dev_lines = [l for l in data_gen(validation_in)]
+        if validation_size:
+            dev_lines = [l for l in
+                         data_gen(train_in, until_line=validation_size)]
+
+        logging.info("%d development lines acquired." % len(dev_lines))
+
         total_loss = 0
         recent_loss = 0
 
@@ -330,8 +356,10 @@ class ArgRunner(Configurable):
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
+            # TODO: just read a little training for fun.
             for batch_data, debug_data in self.reader.read_train_batch(
-                    data_gen(train_in), from_line=validation_size):
+                    data_gen(train_in, from_line=validation_size,
+                             until_line=validation_size + 10000)):
 
                 batch_instance, batch_info, b_size, mask = batch_data
 
@@ -382,22 +410,20 @@ class ArgRunner(Configurable):
                     )
                     recent_loss = 0
 
-            logging.info("Conducting validation.")
-            dev_generator = None
-            if validation_in:
-                dev_generator = self.reader.read_train_batch(
-                    data_gen(validation_in))
-            if validation_size:
-                dev_generator = self.reader.read_train_batch(
-                    data_gen(train_in), until_line=validation_size)
-            dev_data = [l for l in dev_generator]
-
+            logging.info("Loading validation data.")
+            dev_gen = self.reader.read_train_batch(dev_lines)
             # Compute validation loss.
-            dev_loss, num_dev_batches, num_instances = self.validation(dev_data)
-            # Compute precision score on dev set.
+            logging.info("Computing validation loss.")
+            dev_loss, n_batches, n_instances = self.validation(dev_gen)
+
+            # Conduct test on dev set.
+            logging.info("Computing test result.")
             self.model.eval()
-            self.__test(test_in=dev_data)
+            self.__test(test_lines=dev_lines)
             self.model.train()
+
+            logging.info("Finishing validation.")
+            input("check validation working.")
 
             is_best = False
             if not best_loss or dev_loss < best_loss:
@@ -408,7 +434,7 @@ class ArgRunner(Configurable):
                 "Finished epoch {epoch:d}, avg. loss {loss:.4f}, "
                 "validation loss {dev_loss:.4f}{best:s}".format(
                     epoch=epoch, loss=total_loss / batch_count,
-                    dev_loss=dev_loss / num_dev_batches,
+                    dev_loss=dev_loss / n_batches,
                     best=', is current best.' if is_best else '.'
                 ))
 
