@@ -62,16 +62,44 @@ class NullArgDetector:
     def __init__(self):
         pass
 
-    def get_slot_to_fill(self, doc_info):
+    def should_fill(self, doc_info, arg_info):
         pass
 
 
 class GoldNullArgDetector(NullArgDetector):
+    """
+    A Null arg detector that look at gold standard.
+    """
+
     def __index__(self):
         super(NullArgDetector, self).__init__()
 
-    def get_filling_slot(self, arg_info):
-        return arg_info['to_fill']
+    def should_fill(self, doc_info, arg_info):
+        return arg_info.get('implicit', True)
+
+
+class AutoNullArgDetector(NullArgDetector):
+    """
+    A Null arg detector that returns true for every arg.
+    """
+
+    def __init__(self):
+        super(NullArgDetector, self).__init__()
+
+    def should_fill(self, doc_info, arg_info):
+        return True
+
+
+class TrainableNullArgDetector(NullArgDetector):
+    """
+    A Null arg detector that is trained to predict.
+    """
+
+    def __index__(self):
+        super(NullArgDetector, self).__init__()
+
+    def should_fill(self, doc_info, arg_info):
+        raise NotImplementedError
 
 
 class ArgRunner(Configurable):
@@ -119,8 +147,10 @@ class ArgRunner(Configurable):
         # Set up Null Instantiation.
         if self.para.nid_method == 'gold':
             self.nid_detector = GoldNullArgDetector()
-        else:
-            raise NotImplementedError
+        elif self.para.nid_method == 'train':
+            self.nid_detector = TrainableNullArgDetector()
+
+        self.auto_detector = AutoNullArgDetector()
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -246,12 +276,11 @@ class ArgRunner(Configurable):
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint['state_dict'])
 
-    def __test(self, test_lines, eval_dir=None):
+    def __test(self, test_lines, nid_detector, eval_dir=None):
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
 
-        for test_data in self.reader.read_test_docs(test_lines,
-                                                    self.nid_detector):
+        for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             doc_id, instances, common_data, gold_labels, debug_data = test_data
 
             coh = self.model(instances, common_data)
@@ -287,7 +316,7 @@ class ArgRunner(Configurable):
         logging.info("Test on [%s] with model at [%s]" % test_in)
         self.__load_best()
         self.model.eval()
-        self.__test(data_gen(test_in), eval_dir)
+        self.__test(data_gen(test_in), self.nid_detector, eval_dir)
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False, track_pred=None):
@@ -356,7 +385,6 @@ class ArgRunner(Configurable):
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
-            # TODO: just read a little training for fun.
             for batch_data, debug_data in self.reader.read_train_batch(
                     data_gen(train_in, from_line=validation_size,
                              until_line=validation_size + 10000)):
@@ -419,7 +447,7 @@ class ArgRunner(Configurable):
             # Conduct test on dev set.
             logging.info("Computing test result.")
             self.model.eval()
-            self.__test(test_lines=dev_lines)
+            self.__test(test_lines=dev_lines, nid_detector=self.auto_detector)
             self.model.train()
 
             logging.info("Finishing validation.")

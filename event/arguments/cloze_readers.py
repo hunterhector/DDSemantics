@@ -372,7 +372,13 @@ class HashedClozeReader:
 
         return test_rank_list
 
-    def get_one_test_docs(self, doc_info):
+    def get_one_test_doc(self, doc_info, nid_detector):
+        """
+        Parse and get one test document.
+        :param doc_info: The JSON data of one document.
+        :param nid_detector: NID detector to detect which slot to fill.
+        :return:
+        """
         instance_data = {'rep': [], 'distances': [], 'features': []}
         debug_data = {'entity_text': [], 'gold_entity': []}
 
@@ -388,8 +394,8 @@ class HashedClozeReader:
             sentence_id = event.get('sentence_id', None)
 
             for slot, arg in event['args'].items():
-                # implicit arguments will not be candidiates.
-                if len(arg) > 0 and not arg['implicit']:
+                # implicit arguments will not be candidates.
+                if len(arg) > 0 and not arg.get('implicit', False):
                     eid = arg['entity_id']
                     cand_args.add((evm_index, eid, arg['text']))
                     entity_positions[eid].append((evm_index, slot, sentence_id))
@@ -405,8 +411,10 @@ class HashedClozeReader:
             pred_sent = event['sentence_id']
 
             for slot, arg in event['args'].items():
-                is_implicit = arg.get('implicit', False)
-                if len(arg) > 0 and is_implicit and arg['resolvable']:
+                is_instance = nid_detector.should_fill(slot)
+
+                if len(arg) > 0 and is_instance and arg['resolvable']:
+
                     test_rank_list = self.create_test_instance(
                         evm_index, slot, event['args'], cand_args
                     )
@@ -457,7 +465,7 @@ class HashedClozeReader:
             doc_info = json.loads(line)
             doc_id = doc_info['docid']
 
-            test_data = self.get_one_test_docs(doc_info)
+            test_data = self.get_one_test_doc(doc_info, nid_detector)
 
             if not test_data:
                 continue
