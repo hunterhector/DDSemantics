@@ -26,6 +26,7 @@ from operator import itemgetter
 from event.arguments.evaluation import ImplicitEval
 from event import util
 from collections import Counter
+from event import torch_util
 
 
 def data_gen(data_path, from_line=None, until_line=None):
@@ -62,7 +63,7 @@ class NullArgDetector:
     def __init__(self):
         pass
 
-    def should_fill(self, doc_info, arg_info):
+    def should_fill(self, event_info, slot):
         pass
 
 
@@ -74,11 +75,11 @@ class GoldNullArgDetector(NullArgDetector):
     def __index__(self):
         super(NullArgDetector, self).__init__()
 
-    def should_fill(self, doc_info, arg_info):
-        return arg_info.get('implicit', True)
+    def should_fill(self, event_info, slot):
+        return event_info['args'][slot].get('implicit', False)
 
 
-class AutoNullArgDetector(NullArgDetector):
+class AllArgDetector(NullArgDetector):
     """
     A Null arg detector that returns true for every arg.
     """
@@ -86,8 +87,8 @@ class AutoNullArgDetector(NullArgDetector):
     def __init__(self):
         super(NullArgDetector, self).__init__()
 
-    def should_fill(self, doc_info, arg_info):
-        return True
+    def should_fill(self, event_info, slot):
+        return len(event_info['args'][slot]) > 0
 
 
 class TrainableNullArgDetector(NullArgDetector):
@@ -150,7 +151,7 @@ class ArgRunner(Configurable):
         elif self.para.nid_method == 'train':
             self.nid_detector = TrainableNullArgDetector()
 
-        self.auto_detector = AutoNullArgDetector()
+        self.all_detector = AllArgDetector()
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -193,14 +194,6 @@ class ArgRunner(Configurable):
         correct_coh = self.model(batch_instance['gold'], batch_common)
         cross_coh = self.model(batch_instance['cross'], batch_common)
         inside_coh = self.model(batch_instance['inside'], batch_common)
-
-        # print(correct_coh)
-        # print(correct_coh.shape)
-        # print(cross_coh)
-        # print(cross_coh.shape)
-        #
-        # input('checking coherence')
-
         return correct_coh, cross_coh, inside_coh
 
     def _get_accuracy(self, cross_coh, inside_coh):
@@ -247,7 +240,7 @@ class ArgRunner(Configurable):
             num_batches += 1
             num_instances += 1
 
-        logging.info("Validate with [%d] batches, [%d] instances." % (
+        logging.info("Validated with [%d] batches, [%d] instances." % (
             num_batches, num_instances))
 
         return dev_loss, num_batches, num_instances
@@ -302,8 +295,8 @@ class ArgRunner(Configurable):
 
             doc_count += 1
 
-            if doc_count % 10 == 0:
-                logging.info("Processed %d documents." % doc_count)
+            if doc_count % 100 == 0:
+                logging.info("Tested %d documents." % doc_count)
 
         logging.info("Finish testing %d documents." % doc_count)
 
@@ -386,8 +379,7 @@ class ArgRunner(Configurable):
             logging.info("Starting epoch {}.".format(epoch))
 
             for batch_data, debug_data in self.reader.read_train_batch(
-                    data_gen(train_in, from_line=validation_size,
-                             until_line=validation_size + 10000)):
+                    data_gen(train_in, from_line=validation_size)):
 
                 batch_instance, batch_info, b_size, mask = batch_data
 
@@ -447,11 +439,8 @@ class ArgRunner(Configurable):
             # Conduct test on dev set.
             logging.info("Computing test result.")
             self.model.eval()
-            self.__test(test_lines=dev_lines, nid_detector=self.auto_detector)
+            self.__test(test_lines=dev_lines, nid_detector=self.all_detector)
             self.model.train()
-
-            logging.info("Finishing validation.")
-            input("check validation working.")
 
             is_best = False
             if not best_loss or dev_loss < best_loss:

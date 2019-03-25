@@ -348,14 +348,12 @@ class HashedClozeReader:
 
         return features_by_eid, entity_heads
 
-    def create_test_instance(self, target_evm_id, target_slot, args,
-                             arg_entities):
+    def create_test_instance(self, target_evm_id, target_slot, args, doc_args):
         test_rank_list = []
-
         gold_eid = args[target_slot]['entity_id']
 
         # Replace the target slot with other entities for generating this.
-        for evm, eid, arg_text in arg_entities:
+        for evm, eid, arg_text in doc_args:
             # Make a copy of the original slots.
             cand_args = {}
             for slot, content in args.items():
@@ -377,6 +375,7 @@ class HashedClozeReader:
         Parse and get one test document.
         :param doc_info: The JSON data of one document.
         :param nid_detector: NID detector to detect which slot to fill.
+        :param cutoff: Sometimes we would cutoff long docs.
         :return:
         """
         instance_data = {'rep': [], 'distances': [], 'features': []}
@@ -388,35 +387,38 @@ class HashedClozeReader:
 
         # Some need to be done in iteration.
         entity_positions = defaultdict(list)
-        cand_args = set()
+        doc_args = set()
+
+        event_subset = []
 
         for evm_index, event in enumerate(doc_info['events']):
             sentence_id = event.get('sentence_id', None)
+
+            event_subset.append(event)
 
             for slot, arg in event['args'].items():
                 # implicit arguments will not be candidates.
                 if len(arg) > 0 and not arg.get('implicit', False):
                     eid = arg['entity_id']
-                    cand_args.add((evm_index, eid, arg['text']))
+                    doc_args.add((evm_index, eid, arg['text']))
                     entity_positions[eid].append((evm_index, slot, sentence_id))
 
         # Make sure this order is the same, but this should not matter.
-        cand_args = sorted(list(cand_args))
+        doc_args = sorted(list(doc_args))
 
         cloze_event_indices = []
         cloze_slot_indices = []
         gold_labels = []
 
-        for evm_index, event in enumerate(doc_info['events']):
+        for evm_index, event in enumerate(event_subset):
             pred_sent = event['sentence_id']
 
             for slot, arg in event['args'].items():
-                is_instance = nid_detector.should_fill(slot)
+                is_instance = nid_detector.should_fill(event, slot)
 
-                if len(arg) > 0 and is_instance and arg['resolvable']:
-
+                if is_instance and arg['resolvable']:
                     test_rank_list = self.create_test_instance(
-                        evm_index, slot, event['args'], cand_args
+                        evm_index, slot, event['args'], doc_args
                     )
 
                     debug_data['gold_entity'] = (
@@ -441,6 +443,10 @@ class HashedClozeReader:
 
                         debug_data['entity_text'].append(
                             entity_heads[filler_eid])
+
+                        # TODO: Set a hard threshold here might be dangerous.
+                        if len(cloze_event_indices) > 500:
+                            break
 
         if len(cloze_event_indices) == 0:
             return None
