@@ -226,25 +226,28 @@ class ArgRunner(Configurable):
         num_batches = 0
         num_instances = 0
 
-        # Out of memory when size is (100, 115, 8)
-        for batch_data, debug_data in generator:
-            batch_instance, batch_common, b_size, mask = batch_data
-            print("Show GPU usage before validation")
-            torch_util.show_tensors()
-            torch_util.gpu_mem_report()
+        # TODO: Added no_grad, still need to check if we have fix the memory
+        #  problem.
+        with torch.no_grad():
+            # Out of memory when size is (100, 115, 8)
+            for batch_data, debug_data in generator:
+                batch_instance, batch_common, b_size, mask = batch_data
+                print("Show GPU usage before validation")
+                torch_util.show_tensors()
+                torch_util.gpu_mem_report()
 
-            loss = self._get_loss(batch_instance, batch_common, mask)
-            if not loss:
-                raise ValueError('Error in computing loss.')
+                loss = self._get_loss(batch_instance, batch_common, mask)
+                if not loss:
+                    raise ValueError('Error in computing loss.')
 
-            dev_loss += loss.item()
-            num_batches += 1
-            num_instances += b_size
+                dev_loss += loss.item()
+                num_batches += 1
+                num_instances += b_size
 
-        logging.info("Validated with [%d] batches, [%d] instances." % (
-            num_batches, num_instances))
+            logging.info("Validated with [%d] batches, [%d] instances." % (
+                num_batches, num_instances))
 
-        return dev_loss, num_batches, num_instances
+            return dev_loss, num_batches, num_instances
 
     def debug(self):
         checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
@@ -426,8 +429,6 @@ class ArgRunner(Configurable):
                 dev_gen = self.reader.read_train_batch(dev_lines)
                 logging.info("Computing validation loss.")
                 self.validation(dev_gen)
-                input("wait here")
-
                 # DEBUG
 
                 loss_val = loss.item()
