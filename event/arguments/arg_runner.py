@@ -215,30 +215,31 @@ class ArgRunner(Configurable):
         with open(os.path.join(self.debug_dir, key + '.pickle'), 'rb') as fin:
             return pickle.load(fin)
 
-    def __save_checkpoint(self, state, is_best):
-        check_path = os.path.join(self.model_dir, self.checkpoint_name)
-        best_path = os.path.join(self.model_dir, 'model_best.pth')
-
+    def __save_checkpoint(self, state, name):
+        check_path = os.path.join(self.model_dir, name)
         logging.info("Saving model at {}".format(check_path))
         torch.save(state, check_path)
-
-        if is_best:
-            logging.info("Saving model as best {}".format(best_path))
-            shutil.copyfile(check_path, best_path)
+        return check_path
 
     def validation(self, generator):
         dev_loss = 0
         num_batches = 0
         num_instances = 0
 
+        # Out of memory when size is (100, 115, 8)
         for batch_data, debug_data in generator:
             batch_instance, batch_common, b_size, mask = batch_data
+            print("Show GPU usage before validation")
+            torch_util.show_tensors()
+            torch_util.gpu_mem_report()
+
             loss = self._get_loss(batch_instance, batch_common, mask)
             if not loss:
                 raise ValueError('Error in computing loss.')
+
             dev_loss += loss.item()
             num_batches += 1
-            num_instances += 1
+            num_instances += b_size
 
         logging.info("Validated with [%d] batches, [%d] instances." % (
             num_batches, num_instances))
@@ -337,10 +338,13 @@ class ArgRunner(Configurable):
 
         optimizer = torch.optim.Adam(self.model.parameters())
 
-        start_epoch = 0
         batch_count = 0
         instance_count = 0
+
+        start_epoch = 0
         best_loss = math.inf
+        previous_dev_loss = math.inf
+        worse = 0
 
         if resume:
             checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
@@ -348,9 +352,13 @@ class ArgRunner(Configurable):
                 logging.info("Loading checkpoint '{}'".format(checkpoint_path))
                 checkpoint = torch.load(checkpoint_path)
 
-                start_epoch = checkpoint['epoch']
-                best_loss = checkpoint['best_loss']
                 self.model.load_state_dict(checkpoint['state_dict'])
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+                start_epoch = checkpoint['start_epoch']
+                best_loss = checkpoint['best_loss']
+                previous_dev_loss = checkpoint['previous_dev_loss']
+                worse = checkpoint['worse']
             else:
                 logging.info(
                     "No model to resume at '{}', starting from scratch.".format(
@@ -370,9 +378,6 @@ class ArgRunner(Configurable):
         total_loss = 0
         recent_loss = 0
 
-        previous_dev_loss = math.inf
-        worse = 0
-
         log_freq = 100
 
         for epoch in range(start_epoch, self.nb_epochs):
@@ -391,14 +396,21 @@ class ArgRunner(Configurable):
                         if pred_text in track_pred:
                             target_pred_count[pred_text] += 1
 
+                # debug train tensors
+                print("Show GPU usage before training")
+                torch_util.show_tensors()
+                torch_util.gpu_mem_report()
                 loss = self._get_loss(batch_instance, batch_info, mask)
+
                 if not loss:
                     self.__save_checkpoint({
-                        'epoch': epoch + 1,
-                        'state_dict': self.model.state_dict(),
+                        'start_epoch': epoch + 1,
                         'best_loss': best_loss,
-                        'optimizer': optimizer.state_dict(),
-                    }, False)
+                        'previous_dev_loss': previous_dev_loss,
+                        'worse': worse,
+                        'state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                    }, 'model_debug')
 
                     for name, weight in self.model.named_parameters():
                         if name.startswith('event_to_var_layer'):
@@ -408,6 +420,15 @@ class ArgRunner(Configurable):
                     self.__dump_stuff('batch_info', batch_info)
 
                     raise ValueError('Error in computing loss.')
+
+                # DEBUG
+                logging.info("Loading validation data.")
+                dev_gen = self.reader.read_train_batch(dev_lines)
+                logging.info("Computing validation loss.")
+                self.validation(dev_gen)
+                input("wait here")
+
+                # DEBUG
 
                 loss_val = loss.item()
                 total_loss += loss_val
@@ -422,54 +443,60 @@ class ArgRunner(Configurable):
 
                 if not batch_count % log_freq:
                     logging.info(
-                        "Epoch {}, Batch {} ({} instances), "
-                        "recent avg. loss {}, overall avg. loss {:.5f}".format(
+                        "Epoch {}, Batch {} ({} instances); Recent (100) avg. "
+                        "loss {:.5f}; Overall avg. loss {:.5f}".format(
                             epoch, batch_count, instance_count,
                             recent_loss / log_freq,
                             total_loss / batch_count)
                     )
                     recent_loss = 0
 
+            checkpoint_path = self.__save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': self.model.state_dict(),
+                'best_loss': best_loss,
+                'previous_dev_loss': previous_dev_loss,
+                'optimizer_state_dict': optimizer.state_dict(),
+                'worse': worse,
+            }, 'model_latest')
+
             logging.info("Loading validation data.")
             dev_gen = self.reader.read_train_batch(dev_lines)
-            # Compute validation loss.
             logging.info("Computing validation loss.")
             dev_loss, n_batches, n_instances = self.validation(dev_gen)
 
-            # Conduct test on dev set.
-            logging.info("Computing test result.")
+            logging.info("Computing test result on dev set.")
             self.model.eval()
-            self.__test(test_lines=dev_lines, nid_detector=self.all_detector)
+            self.__test(test_lines=dev_lines,
+                        nid_detector=self.all_detector)
             self.model.train()
-
-            is_best = False
-            if not best_loss or dev_loss < best_loss:
-                best_loss = dev_loss
-                is_best = True
+            input("Checking development.")
 
             logging.info(
                 "Finished epoch {epoch:d}, avg. loss {loss:.4f}, "
-                "validation loss {dev_loss:.4f}{best:s}".format(
+                "validation loss {dev_loss:.4f}".format(
                     epoch=epoch, loss=total_loss / batch_count,
                     dev_loss=dev_loss / n_batches,
-                    best=', is current best.' if is_best else '.'
                 ))
+
+            if not best_loss or dev_loss < best_loss:
+                best_loss = dev_loss
+                best_path = os.path.join(self.model_dir, 'model_best')
+                logging.info("Saving it as best model")
+                shutil.copyfile(checkpoint_path, best_path)
+
+            logging.info("Best lost is %.4f." % best_loss)
 
             for pred, count in target_pred_count.items():
                 logging.info(
-                    "Epoch %d: %s has been observed %d times." % (
-                        epoch, pred, count)
+                    "Epoch %d: %s is observed %d times." % (epoch, pred, count)
                 )
 
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
                 worse = 0
-                self.__save_checkpoint({
-                    'epoch': epoch + 1,
-                    'state_dict': self.model.state_dict(),
-                    'best_loss': best_loss,
-                    'optimizer': optimizer.state_dict(),
-                }, is_best)
+                p = os.path.join(self.model_dir, 'model_last_drop')
+                shutil.copyfile(checkpoint_path, p)
             else:
                 worse += 1
                 if worse == self.para.early_stop_patience:
@@ -483,8 +510,7 @@ class ArgRunner(Configurable):
                     break
 
         for pred, count in target_pred_count.items():
-            logging.info(
-                "Overall, %s has been observed %d times." % (pred, count))
+            logging.info("Overall, %s is observed %d times." % (pred, count))
 
 
 if __name__ == '__main__':

@@ -13,7 +13,7 @@ c.ArgModelPara.num_event_components = 8
 c.ArgModelPara.num_extracted_features = 11
 c.ArgModelPara.multi_context = True
 c.ArgModelPara.max_events = 200
-c.ArgModelPara.batch_size = 128
+c.ArgModelPara.batch_size = 100
 # Model parameters that changes the architectures
 c.ArgModelPara.loss = 'cross_entropy'
 c.ArgModelPara.vote_method = 'cosine'
@@ -21,11 +21,8 @@ c.ArgModelPara.vote_pooling = 'kernel'
 # c.ArgModelPara.encode_distance = 'gaussian'
 c.ArgModelPara.num_distance_features = 9
 
-# Null Instantiation.
+# How to detect Null Instantiation.
 c.ArgModelPara.nid_method = 'gold'
-
-# ImplicitArgResources
-# c.ImplicitArgResources.base = '/home/zhengzhl/workspace/implicit/gigaword_corpus/'
 
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "

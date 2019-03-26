@@ -116,4 +116,4 @@ class ImplicitEval:
         else:
             logging.info("Test p@1 is %.4f." % overall_res['scores']['p@1'])
 
-        return self.overall_res
+        return overall_res

@@ -251,7 +251,6 @@ class HashedClozeReader:
             b_common_data.clear()
             b_instance_data.clear()
 
-            doc_count = 0
             max_context_size = 0
             max_instance_size = 0
 
@@ -285,7 +284,7 @@ class HashedClozeReader:
             doc_count += 1
 
             # Each document is considered as one single instance since.
-            if doc_count == self.batch_size:
+            if doc_count % self.batch_size == 0:
                 debug_data = {
                     'predicate': batch_predicates,
                 }
@@ -296,7 +295,6 @@ class HashedClozeReader:
                 )
 
                 yield train_batch, debug_data
-
                 _clear()
 
         # Yield the remaining data.
@@ -306,6 +304,7 @@ class HashedClozeReader:
         train_batch = self.create_batch(b_common_data, b_instance_data,
                                         max_context_size, max_instance_size)
 
+        print('yield remaining ', doc_count)
         yield train_batch, debug_data
         _clear()
 
