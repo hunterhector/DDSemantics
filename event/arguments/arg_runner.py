@@ -226,21 +226,15 @@ class ArgRunner(Configurable):
         num_batches = 0
         num_instances = 0
 
-        # TODO: Added no_grad, still need to check if we have fix the memory
-        #  problem.
         with torch.no_grad():
-            # Out of memory when size is (100, 115, 8)
             for batch_data, debug_data in generator:
                 batch_instance, batch_common, b_size, mask = batch_data
-                print("Show GPU usage before validation")
-                torch_util.show_tensors()
-                torch_util.gpu_mem_report()
 
-                loss = self._get_loss(batch_instance, batch_common, mask)
-                if not loss:
-                    raise ValueError('Error in computing loss.')
+                # loss = self._get_loss(batch_instance, batch_common, mask)
+                # if not loss:
+                #     raise ValueError('Error in computing loss.')
+                # dev_loss += loss.item()
 
-                dev_loss += loss.item()
                 num_batches += 1
                 num_instances += b_size
 
@@ -354,11 +348,10 @@ class ArgRunner(Configurable):
             if os.path.isfile(checkpoint_path):
                 logging.info("Loading checkpoint '{}'".format(checkpoint_path))
                 checkpoint = torch.load(checkpoint_path)
-
                 self.model.load_state_dict(checkpoint['state_dict'])
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-                start_epoch = checkpoint['start_epoch']
+                start_epoch = checkpoint['epoch']
                 best_loss = checkpoint['best_loss']
                 previous_dev_loss = checkpoint['previous_dev_loss']
                 worse = checkpoint['worse']
@@ -376,8 +369,6 @@ class ArgRunner(Configurable):
             dev_lines = [l for l in
                          data_gen(train_in, until_line=validation_size)]
 
-        logging.info("%d development lines acquired." % len(dev_lines))
-
         total_loss = 0
         recent_loss = 0
 
@@ -394,26 +385,21 @@ class ArgRunner(Configurable):
                 for batch_preds in debug_data['predicate']:
                     for pred in batch_preds:
                         pred_text = pred.replace('-pred', '')
-
                         target_pred_count['_overall_'] += 1
                         if pred_text in track_pred:
                             target_pred_count[pred_text] += 1
 
-                # debug train tensors
-                print("Show GPU usage before training")
-                torch_util.show_tensors()
-                torch_util.gpu_mem_report()
                 loss = self._get_loss(batch_instance, batch_info, mask)
 
                 if not loss:
                     self.__save_checkpoint({
-                        'start_epoch': epoch + 1,
+                        'epoch': epoch + 1,
                         'best_loss': best_loss,
                         'previous_dev_loss': previous_dev_loss,
                         'worse': worse,
                         'state_dict': self.model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
-                    }, 'model_debug')
+                    }, 'model_debug.pth')
 
                     for name, weight in self.model.named_parameters():
                         if name.startswith('event_to_var_layer'):
@@ -424,23 +410,16 @@ class ArgRunner(Configurable):
 
                     raise ValueError('Error in computing loss.')
 
-                # DEBUG
-                logging.info("Loading validation data.")
-                dev_gen = self.reader.read_train_batch(dev_lines)
-                logging.info("Computing validation loss.")
-                self.validation(dev_gen)
-                # DEBUG
-
-                loss_val = loss.item()
-                total_loss += loss_val
-                recent_loss += loss_val
-
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
                 batch_count += 1
                 instance_count += b_size
+
+                loss_val = loss.item()
+                total_loss += loss_val
+                recent_loss += loss_val
 
                 if not batch_count % log_freq:
                     logging.info(
@@ -459,7 +438,7 @@ class ArgRunner(Configurable):
                 'previous_dev_loss': previous_dev_loss,
                 'optimizer_state_dict': optimizer.state_dict(),
                 'worse': worse,
-            }, 'model_latest')
+            }, self.checkpoint_name)
 
             logging.info("Loading validation data.")
             dev_gen = self.reader.read_train_batch(dev_lines)
@@ -471,7 +450,6 @@ class ArgRunner(Configurable):
             self.__test(test_lines=dev_lines,
                         nid_detector=self.all_detector)
             self.model.train()
-            input("Checking development.")
 
             logging.info(
                 "Finished epoch {epoch:d}, avg. loss {loss:.4f}, "
@@ -482,7 +460,7 @@ class ArgRunner(Configurable):
 
             if not best_loss or dev_loss < best_loss:
                 best_loss = dev_loss
-                best_path = os.path.join(self.model_dir, 'model_best')
+                best_path = os.path.join(self.model_dir, self.best_model_name)
                 logging.info("Saving it as best model")
                 shutil.copyfile(checkpoint_path, best_path)
 
@@ -496,8 +474,6 @@ class ArgRunner(Configurable):
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
                 worse = 0
-                p = os.path.join(self.model_dir, 'model_last_drop')
-                shutil.copyfile(checkpoint_path, p)
             else:
                 worse += 1
                 if worse == self.para.early_stop_patience:

@@ -199,7 +199,6 @@ class HashedClozeReader:
 
         for key, value in b_common_data.items():
             if key == 'context':
-                # print([len(v) for v in value])
                 padded = self.__batch_pad(key, value, max_context_size)
                 vectorized = to_torch(padded, self.__data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
@@ -289,6 +288,13 @@ class HashedClozeReader:
                     'predicate': batch_predicates,
                 }
 
+                # print("Max context size is %d" % max_context_size)
+                #
+                # for k, v in b_common_data.items():
+                #     print(k, len(v))
+                # print("Yield %d docs." % doc_count)
+                # print("Creating batch")
+
                 train_batch = self.create_batch(
                     b_common_data, b_instance_data, max_context_size,
                     max_instance_size
@@ -298,15 +304,21 @@ class HashedClozeReader:
                 _clear()
 
         # Yield the remaining data.
-        debug_data = {
-            'predicate': batch_predicates,
-        }
-        train_batch = self.create_batch(b_common_data, b_instance_data,
-                                        max_context_size, max_instance_size)
+        if len(b_common_data) > 0:
+            debug_data = {
+                'predicate': batch_predicates,
+            }
 
-        print('yield remaining ', doc_count)
-        yield train_batch, debug_data
-        _clear()
+            # for k, v in b_common_data.items():
+            #     print(k, len(v))
+            # print("Yield remaining %d docs." % doc_count)
+            # print("Creating batch")
+
+            train_batch = self.create_batch(b_common_data, b_instance_data,
+                                            max_context_size, max_instance_size)
+
+            yield train_batch, debug_data
+            _clear()
 
     def _take_event_parts(self, event_info):
         event_components = [event_info['predicate'], event_info['frame']]

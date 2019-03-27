@@ -224,6 +224,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
         """
         raise NotImplementedError
 
+
+
+
     def _attentive_contextual_score(self, event_emb, context_emb,
                                     self_avoid_mask):
         """
