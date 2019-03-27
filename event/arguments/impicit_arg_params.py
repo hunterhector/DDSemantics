@@ -73,9 +73,9 @@ class ArgModelPara(Configurable):
         default_value='kernel'
     ).tag(config=True)
 
-    coherence_method = Unicode(
-        help='Method to compute the coherence between two events',
-        default_value='attentive'
+    pool_topk = Int(
+        help='The K value if Top K pooling is enabled.',
+        default_value=3
     ).tag(config=True)
 
     # Null Instantiation Detector

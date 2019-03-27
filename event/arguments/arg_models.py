@@ -92,6 +92,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
             feature_size += self._kp.K
         elif self._vote_pool_type == 'average' or self._vote_pool_type == 'max':
             feature_size += 1
+        elif self._vote_pool_type == 'topk':
+            self._pool_topk = para.pool_topk
+            feature_size += self._pool_topk
 
         self._use_distance = para.encode_distance
         if self._use_distance:
@@ -111,10 +114,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         self._linear_combine = nn.Linear(feature_size, 1)
 
-        if para.coherence_method == 'attentive':
-            self.coh = self._attentive_contextual_score
-        elif para.coherence_method == 'concat':
-            self.coh = self._concat_contextual_score
+        # Method to generate coherent features.
+        self.coh = self._attentive_contextual_score
 
         if para.loss == 'cross_entropy':
             self.normalize_score = True
@@ -214,18 +215,19 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
         return kernel_value
 
-    def _concat_contextual_score(self, event_emb, context_emb, batch_slots):
-        """
-        Compute the contextual scores after concatenation and projection.
-        :param event_emb:
-        :param context_emb:
-        :param batch_slots:
-        :return:
-        """
-        raise NotImplementedError
-
-
-
+    def _context_vote(self, nom_event_emb, nom_context_emb):
+        # First compute the trans matrix between events and the context.
+        if self._vote_method == 'cosine':
+            # Normalized dot product is cosine.
+            trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
+        elif self._vote_method == 'biaffine':
+            # TODO handle the batch size here.
+            trans = self.bilinear_layer(nom_event_emb, nom_context_emb)
+        else:
+            raise ValueError(
+                'Unknown vote computation method {}'.format(self._vote_method)
+            )
+        return trans
 
     def _attentive_contextual_score(self, event_emb, context_emb,
                                     self_avoid_mask):
@@ -248,16 +250,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
 
-        # First compute the trans matrix between events and the context.
-        if self._vote_method == 'cosine':
-            trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
-        elif self._vote_method == 'biaffine':
-            # TODO handle the batch size here.
-            trans = self.bilinear_layer(nom_event_emb, nom_context_emb)
-        else:
-            raise ValueError(
-                'Unknown vote computation method {}'.format(self._vote_method)
-            )
+        trans = self._context_vote(nom_event_emb, nom_context_emb)
 
         if self.__debug_show_shapes:
             print("Event context similarity:")
@@ -274,9 +267,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
             print("Filter with selecting matrix")
 
-        # index_select and masked_select does not work here.
-        # trans = torch.index_select(trans, -1, self_avoid_mask)
-
         # Make the self score zero.
         trans = trans * self_avoid_mask
 
@@ -287,16 +277,11 @@ class EventPairCompositionModel(ArgCompatibleModel):
         elif self._vote_pool_type == 'average':
             pooled_value = trans.mean(2, keepdim=True)
         elif self._vote_pool_type == 'topk':
-            # TODO add a top k pooling for comparison
-            pass
+            pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
         else:
             raise ValueError(
                 'Unknown pool type {}'.format(self._vote_pool_type)
             )
-
-        # print("During COH")
-        # torch_util.show_tensors()
-        # torch_util.gpu_mem_report()
 
         return pooled_value
 

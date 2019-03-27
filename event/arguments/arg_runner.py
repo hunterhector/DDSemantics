@@ -509,7 +509,6 @@ if __name__ == '__main__':
         cmd_log = Bool(help='Log on command prompt only.',
                        default_value=False).tag(config=True)
 
-
     from event.util import load_config_with_cmd, load_with_sub_config
     import json
 
