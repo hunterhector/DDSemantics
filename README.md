@@ -9,11 +9,9 @@ TODO List:
 1. How to use only the relevant contextual scores?
 1. Create an embedding for the empty slot (e.g. One empty slot vocab; 
 Different vocab for different predicate; Different vocab for different slot)
-
-Core Model Settings:
-1. Pooling method
-2. Attention method
-3. Distance
+1. Take the CoNLL corpus
+1. Fix the distance embedding 
+1. Design core experiments: pooling, attention, distance, empty embedding
 
 Experiments setups:
 1. basic
