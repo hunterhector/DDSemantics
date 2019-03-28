@@ -27,6 +27,7 @@ from event.arguments.evaluation import ImplicitEval
 from event import util
 from collections import Counter
 from event import torch_util
+from event.arguments.util import ClozeSampler
 
 
 def data_gen(data_path, from_line=None, until_line=None):
@@ -230,16 +231,19 @@ class ArgRunner(Configurable):
             for batch_data, debug_data in generator:
                 batch_instance, batch_common, b_size, mask = batch_data
 
-                # loss = self._get_loss(batch_instance, batch_common, mask)
-                # if not loss:
-                #     raise ValueError('Error in computing loss.')
-                # dev_loss += loss.item()
+                loss = self._get_loss(batch_instance, batch_common, mask)
+
+                if not loss:
+                    raise ValueError('Error in computing loss.')
+                dev_loss += loss.item()
 
                 num_batches += 1
                 num_instances += b_size
 
-            logging.info("Validated with [%d] batches, [%d] instances." % (
-                num_batches, num_instances))
+            logging.info("Validation loss is [%.4f] on [%d] batches, [%d] "
+                         "instances. Average loss is [%.4f]." % (
+                             dev_loss, num_batches, num_instances,
+                             dev_loss / num_batches))
 
             return dev_loss, num_batches, num_instances
 
@@ -293,7 +297,7 @@ class ArgRunner(Configurable):
 
             doc_count += 1
 
-            if doc_count % 100 == 0:
+            if doc_count % 1000 == 0:
                 logging.info("Tested %d documents." % doc_count)
 
         logging.info("Finish testing %d documents." % doc_count)
@@ -304,17 +308,21 @@ class ArgRunner(Configurable):
         evaluator.run()
 
     def test(self, test_in, eval_dir):
-        logging.info("Test on [%s] with model at [%s]" % test_in)
+        logging.info("Test on [%s]." % test_in)
         self.__load_best()
         self.model.eval()
         self.__test(data_gen(test_in), self.nid_detector, eval_dir)
 
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, resume=False, track_pred=None):
+              model_out_dir=None, resume=False, track_pred=None,
+              pre_validation=False):
         if track_pred is None:
             track_pred = {}
 
         target_pred_count = Counter()
+
+        train_sampler = ClozeSampler()
+        dev_sampler = ClozeSampler(seed=7)
 
         logging.info("Training with data from [%s]", train_in)
 
@@ -369,16 +377,26 @@ class ArgRunner(Configurable):
             dev_lines = [l for l in
                          data_gen(train_in, until_line=validation_size)]
 
+        if pre_validation:
+            logging.info("Conduct a pre-validation, this will overwrite best "
+                         "loss with the most recent loss.")
+            dev_loss, n_batches, n_instances = self.validation(
+                self.reader.read_train_batch(dev_lines, dev_sampler)
+            )
+            best_loss = dev_loss
+            previous_dev_loss = dev_loss
+
+        # Training stats.
         total_loss = 0
         recent_loss = 0
-
         log_freq = 100
 
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
             for batch_data, debug_data in self.reader.read_train_batch(
-                    data_gen(train_in, from_line=validation_size)):
+                    data_gen(train_in, from_line=validation_size),
+                    train_sampler):
 
                 batch_instance, batch_info, b_size, mask = batch_data
 
@@ -440,10 +458,10 @@ class ArgRunner(Configurable):
                 'worse': worse,
             }, self.checkpoint_name)
 
-            logging.info("Loading validation data.")
-            dev_gen = self.reader.read_train_batch(dev_lines)
             logging.info("Computing validation loss.")
-            dev_loss, n_batches, n_instances = self.validation(dev_gen)
+            dev_loss, n_batches, n_instances = self.validation(
+                self.reader.read_train_batch(dev_lines, dev_sampler)
+            )
 
             logging.info("Computing test result on dev set.")
             self.model.eval()
@@ -492,22 +510,27 @@ class ArgRunner(Configurable):
 
 if __name__ == '__main__':
     class Basic(Configurable):
-        train_in = Unicode(help='training data directory').tag(config=True)
-        test_in = Unicode(help='testing data').tag(config=True)
-        test_out = Unicode(help='test res').tag(config=True)
-        valid_in = Unicode(help='validation in').tag(config=True)
-        validation_size = Integer(help='validation size').tag(config=True)
-        debug_dir = Unicode(help='Debug output').tag(config=True)
-        model_name = Unicode(help='model name', default_value='basic').tag(
+        train_in = Unicode(help='Training data directory.').tag(config=True)
+        test_in = Unicode(help='Testing data.').tag(config=True)
+        test_out = Unicode(help='Test res.').tag(config=True)
+        valid_in = Unicode(help='Validation in.').tag(config=True)
+        validation_size = Integer(help='Validation size.').tag(config=True)
+        debug_dir = Unicode(help='Debug output.').tag(config=True)
+        model_name = Unicode(help='Model name.', default_value='basic').tag(
             config=True)
-        model_dir = Unicode(help='model directory').tag(config=True)
-        log_dir = Unicode(help='logging directory').tag(config=True)
+        run_name = Unicode(help='Run name.', default_value='default').tag(
+            config=True)
+        model_dir = Unicode(help='Model directory.').tag(config=True)
+        log_dir = Unicode(help='Logging directory.').tag(config=True)
         do_training = Bool(help='Flag for conducting training.',
                            default_value=True).tag(config=True)
         do_test = Bool(help='Flag for conducting testing.',
                        default_value=False).tag(config=True)
         cmd_log = Bool(help='Log on command prompt only.',
                        default_value=False).tag(config=True)
+        pre_val = Bool(help='Pre-validate on the dev set.',
+                       default_value=False).tag(config=True)
+
 
     from event.util import load_config_with_cmd, load_with_sub_config
     import json
@@ -531,7 +554,8 @@ if __name__ == '__main__':
 
         log_path = os.path.join(
             basic_para.log_dir,
-            basic_para.model_name + '_' + timestamp + mode + '.log')
+            basic_para.model_name,
+            'log', basic_para.run_name + "_" + timestamp + mode + '.log')
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
@@ -543,8 +567,10 @@ if __name__ == '__main__':
 
     runner = ArgRunner(
         config=conf,
-        model_dir=os.path.join(basic_para.model_dir, basic_para.model_name),
-        debug_dir=basic_para.debug_dir
+        model_dir=os.path.join(
+            basic_para.model_dir, basic_para.model_name
+        ),
+        debug_dir=basic_para.debug_dir,
     )
 
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
@@ -562,11 +588,13 @@ if __name__ == '__main__':
             validation_in=basic_para.valid_in,
             resume=True,
             track_pred=target_predicates,
+            pre_validation=basic_para.pre_val,
         )
 
     if basic_para.do_test:
         eval_res_dir = os.path.join(
-            basic_para.log_dir, basic_para.model_name + '_results'
+            basic_para.log_dir, basic_para.model_name, 'results',
+            basic_para.run_name + "_" + timestamp + '.log'
         )
 
         if not os.path.exists(eval_res_dir):

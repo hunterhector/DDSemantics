@@ -277,12 +277,14 @@ class EventPairCompositionModel(ArgCompatibleModel):
         elif self._vote_pool_type == 'average':
             pooled_value = trans.mean(2, keepdim=True)
         elif self._vote_pool_type == 'topk':
-            pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
+            if trans.shape[2] > self._pool_topk:
+                pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
+            else:
+                pooled_value = trans
         else:
             raise ValueError(
                 'Unknown pool type {}'.format(self._vote_pool_type)
             )
-
         return pooled_value
 
     def _event_repr(self, event_emb):

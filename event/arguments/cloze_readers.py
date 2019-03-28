@@ -1,7 +1,5 @@
 import json
 import logging
-import math
-import random
 from collections import Counter
 from collections import defaultdict
 
@@ -16,39 +14,6 @@ from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
 
 from pprint import pprint
-
-
-class ClozeSampler:
-    def __init__(self):
-        pass
-
-    def sample_cross(self, arg_entities, evm_id, ent_id):
-
-        remaining = []
-        for evm, ent, text in arg_entities:
-            if not (evm == evm_id or ent == ent_id):
-                remaining.append((evm, ent, text))
-
-        if len(remaining) > 0:
-            return random.choice(remaining)
-        else:
-            return None
-
-    def sample_ignore_item(self, data, ignored_item):
-        """
-        Sample one item in the list, but ignore a provided one. If the list
-        contains less than 2 elements, nothing will be sampled.
-        :param data:
-        :param ignored_item:
-        :return:
-        """
-        if len(data) <= 1:
-            return None
-        while True:
-            sampled_item = random.choice(data)
-            if not sampled_item == ignored_item:
-                break
-        return sampled_item
 
 
 def get_distance_signature(
@@ -168,11 +133,6 @@ class HashedClozeReader:
             "cuda" if gpu and torch.cuda.is_available() else "cpu"
         )
 
-        self.sampler = ClozeSampler()
-
-        # Fix seed to generate the same instances.
-        random.seed(17)
-
     def __inverse_vocab(self, vocab):
         inverted = [0] * len(vocab)
         for w, index in vocab.items():
@@ -231,7 +191,8 @@ class HashedClozeReader:
 
         return instance_data, common_data, b_size, ins_mask
 
-    def read_train_batch(self, data_in, from_line=None, until_line=None):
+    def read_train_batch(self, data_in, sampler, from_line=None,
+                         until_line=None):
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
         batch_predicates = []
@@ -254,7 +215,7 @@ class HashedClozeReader:
             max_instance_size = 0
 
         for instance_data, common_data in self.parse_docs(
-                data_in, from_line, until_line):
+                data_in, sampler, from_line, until_line):
             gold_event_data = instance_data['gold']
 
             # Debug purpose only.
@@ -288,13 +249,6 @@ class HashedClozeReader:
                     'predicate': batch_predicates,
                 }
 
-                # print("Max context size is %d" % max_context_size)
-                #
-                # for k, v in b_common_data.items():
-                #     print(k, len(v))
-                # print("Yield %d docs." % doc_count)
-                # print("Creating batch")
-
                 train_batch = self.create_batch(
                     b_common_data, b_instance_data, max_context_size,
                     max_instance_size
@@ -308,11 +262,6 @@ class HashedClozeReader:
             debug_data = {
                 'predicate': batch_predicates,
             }
-
-            # for k, v in b_common_data.items():
-            #     print(k, len(v))
-            # print("Yield remaining %d docs." % doc_count)
-            # print("Creating batch")
 
             train_batch = self.create_batch(b_common_data, b_instance_data,
                                             max_context_size, max_instance_size)
@@ -329,17 +278,6 @@ class HashedClozeReader:
             event_components.append(slot.get('arg_role', self.event_padding))
 
         return [c if c > 0 else self.event_padding for c in event_components]
-
-    def subsample_pred(self, pred):
-        pred_tf = self.event_count[pred]
-        freq = 1.0 * pred_tf / self.pred_counts
-
-        if freq > consts.sample_pred_threshold:
-            if pred_tf > consts.sample_pred_threshold:
-                rate = consts.sample_pred_threshold / freq
-                if random.random() < 1 - rate - math.sqrt(rate):
-                    return False
-        return True
 
     def parse_hashed(self):
         pass
@@ -509,7 +447,7 @@ class HashedClozeReader:
                 debug_data,
             )
 
-    def create_training_data(self, data_line):
+    def create_training_data(self, data_line, sampler):
         doc_info = json.loads(data_line)
         features_by_eid, entity_heads = self.collect_features(doc_info)
 
@@ -548,11 +486,12 @@ class HashedClozeReader:
                     eid_count[eid] += 1
 
         all_event_reps = [self._take_event_parts(e) for e in event_subset]
-        arg_entities = list(arg_entities)
 
         if len(arg_entities) <= 1:
             # There no enough arguments to sample from.
             return None
+
+        arg_entities = sorted(list(arg_entities))
 
         # We current sample the predicate based on unigram distribution.
         # A better learning strategy is to select one
@@ -572,10 +511,12 @@ class HashedClozeReader:
             if pred == self.event_vocab[consts.unk_predicate]:
                 continue
 
-            keep_pred = self.subsample_pred(pred)
+            pred_tf = self.event_count[pred]
+            freq = 1.0 * pred_tf / self.pred_counts
+            keep_pred = sampler.subsample_pred(pred_tf, freq)
 
             if not keep_pred:
-                # Too frequent word will be ignore.
+                # Too frequent word will be down-sampled.
                 continue
 
             current_sent = event_info['sentence_id']
@@ -596,7 +537,7 @@ class HashedClozeReader:
                     continue
 
                 cross_sample = self.cross_cloze(
-                    event_info['args'], arg_entities,
+                    sampler, event_info['args'], arg_entities,
                     evm_index, slot
                 )
 
@@ -604,13 +545,14 @@ class HashedClozeReader:
                     continue
 
                 inside_sample = self.inside_cloze(
-                    event_info['args'], slot
+                    sampler, event_info['args'], slot
                 )
 
                 if not inside_sample:
                     continue
 
                 cross_args, cross_filler_id = cross_sample
+
                 cross_info = self.update_arguments(
                     doc_info, evm_index, cross_args)
                 self.assemble_instance(cross_event_data, features_by_eid,
@@ -661,7 +603,7 @@ class HashedClozeReader:
         instance_data['distances'].append(get_distance_signature(
             evm_index, entity_positions, event_words, sent_id))
 
-    def parse_docs(self, data_in, from_line=None, until_line=None):
+    def parse_docs(self, data_in, sampler, from_line=None, until_line=None):
         line_num = 0
         for line in data_in:
             line_num += 1
@@ -672,7 +614,7 @@ class HashedClozeReader:
             if until_line and line_num > until_line:
                 break
 
-            parsed_output = self.create_training_data(line)
+            parsed_output = self.create_training_data(line, sampler)
 
             if parsed_output is None:
                 continue
@@ -718,9 +660,11 @@ class HashedClozeReader:
 
         slot_info['context'] = slot_info.get('context', [[], []])
 
-    def cross_cloze(self, args, arg_entities, target_evm_id, target_slot):
+    def cross_cloze(self, sampler, args, arg_entities, target_evm_id,
+                    target_slot):
         """
         A negative cloze instance that use arguments from other events.
+        :param sampler: A random sampler.
         :param args: Dict of origin event arguments.
         :param arg_entities: List of original (event id, entity id) pairs.
         :param target_evm_id: The target event id.
@@ -730,7 +674,7 @@ class HashedClozeReader:
         target_arg = args[target_slot]
         target_eid = target_arg['entity_id']
 
-        sample_res = self.sampler.sample_cross(
+        sample_res = sampler.sample_cross(
             arg_entities, target_evm_id, target_eid
         )
 
@@ -738,9 +682,6 @@ class HashedClozeReader:
             return None
 
         wrong_evm, wrong_id, wrong_text = sample_res
-
-        # print("Sampled {}:{} from {} for slot {}".format(
-        #     wrong_id, wrong_text, wrong_evm, target_slot))
 
         neg_instance = {}
         for slot, content in args.items():
@@ -752,9 +693,10 @@ class HashedClozeReader:
         self.replace_slot(neg_instance, target_slot, wrong_id, wrong_text)
         return neg_instance, wrong_id
 
-    def inside_cloze(self, origin_event_args, target_slot):
+    def inside_cloze(self, sampler, origin_event_args, target_slot):
         """
         A negative cloze instance that use arguments within the event.
+        :param sampler: A random sampler.
         :param origin_event_args:
         :param target_slot:
         :return:
@@ -765,7 +707,7 @@ class HashedClozeReader:
             neg_instance[slot] = {}
             neg_instance[slot].update(content)
 
-        swap_slot = self.sampler.sample_ignore_item(
+        swap_slot = sampler.sample_ignore_item(
             list(origin_event_args.keys()), target_slot
         )
         if not swap_slot:
