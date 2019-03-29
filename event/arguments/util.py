@@ -8,7 +8,11 @@ import math
 class ClozeSampler:
     def __init__(self, sample_pred_threshold=10e-5, seed=None):
         self.sample_pred_threshold = sample_pred_threshold
-        random.seed(seed)
+        self.provided_seed = seed
+        random.seed(self.provided_seed)
+
+    def reset(self):
+        random.seed(self.provided_seed)
 
     def sample_cross(self, arg_entities, evm_id, ent_id):
         remaining = []

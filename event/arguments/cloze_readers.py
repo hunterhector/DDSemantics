@@ -105,7 +105,7 @@ class HashedClozeReader:
 
         self.event_inverted = self.__inverse_vocab(self.event_vocab)
 
-        self.event_padding = len(self.event_vocab)
+        self.unobserved_arg = len(self.event_vocab)
 
         self.slot_names = ['subj', 'obj', 'prep', ]
 
@@ -274,10 +274,16 @@ class HashedClozeReader:
 
         for slot_name in self.slot_names:
             slot = event_info['args'][slot_name]
-            event_components.append(slot.get('fe', self.event_padding))
-            event_components.append(slot.get('arg_role', self.event_padding))
+            event_components.append(slot.get('fe', self.unobserved_arg))
+            event_components.append(slot.get('arg_role', self.unobserved_arg))
 
-        return [c if c > 0 else self.event_padding for c in event_components]
+        if any([c <= 0 for c in event_components]):
+            print(event_info)
+            print(event_components)
+            input('not positive')
+
+        # TODO do not use c>0 here, explicitly handle it.
+        return [c if c > 0 else self.unobserved_arg for c in event_components]
 
     def parse_hashed(self):
         pass

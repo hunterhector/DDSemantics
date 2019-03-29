@@ -222,13 +222,15 @@ class ArgRunner(Configurable):
         torch.save(state, check_path)
         return check_path
 
-    def validation(self, generator):
+    def validation(self, dev_lines, dev_sampler):
         dev_loss = 0
         num_batches = 0
         num_instances = 0
 
+        dev_sampler.reset()
         with torch.no_grad():
-            for batch_data, debug_data in generator:
+            for batch_data, debug_data in self.reader.read_train_batch(
+                    dev_lines, dev_sampler):
                 batch_instance, batch_common, b_size, mask = batch_data
 
                 loss = self._get_loss(batch_instance, batch_common, mask)
@@ -380,9 +382,10 @@ class ArgRunner(Configurable):
         if pre_validation:
             logging.info("Conduct a pre-validation, this will overwrite best "
                          "loss with the most recent loss.")
-            dev_loss, n_batches, n_instances = self.validation(
-                self.reader.read_train_batch(dev_lines, dev_sampler)
-            )
+            for i in range(5):
+                dev_loss, n_batches, n_instances = self.validation(
+                    dev_lines, dev_sampler)
+                input('tried validation once')
             best_loss = dev_loss
             previous_dev_loss = dev_loss
 
@@ -394,6 +397,7 @@ class ArgRunner(Configurable):
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
 
+            train_sampler.reset()
             for batch_data, debug_data in self.reader.read_train_batch(
                     data_gen(train_in, from_line=validation_size),
                     train_sampler):
@@ -460,8 +464,7 @@ class ArgRunner(Configurable):
 
             logging.info("Computing validation loss.")
             dev_loss, n_batches, n_instances = self.validation(
-                self.reader.read_train_batch(dev_lines, dev_sampler)
-            )
+                dev_lines, dev_sampler)
 
             logging.info("Computing test result on dev set.")
             self.model.eval()
@@ -482,7 +485,7 @@ class ArgRunner(Configurable):
                 logging.info("Saving it as best model")
                 shutil.copyfile(checkpoint_path, best_path)
 
-            logging.info("Best lost is %.4f." % best_loss)
+            logging.info("Best loss is %.4f." % best_loss)
 
             for pred, count in target_pred_count.items():
                 logging.info(
@@ -594,7 +597,7 @@ if __name__ == '__main__':
     if basic_para.do_test:
         eval_res_dir = os.path.join(
             basic_para.log_dir, basic_para.model_name, 'results',
-            basic_para.run_name + "_" + timestamp + '.log'
+            basic_para.run_name + "_" + timestamp
         )
 
         if not os.path.exists(eval_res_dir):

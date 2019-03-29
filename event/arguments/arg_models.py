@@ -26,6 +26,8 @@ class ArgCompatibleModel(nn.Module):
             self.para.event_arg_vocab_size + 1,
             self.para.event_embedding_dim
         ))
+
+        # TODO: how many dimension for padding?
         # Add one dimension for padding.
         self.event_embedding = nn.Embedding(
             self.para.event_arg_vocab_size + 1,
@@ -106,11 +108,12 @@ class EventPairCompositionModel(ArgCompatibleModel):
         self._vote_method = para.vote_method
 
         if self._vote_method == 'biaffine':
-            self.bilinear_layer = Bilinear(
-                self.para.event_embedding_dim,
-                self.para.event_embedding_dim,
-                1
-            )
+            # Use the linear layer to simulate the middle tensor.
+            self.biaffine_att_layer = nn.Linear(self.para.event_embedding_dim,
+                                                self.para.event_embedding_dim)
+        elif self._vote_method == 'mlp':
+            self.mlp_att = self._config_mlp(self.para.event_embedding_dim * 2,
+                                            [1])
 
         self._linear_combine = nn.Linear(feature_size, 1)
 
@@ -221,8 +224,10 @@ class EventPairCompositionModel(ArgCompatibleModel):
             # Normalized dot product is cosine.
             trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
         elif self._vote_method == 'biaffine':
-            # TODO handle the batch size here.
-            trans = self.bilinear_layer(nom_event_emb, nom_context_emb)
+            trans = torch.bmm(self.biaffine_att_layer(nom_event_emb),
+                              nom_context_emb.transpose(-2, -1))
+        elif self._vote_method == 'mlp':
+            raise ValueError('Unimplemented MLP error.')
         else:
             raise ValueError(
                 'Unknown vote computation method {}'.format(self._vote_method)
@@ -280,7 +285,9 @@ class EventPairCompositionModel(ArgCompatibleModel):
             if trans.shape[2] > self._pool_topk:
                 pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
             else:
-                pooled_value = trans
+                added = torch.zeros((trans.shape[0], trans.shape[1],
+                                     self._pool_topk - trans.shape[2]))
+                pooled_value = torch.cat((trans, added), -1)
         else:
             raise ValueError(
                 'Unknown pool type {}'.format(self._vote_pool_type)
