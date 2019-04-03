@@ -64,6 +64,70 @@ class ArgCompatibleModel(nn.Module):
             )
 
 
+class BaselineEmbeddingModel(ArgCompatibleModel):
+    def __init__(self, para, resources):
+        super(BaselineEmbeddingModel, self).__init__(para, resources)
+        self.para = para
+
+        self._baseline_method = para.baseline_method
+        self._avg_topk = para.baseline_avg_topk
+
+    def forward(self, batch_event_data, batch_info):
+        # batch x instance_size x event_component
+        batch_event_rep = batch_event_data['rep']
+        # batch x instance_size x n_distance_features
+        batch_distances = batch_event_data['distances']
+        # batch x instance_size x n_features
+        batch_features = batch_event_data['features']
+
+        # batch x context_size x event_component
+        batch_context = batch_info['context']
+        # batch x instance_size
+        batch_slots = batch_info['slot_indices']
+        # batch x instance_size
+        batch_event_indices = batch_info['event_indices']
+
+        # Add embedding dimension at the end.
+        # batch x context_size x event_component x embedding
+        context_emb = self.event_embedding(batch_context)
+        # batch x instance_size x event_component x embedding
+        event_emb = self.event_embedding(batch_event_rep)
+
+        # batch x context_size x embedding_x_component
+        flat_context_emb = context_emb.view(
+            context_emb.size()[0], -1,
+            context_emb.size()[-1] * context_emb.size()[-2]
+        )
+
+        # batch x instance_size x embedding_x_component
+        flat_event_emb = event_emb.view(
+            event_emb.size()[0], -1,
+            event_emb.size()[-1] * event_emb.size()[-2]
+        )
+
+        # Compute cosine.
+        nom_event_emb = F.normalize(flat_event_emb, 2, -1)
+        nom_context_emb = F.normalize(flat_context_emb, 2, -1)
+
+        # Cosine similarities to the context.
+        # batch x instance_size x context_size
+        trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
+
+        # batch x instance_size
+        if self._baseline_method == 'max_sim':
+            pooled, _ = trans.max(2, keepdim=False)
+        elif self._baseline_method == 'average':
+            pooled, _ = trans.mean(2, keepdim=False)
+        elif self._baseline_method == 'topk_average':
+            topk_pooled = torch_util.topk_with_fill(
+                trans, self.baseline_avg_topk, 2, largest=True)
+            pooled = topk_pooled.mean(2, keepdim=False)
+        else:
+            raise ValueError("Unknown method.")
+
+        return pooled
+
+
 class EventPairCompositionModel(ArgCompatibleModel):
     def __init__(self, para, resources, gpu=True):
         super(EventPairCompositionModel, self).__init__(para, resources)
@@ -282,7 +346,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         elif self._vote_pool_type == 'average':
             pooled_value = trans.mean(2, keepdim=True)
         elif self._vote_pool_type == 'topk':
-            if trans.shape[2] > self._pool_topk:
+            if trans.shape[2] >= self._pool_topk:
                 pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
             else:
                 added = torch.zeros((trans.shape[0], trans.shape[1],
@@ -345,6 +409,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
             distance_emb = self._encode_distance(event_emb, batch_distances)
             l_extracted.append(distance_emb)
 
+        # batch x instance_size x feature_size_1
         extracted_features = torch.cat(l_extracted, -1)
 
         if self.__debug_show_shapes:
@@ -354,7 +419,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
             if self._use_distance:
                 print(distance_emb.shape)
-
             print(extracted_features.shape)
 
         event_repr = self._event_repr(event_emb)
@@ -382,6 +446,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
         # Now compute the coherent features with all context events.
         coh_features = self.coh(event_repr, context_repr, one_zeros)
 
+        # batch x instance_size x feature_size_2
         all_features = torch.cat((extracted_features, coh_features), -1)
 
         if self.__debug_show_shapes:
@@ -392,6 +457,7 @@ class EventPairCompositionModel(ArgCompatibleModel):
             print("all feature")
             print(all_features.shape)
 
+        # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)
 
         if self.normalize_score:

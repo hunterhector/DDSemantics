@@ -56,10 +56,38 @@ def make_one_hot(labels, C=2):
 
     Returns
     -------
-    target : torch.cuda.FloatTensor N x C x H x W, where C is class number. One-hot encoded.
+    target : torch.cuda.FloatTensor N x C x H x W, where C is class number.
+    One-hot encoded.
     '''
     one_hot = torch.cuda.FloatTensor(labels.size(0), C, labels.size(2),
                                      labels.size(3)).zero_()
     target = one_hot.scatter_(1, labels.data, 1)
 
     return target
+
+
+def topk_with_fill(data, k, dimension, largest, dtype=torch.int32, filler=0):
+    if data.shape[dimension] >= k:
+        res, _ = data.topk(k, dimension, largest=largest)
+    else:
+        pad_len = k - data.shape[dimension]
+        l_pad_shape = []
+
+        for index, s in data.shape:
+            if index == dimension:
+                l_pad_shape.append(pad_len)
+            else:
+                l_pad_shape.append(s)
+
+        pad_shape = tuple(l_pad_shape)
+
+        if filler == 1:
+            padding = torch.ones(pad_shape, dtype=dtype)
+        else:
+            padding = torch.zeros(pad_shape, dtype=dtype)
+            if not filler == 0:
+                padding.fill_(filler)
+
+        res = torch.cat((data, padding), -1)
+
+    return res
