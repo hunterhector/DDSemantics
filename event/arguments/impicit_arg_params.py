@@ -11,6 +11,8 @@ class ArgModelPara(Configurable):
     # Basic configs.
     use_gpu = Bool(help='Whether to use gpu.', default_value=True).tag(
         config=True)
+    model_type = Unicode(help='Type of the model.', default_value='').tag(
+        config=True)
 
     # Input size configs.
     event_arg_vocab_size = Int(
@@ -78,8 +80,14 @@ class ArgModelPara(Configurable):
         default_value=3
     ).tag(config=True)
 
-    # Null Instantiation Detector
+    # Null Instantiation Detector.
     nid_method = Unicode(
         help='The method for Null Instantiation Detector',
         default_value='logistic'
     ).tag(config=True)
+
+    # Baseline parameters.
+    baseline_method = Unicode(help='Baseline method type.',
+                              default_value='').tag(config=True)
+    baseline_avg_topk = Int(help='Average top K', default_value=3).tag(
+        config=True)

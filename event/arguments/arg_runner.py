@@ -1,6 +1,9 @@
 from traitlets.config import Configurable
 from event.arguments.impicit_arg_params import ArgModelPara
-from event.arguments.arg_models import EventPairCompositionModel
+from event.arguments.arg_models import (
+    EventPairCompositionModel,
+    BaselineEmbeddingModel,
+)
 from traitlets import (
     Unicode,
     Integer,
@@ -105,15 +108,14 @@ class TrainableNullArgDetector(NullArgDetector):
 
 
 class ArgRunner(Configurable):
-
     def __init__(self, **kwargs):
         super(ArgRunner, self).__init__(**kwargs)
 
         self.para = ArgModelPara(**kwargs)
         self.resources = ImplicitArgResources(**kwargs)
 
-        self.model_dir = kwargs['model_dir']
-        self.debug_dir = kwargs['debug_dir']
+        self.model_dir = self.para.model_dir
+        self.debug_dir = self.para.debug_dir
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -124,21 +126,20 @@ class ArgRunner(Configurable):
         logging.info("Model saving directory: " + self.model_dir)
 
         self.checkpoint_name = 'checkpoint.pth'
-
         self.best_model_name = 'model_best.pth'
 
         self.device = torch.device(
             "cuda" if self.para.use_gpu and torch.cuda.is_available()
             else "cpu"
         )
-
-        self.model = EventPairCompositionModel(
-            self.para, self.resources).to(self.device)
-
-        logging.info("Initialize model")
-        logging.info(str(self.model))
-
         self.nb_epochs = self.para.nb_epochs
+
+        if self.para.model_type:
+            if self.para.model_type == 'EventPairComposition':
+                self.model = EventPairCompositionModel(
+                    self.para, self.resources).to(self.device)
+                logging.info("Initialize model")
+                logging.info(str(self.model))
 
         self.reader = HashedClozeReader(self.resources,
                                         self.para.batch_size,
@@ -146,12 +147,11 @@ class ArgRunner(Configurable):
                                         max_events=self.para.max_events,
                                         max_cloze=self.para.max_cloze)
 
-        # Set up Null Instantiation.
+        # Set up Null Instantiation detector.
         if self.para.nid_method == 'gold':
             self.nid_detector = GoldNullArgDetector()
         elif self.para.nid_method == 'train':
             self.nid_detector = TrainableNullArgDetector()
-
         self.all_detector = AllArgDetector()
 
     def _assert(self):
@@ -273,14 +273,14 @@ class ArgRunner(Configurable):
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint['state_dict'])
 
-    def __test(self, test_lines, nid_detector, eval_dir=None):
+    def __test(self, model, test_lines, nid_detector, eval_dir=None):
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             doc_id, instances, common_data, gold_labels, debug_data = test_data
 
-            coh = self.model(instances, common_data)
+            coh = model(instances, common_data)
 
             event_idxes = common_data['event_indices'].data.cpu().numpy()[
                 0].tolist()
@@ -309,11 +309,20 @@ class ArgRunner(Configurable):
 
         evaluator.run()
 
+    def run_baseline(self, test_in, eval_dir):
+        logging.info("Test on [%s]." % test_in)
+
+        base_model = BaselineEmbeddingModel(self.para, self.resources).to(
+            self.device)
+        base_model.eval()
+        self.__test(base_model, data_gen(test_in),
+                    nid_detector=self.all_detector, eval_dir=eval_dir)
+
     def test(self, test_in, eval_dir):
         logging.info("Test on [%s]." % test_in)
         self.__load_best()
         self.model.eval()
-        self.__test(data_gen(test_in), self.nid_detector, eval_dir)
+        self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir)
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False, track_pred=None,
@@ -468,7 +477,7 @@ class ArgRunner(Configurable):
 
             logging.info("Computing test result on dev set.")
             self.model.eval()
-            self.__test(test_lines=dev_lines,
+            self.__test(self.model, test_lines=dev_lines,
                         nid_detector=self.all_detector)
             self.model.train()
 
@@ -525,14 +534,16 @@ if __name__ == '__main__':
             config=True)
         model_dir = Unicode(help='Model directory.').tag(config=True)
         log_dir = Unicode(help='Logging directory.').tag(config=True)
-        do_training = Bool(help='Flag for conducting training.',
-                           default_value=True).tag(config=True)
-        do_test = Bool(help='Flag for conducting testing.',
-                       default_value=False).tag(config=True)
         cmd_log = Bool(help='Log on command prompt only.',
                        default_value=False).tag(config=True)
         pre_val = Bool(help='Pre-validate on the dev set.',
                        default_value=False).tag(config=True)
+        do_training = Bool(help='Flag for conducting training.',
+                           default_value=False).tag(config=True)
+        do_test = Bool(help='Flag for conducting testing.',
+                       default_value=False).tag(config=True)
+        run_baselines = Bool(help='Run baseline.', default_value=False).tag(
+            config=True)
 
 
     from event.util import load_config_with_cmd, load_with_sub_config
@@ -558,7 +569,7 @@ if __name__ == '__main__':
         log_path = os.path.join(
             basic_para.log_dir,
             basic_para.model_name,
-            'log', basic_para.run_name + "_" + timestamp + mode + '.log')
+            basic_para.run_name + "_" + timestamp + mode + '.log')
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
@@ -584,6 +595,13 @@ if __name__ == '__main__':
         'lose', 'invest', 'fund',
     }
 
+    if basic_para.run_baselines:
+        baseline_dir = os.path.join(
+            basic_para.log_dir, basic_para.model_name, 'results',
+        )
+        print("Baseline evaluation results will be saved in: " + baseline_dir)
+        runner.run_baseline(test_in=basic_para.test_in, eval_dir=baseline_dir)
+
     if basic_para.do_training:
         runner.train(
             basic_para.train_in,
@@ -603,7 +621,7 @@ if __name__ == '__main__':
         if not os.path.exists(eval_res_dir):
             os.makedirs(eval_res_dir)
 
-        print("Evaluation result will be saved in: " + eval_res_dir)
+        print("Evaluation results will be saved in: " + eval_res_dir)
 
         runner.test(
             test_in=basic_para.test_in,

@@ -105,7 +105,10 @@ class HashedClozeReader:
 
         self.event_inverted = self.__inverse_vocab(self.event_vocab)
 
-        self.unobserved_arg = len(self.event_vocab)
+        # Some extra embeddings.
+        extra_index = len(self.event_vocab)
+
+        self.unobserved_arg = extra_index + 2
 
         self.slot_names = ['subj', 'obj', 'prep', ]
 
@@ -270,14 +273,22 @@ class HashedClozeReader:
             _clear()
 
     def _take_event_parts(self, event_info):
-        event_components = [event_info['predicate'], event_info['frame']]
+        frame_id = event_info['frame']
+        event_components = [
+            event_info['predicate'],
+            self.event_vocab[consts.unk_frame] if frame_id == -1 else frame_id]
 
         for slot_name in self.slot_names:
             slot = event_info['args'][slot_name]
-            event_components.append(slot.get('fe', self.unobserved_arg))
-            event_components.append(slot.get('arg_role', self.unobserved_arg))
 
-        if any([c <= 0 for c in event_components]):
+            if len(slot) == 0:
+                # TODO: Handle empty slot explicitly.
+                pass
+            else:
+                event_components.append(slot['fe'])
+                event_components.append(slot['arg_role'])
+
+        if any([c < 0 for c in event_components]):
             print(event_info)
             print(event_components)
             input('not positive')

@@ -1,6 +1,7 @@
 import os
 
 # Model parameters
+c.ArgModelPara.model_type = 'EventPairComposition'
 c.ArgModelPara.event_arg_vocab_size = 387354
 c.ArgModelPara.event_embedding_dim = 300
 c.ArgModelPara.word_vocab_size = 228575
@@ -51,3 +52,5 @@ c.Basic.log_dir = os.path.join(base, 'gigaword_corpus', 'logs')
 c.Basic.model_dir = os.path.join(base, 'gigaword_corpus', 'models')
 
 c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
+c.Basic.do_training = True
+c.Basic.do_test = True
