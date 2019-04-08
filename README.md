@@ -2,7 +2,7 @@
 Learning semantic regularities with data driven approaches
 
 TODO List:
-1. Set up baselines
+1. Make sure to reach reasonable baseline performance.
 1. Create an embedding for the empty slot (e.g. One empty slot vocab; 
 Different vocab for different predicate; Different vocab for different slot)
 1. Use a distance cutoff

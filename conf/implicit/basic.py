@@ -2,7 +2,7 @@ import os
 
 # Model parameters
 c.ArgModelPara.model_type = 'EventPairComposition'
-c.ArgModelPara.event_arg_vocab_size = 387354
+c.ArgModelPara.event_arg_vocab_size = 58983  # event_frame_embeddings_min500
 c.ArgModelPara.event_embedding_dim = 300
 c.ArgModelPara.word_vocab_size = 228575
 c.ArgModelPara.word_embedding_dim = 300
@@ -32,11 +32,12 @@ else:
     base = os.environ['implicit_corpus']
 c.ImplicitArgResources.event_embedding_path = os.path.join(
     base, 'gigaword_corpus',
-    'embeddings/event_frame_embeddings.pickle.wv.vectors.npy')
+    'embeddings/event_frame_embeddings_min500.pickle.wv.vectors.npy')
+c.ImplicitArgResources.event_vocab_path = os.path.join(
+    base, 'gigaword_corpus', 'embeddings/event_frame_embeddings_min500.voc')
+
 c.ImplicitArgResources.word_embedding_path = os.path.join(
     base, 'gigaword_corpus', 'embeddings/word_embeddings.pickle.wv.vectors.npy')
-c.ImplicitArgResources.event_vocab_path = os.path.join(
-    base, 'gigaword_corpus', 'embeddings/event_frame_embeddings.voc')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
     base, 'gigaword_corpus', 'embeddings/word_embeddings.voc')
 c.ImplicitArgResources.raw_lookup_path = os.path.join(base, 'gigaword_corpus',
@@ -44,8 +45,7 @@ c.ImplicitArgResources.raw_lookup_path = os.path.join(base, 'gigaword_corpus',
 # Runner parameters
 c.Basic.train_in = os.path.join(base, 'gigaword_corpus', 'hashed')
 c.Basic.test_in = os.path.join(base, 'nombank_with_gc', 'processed',
-                               'cloze_hashed.json.gz')
-# c.Basic.train_until = 1946546
+                               'cloze_hashed_filter.json.gz')
 c.Basic.validation_size = 10000
 c.Basic.debug_dir = os.path.join(base, 'gigaword_corpus', 'debug')
 c.Basic.log_dir = os.path.join(base, 'gigaword_corpus', 'logs')

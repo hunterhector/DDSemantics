@@ -596,11 +596,15 @@ if __name__ == '__main__':
     }
 
     if basic_para.run_baselines:
-        baseline_dir = os.path.join(
+        base_res_dir = os.path.join(
             basic_para.log_dir, basic_para.model_name, 'results',
         )
-        print("Baseline evaluation results will be saved in: " + baseline_dir)
-        runner.run_baseline(test_in=basic_para.test_in, eval_dir=baseline_dir)
+
+        if not os.path.exists(base_res_dir):
+            os.makedirs(base_res_dir)
+
+        print("Baseline evaluation results will be saved in: " + base_res_dir)
+        runner.run_baseline(test_in=basic_para.test_in, eval_dir=base_res_dir)
 
     if basic_para.do_training:
         runner.train(

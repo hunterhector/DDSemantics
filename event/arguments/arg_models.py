@@ -22,17 +22,20 @@ class ArgCompatibleModel(nn.Module):
         self.__load_embeddings(resources)
 
     def __load_embeddings(self, resources):
+        # Event argument vocabulary size, 2 additional dimensions here for
+        # unobserved roles.
+        extra_event_vocab = 2
+
         logging.info("Loading %d x %d event embedding." % (
-            self.para.event_arg_vocab_size + 1,
+            self.para.event_arg_vocab_size + extra_event_vocab,
             self.para.event_embedding_dim
         ))
 
-        # TODO: how many dimension for padding?
-        # Add one dimension for padding.
+        # Add additional dimension for extra event vocab.
         self.event_embedding = nn.Embedding(
-            self.para.event_arg_vocab_size + 1,
+            self.para.event_arg_vocab_size + extra_event_vocab,
             self.para.event_embedding_dim,
-            padding_idx=self.para.event_arg_vocab_size
+            # padding_idx=self.para.event_arg_vocab_size
         )
 
         logging.info("Loading %d x %d word embedding." % (
@@ -49,18 +52,23 @@ class ArgCompatibleModel(nn.Module):
             word_embed = torch.from_numpy(
                 resources.word_embedding
             )
+
+            # Add one additional dimension for word padding.
             zeros = torch.zeros(1, self.para.word_embedding_dim)
             self.word_embedding.weight = nn.Parameter(
-                torch.cat((zeros, word_embed))
+                torch.cat((word_embed, zeros))
             )
 
         if resources.event_embedding_path is not None:
             event_emb = torch.from_numpy(
                 resources.event_embedding
             )
-            zeros = torch.zeros(1, self.para.event_embedding_dim)
+
+            # Add extra event vocab for unobserved args.
+            zeros = torch.zeros(
+                extra_event_vocab, self.para.event_embedding_dim)
             self.event_embedding.weight = nn.Parameter(
-                torch.cat((zeros, event_emb))
+                torch.cat((event_emb, zeros))
             )
 
 

@@ -95,20 +95,27 @@ class HashedClozeReader:
         self.multi_context = multi_context
         self.max_events = max_events
         self.max_instance = max_cloze
-        self.event_vocab = resources.event_vocab
-        self.event_count = resources.term_freq
-        self.pred_counts = resources.typed_count['predicate']
         self.from_hashed = from_hashed
 
+        self.event_vocab = resources.event_vocab
+        self.event_count = resources.term_freq
+        self.pred_count = resources.typed_count['predicate']
+
         self.lookups = resources.lookups
+        # There are specific oovs for different type of vocabularies.
         self.oovs = resources.oovs
 
+        # Inverted vocab for debug purpose.
         self.event_inverted = self.__inverse_vocab(self.event_vocab)
 
         # Some extra embeddings.
         extra_index = len(self.event_vocab)
+        self.unobserved_fe = extra_index
+        self.unobserved_arg = extra_index + 1
 
-        self.unobserved_arg = extra_index + 2
+        logging.info(
+            "Use extra %d for unobserved fe, %d for unobserved arg." % (
+                self.unobserved_fe, self.unobserved_arg))
 
         self.slot_names = ['subj', 'obj', 'prep', ]
 
@@ -282,8 +289,10 @@ class HashedClozeReader:
             slot = event_info['args'][slot_name]
 
             if len(slot) == 0:
-                # TODO: Handle empty slot explicitly.
-                pass
+                # event_components.append(self.unobserved_fe)
+                # event_components.append(self.unobserved_arg)
+                event_components.append(0)
+                event_components.append(2)
             else:
                 event_components.append(slot['fe'])
                 event_components.append(slot['arg_role'])
@@ -294,7 +303,7 @@ class HashedClozeReader:
             input('not positive')
 
         # TODO do not use c>0 here, explicitly handle it.
-        return [c if c > 0 else self.unobserved_arg for c in event_components]
+        return [c if c > 0 else self.unobserved_fe for c in event_components]
 
     def parse_hashed(self):
         pass
@@ -529,7 +538,7 @@ class HashedClozeReader:
                 continue
 
             pred_tf = self.event_count[pred]
-            freq = 1.0 * pred_tf / self.pred_counts
+            freq = 1.0 * pred_tf / self.pred_count
             keep_pred = sampler.subsample_pred(pred_tf, freq)
 
             if not keep_pred:

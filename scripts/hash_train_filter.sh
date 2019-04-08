@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+mkdir -p ${implicit_corpus}/gigaword_corpus/hashed_filter
+
+for f in ${implicit_corpus}/gigaword_corpus/nyt_events_shuffled/*.gz
+do
+    if [[ -f ${f} ]]; then
+        h=${f//nyt_events_shuffled/hashed_filter}
+        echo 'Hashing '${f}
+        python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash_filter.py --HashParam.raw_data=${f} --HashParam.output_path=${h}
+    fi
+done
+
+

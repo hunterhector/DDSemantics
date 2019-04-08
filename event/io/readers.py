@@ -154,7 +154,7 @@ class EventReader:
                 events.append(event)
 
                 for arg_info in event_info['arguments']:
-                    left, right = arg_info['context'].split('___')
+                    left, right = arg_info['context'].split('___', 1)
                     arg_context = left.split(), right.split()
 
                     if entity_heads:

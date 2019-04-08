@@ -16,7 +16,6 @@ from traitlets import (
 from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
 import sys
-import logging
 
 
 def hash_context(word_vocab, context):
@@ -319,7 +318,7 @@ def hash_data(params):
             hashed_doc = hash_one_doc(docid, events, entities, event_vocab,
                                       word_vocab, lookups, oovs, frame_args,
                                       dep_frames)
-            data_out.run((json.dumps(hashed_doc) + '\n').encode())
+            data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
             doc_count += 1
             event_count += len(hashed_doc['events'])
