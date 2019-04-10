@@ -65,6 +65,7 @@ class ImplicitEval:
                     'num_gold': num_correct,
                     'gold_ranks': gold_rank,
                     'top_k': top_k,
+                    'predicate': debug_data['predicate'],
                     'gold_entity': debug_data['gold_entity'],
                     'scores': {},
                     'gold': {},

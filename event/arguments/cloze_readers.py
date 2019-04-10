@@ -350,11 +350,10 @@ class HashedClozeReader:
         Parse and get one test document.
         :param doc_info: The JSON data of one document.
         :param nid_detector: NID detector to detect which slot to fill.
-        :param cutoff: Sometimes we would cutoff long docs.
         :return:
         """
-        instance_data = {'rep': [], 'distances': [], 'features': []}
-        debug_data = {'entity_text': [], 'gold_entity': []}
+        instance_data = {'rep': [], 'distances': [], 'features': [], }
+        debug_data = {'predicate': [], 'entity_text': [], 'gold_entity': [], }
 
         # Collect information such as features and entity positions.
         features_by_eid, entity_heads = self.collect_features(doc_info)
@@ -388,17 +387,18 @@ class HashedClozeReader:
         for evm_index, event in enumerate(event_subset):
             pred_sent = event['sentence_id']
 
+            pred_idx = event['predicate']
+            predicate = (
+                pred_idx, self.event_inverted[pred_idx],
+                event['predicate_text']
+            )
+
             for slot, arg in event['args'].items():
                 is_instance = nid_detector.should_fill(event, slot)
 
                 if is_instance and arg['resolvable']:
                     test_rank_list = self.create_test_instance(
                         evm_index, slot, event['args'], doc_args
-                    )
-
-                    debug_data['gold_entity'] = (
-                        arg['entity_id'],
-                        entity_heads[arg['entity_id']],
                     )
 
                     for cand_args, filler_eid in test_rank_list:
@@ -416,8 +416,13 @@ class HashedClozeReader:
                             1 if filler_eid == arg['entity_id'] else 0
                         )
 
+                        debug_data['predicate'].append(predicate)
                         debug_data['entity_text'].append(
                             entity_heads[filler_eid])
+                        debug_data['gold_entity'].append(
+                            (arg['entity_id'],
+                             entity_heads[arg['entity_id']])
+                        )
 
                         # TODO: Set a hard threshold here might be dangerous.
                         if len(cloze_event_indices) > 500:

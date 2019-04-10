@@ -145,7 +145,8 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
             'entity_id': content['entity_id'],
             'implicit': content['implicit'],
             'resolvable': content['resolvable'],
-            'text': arg_text,
+            'vocab_text': arg_text,
+            'text': content['represent'],
             'dep': dep,
         }
 
@@ -289,6 +290,7 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
 
         hashed_doc['events'].append({
             'predicate': pid,
+            'predicate_text': event['predicate'],
             'frame': fid,
             'context': context,
             'sentence_id': event['sentence_id'],

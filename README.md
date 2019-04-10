@@ -8,7 +8,9 @@ Different vocab for different predicate; Different vocab for different slot)
 1. Use a distance cutoff
 1. Classifier for DNI and INI for both datasets.
 1. Fix the distance embedding error, should deal with infinity much better.
-1. May want to use NER type.
+1. Use NER type can reduce unknown args.
+1. Same mention text should be considered coref, which will reduce the 
+candidate size a lot.
 1. Using Centering theory baseline
 1. Using Centering theory as generic filling.
 1. Take the SemEval corpus

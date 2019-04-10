@@ -152,6 +152,7 @@ class ArgRunner(Configurable):
             self.nid_detector = GoldNullArgDetector()
         elif self.para.nid_method == 'train':
             self.nid_detector = TrainableNullArgDetector()
+
         self.all_detector = AllArgDetector()
 
     def _assert(self):
@@ -288,13 +289,27 @@ class ArgRunner(Configurable):
                 0].tolist()
             coh_scores = coh.data.cpu().numpy()[0].tolist()
 
-            for (event_idxes, slot_idxes), result in groupby(
+            for (event_idx, slot_idx), result in groupby(
                     zip(zip(event_idxes, slot_idxes),
-                        zip(coh_scores, gold_labels)), key=itemgetter(0)):
-                score_labels = [r[1] for r in result]
-                slot_name = self.reader.slot_names[int(slot_idxes)]
+                        zip(coh_scores, gold_labels),
+                        debug_data['predicate'],
+                        debug_data['entity_text'],
+                        debug_data['gold_entity'],
+                        ),
+                    key=itemgetter(0)):
+
+                _, score_labels, debug_preds, debug_entities, golds = zip(
+                    *result)
+
+                slot_name = self.reader.slot_names[slot_idx]
+
                 evaluator.add_result(
-                    doc_id, event_idxes, slot_name, score_labels, debug_data
+                    doc_id, event_idx, slot_name, score_labels,
+                    {
+                        'predicate': debug_preds[0],
+                        'entity_text': debug_entities,
+                        'gold_entity': golds[0],
+                    }
                 )
 
             doc_count += 1
@@ -316,7 +331,7 @@ class ArgRunner(Configurable):
             self.device)
         base_model.eval()
         self.__test(base_model, data_gen(test_in),
-                    nid_detector=self.all_detector, eval_dir=eval_dir)
+                    nid_detector=self.nid_detector, eval_dir=eval_dir)
 
     def test(self, test_in, eval_dir):
         logging.info("Test on [%s]." % test_in)
@@ -595,16 +610,17 @@ if __name__ == '__main__':
         'lose', 'invest', 'fund',
     }
 
+    result_dir = os.path.join(
+        basic_para.log_dir, basic_para.model_name, 'results',
+        basic_para.run_name + "_" + timestamp,
+    )
+
     if basic_para.run_baselines:
-        base_res_dir = os.path.join(
-            basic_para.log_dir, basic_para.model_name, 'results',
-        )
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+        print("Baseline evaluation results will be saved in: " + result_dir)
 
-        if not os.path.exists(base_res_dir):
-            os.makedirs(base_res_dir)
-
-        print("Baseline evaluation results will be saved in: " + base_res_dir)
-        runner.run_baseline(test_in=basic_para.test_in, eval_dir=base_res_dir)
+        runner.run_baseline(test_in=basic_para.test_in, eval_dir=result_dir)
 
     if basic_para.do_training:
         runner.train(
@@ -617,17 +633,12 @@ if __name__ == '__main__':
         )
 
     if basic_para.do_test:
-        eval_res_dir = os.path.join(
-            basic_para.log_dir, basic_para.model_name, 'results',
-            basic_para.run_name + "_" + timestamp
-        )
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-        if not os.path.exists(eval_res_dir):
-            os.makedirs(eval_res_dir)
-
-        print("Evaluation results will be saved in: " + eval_res_dir)
+        print("Evaluation results will be saved in: " + result_dir)
 
         runner.test(
             test_in=basic_para.test_in,
-            eval_dir=eval_res_dir,
+            eval_dir=result_dir,
         )
