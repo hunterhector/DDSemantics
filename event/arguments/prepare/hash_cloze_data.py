@@ -276,8 +276,14 @@ def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
     hashed_doc['entities'] = read_entity_features(entities, lookups, oovs)
 
     for event in events:
-        pid = event_vocab[get_predicate(event['predicate'], lookups, oovs)]
-        frame_name = event.get('frame', 'NA')
+        if 'verb_form' in event:
+            pred_text = event['verb_form']
+        else:
+            pred_text = event['predicate']
+
+        pid = event_vocab[get_predicate(pred_text, lookups, oovs)]
+
+        frame_name = event.get('frame')
         fid = event_vocab.get(frame_name, -1)
         mapped_args = get_args(event, frame_args, dep_frames)
 

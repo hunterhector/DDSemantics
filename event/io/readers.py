@@ -151,6 +151,9 @@ class EventReader:
                     'sentence_id': event_info['sentenceId'],
                 }
 
+                if 'verbForm' in event_info:
+                    event['verb_form'] = event_info['verbForm']
+
                 events.append(event)
 
                 for arg_info in event_info['arguments']:

@@ -3,6 +3,7 @@ import os
 from itertools import groupby
 from operator import itemgetter
 import logging
+from pprint import pprint
 
 
 class ImplicitEval:
@@ -44,13 +45,15 @@ class ImplicitEval:
                 gold_rank = []
                 top_k = []
 
-                for r, (score, label) in enumerate(
-                        sorted(score_labels, reverse=True)):
+                entity_texts = debug_data['entity_text']
+
+                for r, ((score, label), entity_text) in enumerate(
+                        sorted(zip(score_labels, entity_texts), reverse=True)):
                     if label == 1:
                         gold_rank.append(r + 1)
                     if r < 5:
                         top_k.append(
-                            (score, label, debug_data['entity_text'][r], r)
+                            (score, label, entity_text, r)
                         )
 
                 num_correct = len(gold_rank)
@@ -79,7 +82,6 @@ class ImplicitEval:
                     r = 1.0 * tp / num_correct
                     instance_res['scores']['p@%d' % c] = p
                     instance_res['scores']['r@%d' % c] = r
-                    instance_res['scores'][tp] = tp
 
                     gold_tp = min(num_correct, c)
                     gold_p = 1.0 * gold_tp / c

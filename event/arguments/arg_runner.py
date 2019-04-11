@@ -569,9 +569,9 @@ if __name__ == '__main__':
     basic_para = Basic(config=conf)
 
     from event.util import set_file_log, set_basic_log, ensure_dir
-    from time import gmtime, strftime
+    from time import localtime, strftime
 
-    timestamp = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
+    timestamp = strftime("%Y-%m-%d_%H-%M-%S", localtime())
 
     if not basic_para.cmd_log and basic_para.log_dir:
         mode = ''
