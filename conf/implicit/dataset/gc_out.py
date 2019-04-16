@@ -1,10 +1,10 @@
 import os
 
-if 'data_path' not in os.environ:
+if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the main working directory as environment "
-                   "variable: 'data_path'")
+                   "variable: 'implicit_corpus'")
 else:
-    working = os.environ['data_path']
+    working = os.environ['implicit_corpus']
 
 c.OutputConf.out_dir = os.path.join(working, 'nombank_with_gc', 'annotation')
 c.OutputConf.text_dir = os.path.join(working, 'nombank_with_gc', 'text')

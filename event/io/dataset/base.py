@@ -365,10 +365,14 @@ class Relation:
 
 
 class Corpus:
-    def __init__(self):
+    def __init__(self, corpus_name=None):
         self.documents = []
         self.entity_types = set()
         self.event_ontos = {}
+        self.corpus_name = corpus_name
+
+    def set_corpus_name(self, corpus_name):
+        self.corpus_name = corpus_name
 
     def add_doc(self, document):
         self.documents.append(document)
@@ -449,6 +453,9 @@ class DEDocument:
 
     def set_token_spans(self, token_spans):
         self.token_spans = token_spans
+
+    def add_token_span(self, token_span):
+        self.token_spans.append(token_span)
 
     def get_token_spans(self):
         return self.token_spans

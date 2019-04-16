@@ -95,10 +95,6 @@ class NomBank(DataLoader):
 
         __repr__ = __str__
 
-    def get_wsj_data(self, fileid):
-        sents = self.wsj_treebank.sents(fileids=fileid)
-        parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
-        return sents, parsed_sents
 
     def load_gc_annotations(self):
         tree = ET.parse(self.params.implicit_path)
@@ -164,11 +160,10 @@ class NomBank(DataLoader):
 
         return gc_annotations
 
-    def add_nombank_arg(self, doc, wsj_spans, predicate, arg_type, argument,
-                        implicit=False):
+    def add_nombank_arg(self, doc, parsed_sents, wsj_spans, predicate, arg_type,
+                        argument, implicit=False):
         arg_type = arg_type.lower()
 
-        parsed_sents = doc.get_parsed_sents()
         p_tree = parsed_sents[predicate.sent_num]
         a_tree = parsed_sents[argument.sent_num]
 
@@ -215,7 +210,7 @@ class NomBank(DataLoader):
             if predicate.pointer == argument.pointer:
                 arg_mention.add_meta('incorporated', True)
 
-    def add_all_annotations(self, doc):
+    def add_all_annotations(self, doc, parsed_sents):
         logging.info("Adding nombank annotation for " + doc.docid)
         nb_instances = self.nombank_annos[doc.docid]
 
@@ -228,14 +223,14 @@ class NomBank(DataLoader):
                 arg_node = NomBank.NomElement(
                     doc.docid, nb_instance.sentnum, argloc
                 )
-                self.add_nombank_arg(doc, doc.token_spans, predicate_node,
-                                     argid, arg_node)
+                self.add_nombank_arg(doc, parsed_sents, doc.token_spans,
+                                     predicate_node, argid, arg_node)
 
         if doc.docid in self.gc_annos:
             for predicate_node, gc_args in self.gc_annos[doc.docid].items():
                 for arg_type, arg_nodes in gc_args.items():
                     for arg_node in arg_nodes:
-                        self.add_nombank_arg(doc, doc.token_spans,
+                        self.add_nombank_arg(doc, parsed_sents, doc.token_spans,
                                              predicate_node, arg_type, arg_node,
                                              True)
 
@@ -289,6 +284,6 @@ class NomBank(DataLoader):
             token_spans = self.set_wsj_text(doc, fileid)
             doc.set_token_spans(token_spans)
 
-            self.add_all_annotations(doc)
+            self.add_all_annotations(doc, parsed_sents)
 
             yield doc

@@ -12,6 +12,7 @@ from event.io.dataset.framenet import FrameNet
 from event.io.dataset.nombank import NomBank
 from event.io.dataset.richere import RichERE
 from event.io.dataset.propbank import PropBank
+from event.io.dataset.negra import NeGraXML
 from event.util import ensure_dir
 from event.io.dataset.base import Corpus
 
@@ -70,6 +71,9 @@ def main(data_formats, config_files, output_config_file):
         frame_files = Unicode(help='Frame file pattern.').tag(config=True)
         verbs_file = Unicode(help='Verbs.').tag(config=True)
 
+    class NegraConfig(Configurable):
+        data_file = Unicode(help='Input data path.').tag(config=True)
+
     basic_console_log()
 
     basic_params = []
@@ -112,6 +116,9 @@ def main(data_formats, config_files, output_config_file):
         elif data_format == 'propbank':
             basic_param = PropBankConfig(config=config)
             parser = PropBank(basic_param, corpus, with_doc)
+        elif data_format == 'negra':
+            basic_param = NegraConfig(config=config)
+            parser = NeGraXML(basic_param, corpus, with_doc)
         else:
             raise NotImplementedError("Selected format unknown.")
 
@@ -121,6 +128,7 @@ def main(data_formats, config_files, output_config_file):
     # Use the documents created by the first parser.
     for doc in parsers[0].get_doc():
         for basic_param, parser in zip(basic_params[1:], parsers[1:]):
+            # TODO: This is not complete.
             # Add annotations from each parser.
             parser.add_all_annotations(doc)
 
