@@ -41,5 +41,16 @@ Experiments setups:
 1. basic_gaussian_distance: use gaussian to simulate distances
 1. basic_biaffine:
 
+Processing steps:
+1. Create the automatically constructed training set
+    1. Find a domain relevant corpus and parse it with the pipeline
+1. Obtain the relevant corpus
+    1. For G&C Corpus
+        1. Read both Propbank and Nombank into the annotations format
+        1. Add G&C data into the dataset
+    1. For SemEval2010 Task 10
+        1. Read SemEval dataset into the annotation format
+    1. Run ImplicitFeatureExtractionPipeline to create dataset with features.
+
 
 

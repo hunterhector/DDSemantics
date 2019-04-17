@@ -11,6 +11,9 @@ from event.io.dataset.base import (
     Corpus,
 )
 
+from collections import Counter
+import logging
+
 
 class TreeNode:
     def __init__(self, node_id, is_leaf=False, is_root=False):
@@ -48,41 +51,58 @@ class NeGraXML(DataLoader):
     def __init__(self, params, corpus, with_doc=False):
         super().__init__(params, corpus)
 
-        self.xml_path = params.data_file
+        self.xml_paths = params.data_files
         self.offset = 0
         self.text = ''
 
         self.id2span = {}
 
+        self.stats = Counter()
+
     def get_doc(self):
-        root = ET.parse(self.xml_path).getroot()
-        self.corpus.set_corpus_name(root.attrib['corpusname'])
+        for xml_path in self.xml_paths:
+            logging.info("Parsing: " + xml_path)
 
-        doc = DEDocument(self.corpus)
-        doc.set_id(self.corpus.corpus_name)
+            root = ET.parse(xml_path).getroot()
+            self.corpus.set_corpus_name(root.attrib['corpusname'])
 
-        body = root.find("body")
+            doc = DEDocument(self.corpus)
+            doc.set_id(self.corpus.corpus_name)
 
-        for sent in body:
-            c_graph_node = sent.find("graph")
+            body = root.find("body")
 
-            c_parse = self.read_constituent_parse(c_graph_node)
-            self.build_next_sent(doc, c_parse)
+            for sent in body:
+                c_graph_node = sent.find("graph")
 
-        doc.set_text(self.text)
+                c_parse = self.read_constituent_parse(c_graph_node)
+                self.build_next_sent(doc, c_parse)
 
-        for sent in body:
-            sem_node = sent.find("sem")
-            self.read_frame_parse(doc, sem_node)
+            doc.set_text(self.text)
 
-        yield doc
+            for sent in body:
+                self.read_frame_parse(doc, sent)
 
-    def read_frame_parse(self, doc, sem_node):
-        for frame in sem_node.find('frames'):
+            yield doc
+
+    def read_frame_parse(self, doc, sent):
+        frame_nodes = sent.find("sem").find('frames')
+
+        if frame_nodes is None:
+            logging.info(
+                "No frame node found for doc %s sent %s." % (
+                    doc.docid, sent.attrib['id']))
+            return
+
+        for frame in frame_nodes:
             frame_name = frame.attrib['name']
             frame_id = frame.attrib['id']
 
             target_id = frame.find('target').find('fenode').attrib['idref']
+
+            if target_id not in self.id2span:
+                logging.info("Cannot for target span for " + target_id)
+                continue
+
             target_span = self.id2span[target_id]
 
             p = doc.add_predicate(None, target_span, frame_type=frame_name)
@@ -92,10 +112,32 @@ class NeGraXML(DataLoader):
                 role = fe.attrib['name']
                 fe_node = fe.find('fenode')
 
-                if fe_node is None:
+                flags = []
+
+                linked = fe_node is not None
+
+                for flag in fe.findall('flag'):
+                    flag_name = flag.attrib['name']
+                    flags.append(flag_name)
+                    if flag_name == 'Definite_Interpretation':
+                        self.stats['DNI'] += 1
+
+                        if linked:
+                            self.stats['DNI_resolved'] += 1
+                    elif flag_name == 'Indefinite_Interpretation':
+                        self.stats['INI'] += 1
+                    else:
+                        if linked:
+                            self.stats['Explicit'] += 1
+
+                if not linked:
                     continue
 
                 fe_id = fe_node.attrib['idref']
+
+                if fe_id not in self.id2span:
+                    logging.info("Cannot find fe span for " + fe_id)
+                    continue
 
                 fe_span = self.id2span[fe_id]
 
@@ -103,8 +145,8 @@ class NeGraXML(DataLoader):
                                                 entity_type='ARG_ENT')
                 arg_mention = doc.add_argument_mention(p, arg_em.aid, role)
 
-                for flag in fe.findall('flag'):
-                    arg_mention.add_meta(flag.attrib['name'], True)
+                for flag in flags:
+                    arg_mention.add_meta(flag, True)
 
     def build_next_sent(self, doc, c_parse):
         # Build token spans.
@@ -178,3 +220,8 @@ class NeGraXML(DataLoader):
             'tokens': token_nodes,
             'id2node': id2node,
         }
+
+    def print_stats(self):
+        logging.info("Corpus statistics from NeGra")
+        for key, value in self.stats.items():
+            logging.info("Stat for %s : %d" % (key, value))

@@ -3,6 +3,7 @@ import os
 from traitlets import (
     Unicode,
     Bool,
+    List,
 )
 from traitlets.config import Configurable
 
@@ -72,7 +73,8 @@ def main(data_formats, config_files, output_config_file):
         verbs_file = Unicode(help='Verbs.').tag(config=True)
 
     class NegraConfig(Configurable):
-        data_file = Unicode(help='Input data path.').tag(config=True)
+        data_files = List(help='Input data path.', trait=Unicode).tag(
+            config=True)
 
     basic_console_log()
 
@@ -154,6 +156,9 @@ def main(data_formats, config_files, output_config_file):
         ensure_dir(out_path)
         with open(out_path, 'w') as out:
             out.write(source_text)
+
+    for p in parsers:
+        p.print_stats()
 
     # Write brat configs.
     out_path = os.path.join(output_param.brat_dir, 'annotation.conf')

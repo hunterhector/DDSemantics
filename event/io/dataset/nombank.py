@@ -95,7 +95,6 @@ class NomBank(DataLoader):
 
         __repr__ = __str__
 
-
     def load_gc_annotations(self):
         tree = ET.parse(self.params.implicit_path)
         root = tree.getroot()

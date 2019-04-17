@@ -761,3 +761,6 @@ class DataLoader:
     def get_doc(self):
         if not self.with_doc:
             raise NotImplementedError
+
+    def print_stats(self):
+        pass

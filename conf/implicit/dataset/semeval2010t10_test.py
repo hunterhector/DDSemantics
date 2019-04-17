@@ -6,5 +6,6 @@ if 'eval_corpus' not in os.environ:
 else:
     corpus_path = os.environ['eval_corpus']
 
-c.NegraConfig.data_file = os.path.join(corpus_path, 'SemEval2010Task10',
-                                       'task10-fn_trial.xml')
+path = os.path.join(corpus_path, 'SemEval2010Task10', 'test_gold')
+
+c.NegraConfig.data_files = [os.path.join(path, p) for p in os.listdir(path)]
