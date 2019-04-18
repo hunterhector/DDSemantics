@@ -16,5 +16,3 @@ c.HashParam.dep_frame_map = os.path.join(
     base, 'gigaword_corpus', 'frame_maps/args_frames_filled.tsv')
 c.HashParam.component_vocab_dir = os.path.join(
     base, 'gigaword_corpus', 'vocab/')
-# c.HashParam.raw_data = os.path.join(base, 'nyt_events.json.gz'
-# c.HashParam.output_path = os.path.join(base, 'hashed_events_new.json.gz'

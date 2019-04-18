@@ -297,7 +297,6 @@ class ArgRunner(Configurable):
                         debug_data['gold_entity'],
                         ),
                     key=itemgetter(0)):
-
                 _, score_labels, debug_preds, debug_entities, golds = zip(
                     *result)
 
@@ -561,10 +560,10 @@ if __name__ == '__main__':
             config=True)
 
 
-    from event.util import load_config_with_cmd, load_with_sub_config
+    from event.util import load_mixed_configs
     import json
 
-    conf = load_with_sub_config(sys.argv)
+    conf = load_mixed_configs()
 
     basic_para = Basic(config=conf)
 

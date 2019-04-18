@@ -86,27 +86,32 @@ def load_config_with_cmd(args):
     return file_conf
 
 
-def load_with_sub_config(args):
+def load_mixed_configs():
+    file_confs = [a for a in sys.argv[1:] if a.endswith('.py')]
+    arg_confs = [a for a in sys.argv[1:] if a.startswith('--')]
+    return load_multi_configs(file_confs, arg_confs)
+
+
+def load_multi_configs(file_args, cmd_args):
     """
     This method try to mimics the behavior of the sub_config. It currently only
     take one base and one main.
-    :param args:
+    :param file_args:
+    :param cmd_args:
     :return:
     """
-    base_conf = args[1]
-    main_conf = args[2]
-
+    base_conf = file_args[0]
     loader = PyFileConfigLoader(base_conf)
     loader.load_config()
 
-    # Since subconfig will be merged to and override the base.
-    loader.load_subconfig(main_conf)
+    for conf in file_args[1:]:
+        # Since subconfig will be merged to and override the base.
+        loader.load_subconfig(conf)
 
     all_conf = loader.config
 
-    if len(args) > 2:
-        cl_conf = load_command_line_config(args[3:])
-        all_conf.merge(cl_conf)
+    cl_conf = load_command_line_config(cmd_args)
+    all_conf.merge(cl_conf)
 
     return all_conf
 

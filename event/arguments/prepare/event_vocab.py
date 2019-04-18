@@ -58,7 +58,8 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
             for event in doc_info['events']:
                 event_count += 1
 
-                pred = get_vocab_word(event['predicate'], 'predicate', lookups, oovs)
+                pred = get_vocab_word(event['predicate'], 'predicate', lookups,
+                                      oovs)
                 frame_name = event.get('frame')
                 frame = get_vocab_word(frame_name, 'frame', lookups, oovs)
 
@@ -76,7 +77,11 @@ def create_sentences(doc, output_path, lookups, oovs, include_frame=False):
 
                     eid = arg['entityId']
                     text = represent_by_id.get(eid, arg['text'])
+
                     arg_text = get_vocab_word(text, 'argument', lookups, oovs)
+                    if arg_text == oovs['argument']:
+                        # Replace the argument with the NER type if not seen.
+                        arg_text = arg['ner']
 
                     if dep.startswith('prep'):
                         dep = get_vocab_word(dep, 'preposition', lookups, oovs)

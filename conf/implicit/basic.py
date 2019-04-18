@@ -30,6 +30,7 @@ if 'implicit_corpus' not in os.environ:
                    "variable: 'implicit_corpus'")
 else:
     base = os.environ['implicit_corpus']
+
 c.ImplicitArgResources.event_embedding_path = os.path.join(
     base, 'gigaword_corpus',
     'embeddings/event_frame_embeddings_min500.pickle.wv.vectors.npy')

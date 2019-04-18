@@ -146,7 +146,10 @@ class NeGraXML(DataLoader):
                 arg_mention = doc.add_argument_mention(p, arg_em.aid, role)
 
                 for flag in flags:
-                    arg_mention.add_meta(flag, True)
+                    if flag == 'Definite_Interpretation':
+                        arg_mention.add_meta('implicit', True)
+                    else:
+                        arg_mention.add_meta(flag, True)
 
     def build_next_sent(self, doc, c_parse):
         # Build token spans.

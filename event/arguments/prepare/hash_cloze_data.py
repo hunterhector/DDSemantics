@@ -122,6 +122,9 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
 
         arg_text = get_vocab_word(
             content['represent'], 'argument', lookups, oovs)
+        if arg_text == oovs['argument']:
+            # Replace the argument with the NER type.
+            arg_text = arg['ner']
 
         arg_role_id = hash_arg_role(arg_text, dep, event_vocab, oovs)
 
