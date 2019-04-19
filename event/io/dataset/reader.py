@@ -4,6 +4,7 @@ from traitlets import (
     Unicode,
     Bool,
     List,
+    Int
 )
 from traitlets.config import Configurable
 
@@ -18,16 +19,21 @@ from event.util import ensure_dir
 from event.io.dataset.base import Corpus
 
 
-def main(data_formats, config_files, output_config_file):
+def main():
     from event.util import basic_console_log
-    from event.util import load_file_config, load_config_with_cmd
+    from event.util import load_file_config, load_mixed_configs
 
     class OutputConf(Configurable):
         out_dir = Unicode(help='Output directory').tag(config=True)
         text_dir = Unicode(help='Text output directory').tag(config=True)
         brat_dir = Unicode(help='Brat visualization directory').tag(config=True)
 
-    class EreConf(Configurable):
+    class DataConf(Configurable):
+        # Default is just a large number to rank it late.
+        order = Int(help='Order of this parser', default_value=10000000).tag(
+            config=True)
+
+    class EreConf(DataConf):
         source = Unicode(help='Plain source input directory').tag(config=True)
         ere = Unicode(help='ERE input data').tag(config=True)
         src_ext = Unicode(help='Source file extension',
@@ -38,19 +44,27 @@ def main(data_formats, config_files, output_config_file):
             config=True)
         ignore_quote = Bool(help='model name', default_value=False).tag(
             config=True)
+        format = Unicode(help='name for format', default_value='ERE').tag(
+            config=False)
 
-    class FrameNetConf(Configurable):
+    class FrameNetConf(DataConf):
         fn_path = Unicode(help='FrameNet dataset path.').tag(config=True)
+        format = Unicode(help='name for format', default_value='FrameNet').tag(
+            config=True)
 
-    class ConllConf(Configurable):
+    class ConllConf(DataConf):
         in_dir = Unicode(help='Conll file input directory').tag(config=True)
+        format = Unicode(help='name for format', default_value='ConllConf').tag(
+            config=True)
 
-    class AceConf(Configurable):
+    class AceConf(DataConf):
         in_dir = Unicode(help='Conll file input directory').tag(config=True)
         out_dir = Unicode(help='Output directory').tag(config=True)
         text_dir = Unicode(help='Raw Text Output directory').tag(config=True)
+        format = Unicode(help='name for format', default_value='ACE').tag(
+            config=True)
 
-    class NomBankConfig(Configurable):
+    class NomBankConfig(DataConf):
         nombank_path = Unicode(help='Nombank corpus.').tag(config=True)
         nomfile = Unicode(help='Nombank file.').tag(config=True)
         frame_file_pattern = Unicode(help='Frame file pattern.').tag(
@@ -65,23 +79,32 @@ def main(data_formats, config_files, output_config_file):
         implicit_path = Unicode(help='Implicit annotation xml path.').tag(
             config=True)
         gc_only = Bool(help='Only use GC arguments.').tag(config=True)
+        format = Unicode(help='name for format', default_value='NomBank').tag(
+            config=True)
 
-    class PropBankConfig(Configurable):
+    class PropBankConfig(DataConf):
         root = Unicode(help='Propbank corpus.').tag(config=True)
         propfile = Unicode(help='Prop File.').tag(config=True)
         frame_files = Unicode(help='Frame file pattern.').tag(config=True)
         verbs_file = Unicode(help='Verbs.').tag(config=True)
+        format = Unicode(help='name for format', default_value='PropBank').tag(
+            config=True)
 
-    class NegraConfig(Configurable):
+    class NegraConfig(DataConf):
         data_files = List(help='Input data path.', trait=Unicode).tag(
+            config=True)
+        stat_out = Unicode(help="Output statistics").tag(config=True)
+        format = Unicode(help='name for format', default_value='Negra').tag(
             config=True)
 
     basic_console_log()
 
     basic_params = []
-    parsers = []
+    order_parsers = []
 
-    output_param = OutputConf(config=load_file_config(output_config_file))
+    config = load_mixed_configs()
+
+    output_param = OutputConf(config=config)
 
     # Create paths for output.
     if not os.path.exists(output_param.out_dir):
@@ -95,37 +118,49 @@ def main(data_formats, config_files, output_config_file):
         os.makedirs(brat_data_path)
 
     corpus = Corpus()
+    order_parsers = []
 
-    for index, (data_format, config_file) in enumerate(
-            zip(data_formats, config_files)):
-        config = load_file_config(config_file)
-        with_doc = index == 0
-        if data_format == 'rich_ere':
-            basic_param = EreConf(config=config)
-            parser = RichERE(basic_param, corpus, with_doc)
-        elif data_format == 'framenet':
-            basic_param = FrameNetConf(config=config)
-            parser = FrameNet(basic_param, corpus, with_doc)
-        elif data_format == 'conll':
-            basic_param = ConllConf(config=config)
-            parser = Conll(basic_param, corpus, with_doc)
-        elif data_format == 'ace':
-            basic_param = AceConf(config=config)
-            parser = ACE(basic_param, corpus, with_doc)
-        elif data_format == 'nombank':
-            basic_param = NomBankConfig(config=config)
-            parser = NomBank(basic_param, corpus, with_doc)
-        elif data_format == 'propbank':
-            basic_param = PropBankConfig(config=config)
-            parser = PropBank(basic_param, corpus, with_doc)
-        elif data_format == 'negra':
-            basic_param = NegraConfig(config=config)
-            parser = NeGraXML(basic_param, corpus, with_doc)
-        else:
-            raise NotImplementedError("Selected format unknown.")
+    # with_doc = index == 0
+    if 'RichERE' in config:
+        basic_param = EreConf(config=config)
+        o = basic_param.order
+        parser = RichERE(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    elif 'FrameNetConf' in config:
+        basic_param = FrameNetConf(config=config)
+        o = basic_param.order
+        parser = FrameNet(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    elif 'ConllConf' in config:
+        basic_param = ConllConf(config=config)
+        o = basic_param.order
+        parser = Conll(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    elif 'AceConf' in config:
+        basic_param = AceConf(config=config)
+        o = basic_param.order
+        parser = ACE(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    elif 'NomBankConfig' in config:
+        basic_param = NomBankConfig(config=config)
+        o = basic_param.order
+        parser = NomBank(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    elif 'PropBankConfig' in config:
+        basic_param = PropBankConfig(config=config)
+        o = basic_param.order
+        parser = PropBank(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    elif 'NegraConfig' in config:
+        basic_param = NegraConfig(config=config)
+        o = basic_param.order
+        parser = NeGraXML(basic_param, corpus, o == 0)
+        order_parsers.append((o, parser))
+    else:
+        raise NotImplementedError("Selected format unknown.")
 
-        basic_params.append(basic_param)
-        parsers.append(parser)
+    order_parsers.sort()
+    parsers = [p[1] for p in order_parsers]
 
     # Use the documents created by the first parser.
     for doc in parsers[0].get_doc():
@@ -169,11 +204,4 @@ def main(data_formats, config_files, output_config_file):
 if __name__ == '__main__':
     import sys
 
-    args = sys.argv[1:]
-
-    if len(args) > 0 and len(args) % 2 == 1:
-        formats = args[0:-1:2]
-        configs = args[1:-1:2]
-        main(formats, configs, args[-1])
-    else:
-        raise ValueError("Argument incorrect.")
+    main()

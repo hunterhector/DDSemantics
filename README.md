@@ -5,13 +5,13 @@ TODO List:
 1. Reprocess dataset
     - Use more lexicon units to enrich the FrameNet output 
         - Will do if the novel contains unseen frames and stuff
-    - Need to consider make them coref when regenerating the data.
     - ~~Add a field for full argument span~~
     - Run this in background
-        - Now copying data, will process it next
+        - ~~Now copying data, will process it next~~
 1. Rehash dataset
     - Make the mapping between 1.4 and 1.7
     - Make sure prepositions are followed
+    - Mark exact match lexicon as coref
 1. Remove unknown predicate.
     - Use the verb form when reading the data 
     - Need to regenerate the training data somehow.
@@ -22,6 +22,7 @@ TODO List:
     - ~~Convert below threshold args to their ner entity types, else use the original word~~
 1. The SemEval dataset
     - ~~Parse it~~
+    - Do not read "coreference" as frame relations
     - Check how to map frame args to "arg0" form
 1. Embedding baseline result too high
     - Check after removing unk
@@ -58,6 +59,7 @@ Preprocessing steps:
 Processing steps:
 1. Create the automatically constructed training set
     1. Find a domain relevant corpus and parse it with the pipeline
+    1. Use the pre-parsed annotated Gigaword NYT portion
 1. Obtain the relevant corpus
     1. For G&C Corpus
         1. Read both Propbank and Nombank into the annotations format

@@ -13,6 +13,8 @@ from event.io.dataset.base import (
 
 from collections import Counter
 import logging
+import os
+from operator import itemgetter
 
 
 class TreeNode:
@@ -52,12 +54,15 @@ class NeGraXML(DataLoader):
         super().__init__(params, corpus)
 
         self.xml_paths = params.data_files
+        self.stat_dir = params.stat_out
+
         self.offset = 0
         self.text = ''
 
         self.id2span = {}
 
         self.stats = Counter()
+        self.imp_frames = Counter()
 
     def get_doc(self):
         for xml_path in self.xml_paths:
@@ -121,9 +126,9 @@ class NeGraXML(DataLoader):
                     flags.append(flag_name)
                     if flag_name == 'Definite_Interpretation':
                         self.stats['DNI'] += 1
-
                         if linked:
                             self.stats['DNI_resolved'] += 1
+                            self.imp_frames[frame_name] += 1
                     elif flag_name == 'Indefinite_Interpretation':
                         self.stats['INI'] += 1
                     else:
@@ -228,3 +233,15 @@ class NeGraXML(DataLoader):
         logging.info("Corpus statistics from NeGra")
         for key, value in self.stats.items():
             logging.info("Stat for %s : %d" % (key, value))
+
+        if not os.path.exists(self.stat_dir):
+            os.makedirs(self.stat_dir)
+
+        with open(os.path.join(self.stat_dir, 'basic_stats.txt'), 'w') as out:
+            for key, value in self.stats.items():
+                out.write(f'{key}: {value}\n')
+
+        with open(os.path.join(self.stat_dir, 'frame_stats.txt'), 'w') as out:
+            for key, value in sorted(self.imp_frames.items(),
+                                     key=itemgetter(1), reverse=True):
+                out.write(f'{key}\t{value}\n')
