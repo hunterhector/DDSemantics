@@ -11,10 +11,15 @@ from event.io.dataset.base import (
     Corpus,
 )
 
-from collections import Counter
+from collections import Counter, defaultdict
 import logging
 import os
 from operator import itemgetter
+
+# Some small differences between FrameNet v1.4 and v1.5
+frame_changes = {
+    'Observable_bodyparts': 'Observable_body_parts'
+}
 
 
 class TreeNode:
@@ -98,8 +103,24 @@ class NeGraXML(DataLoader):
                     doc.docid, sent.attrib['id']))
             return
 
+        coref_sets = []
+
         for frame in frame_nodes:
-            frame_name = frame.attrib['name']
+            negra_fname = frame.attrib['name']
+
+            if negra_fname == 'Coreference':
+                # Record the coref mentions and proceed.
+                coref_mentions = []
+                for fe in frame.findall('fe'):
+                    fe_node = fe.find('fenode')
+                    fe_id = fe_node.attrib['idref']
+                    fe_span = self.id2span[fe_id]
+                    coref_mentions.append(fe_span)
+                coref_sets.append(coref_mentions)
+                continue
+
+            frame_name = frame_changes.get(negra_fname, negra_fname)
+
             frame_id = frame.attrib['id']
 
             target_id = frame.find('target').find('fenode').attrib['idref']
@@ -155,6 +176,12 @@ class NeGraXML(DataLoader):
                         arg_mention.add_meta('implicit', True)
                     else:
                         arg_mention.add_meta(flag, True)
+
+        for coref in coref_sets:
+            ent = doc.add_entity()
+
+            for m_span in coref:
+                doc.add_entity_mention(ent, m_span, entity_type='ARG_ENT')
 
     def build_next_sent(self, doc, c_parse):
         # Build token spans.

@@ -88,11 +88,12 @@ def get_text_from_span(doc_text, spans):
 
 
 class Top:
-    def __init__(self, eid, top_type, object_type=None):
+    def __init__(self, doc, eid, top_type, object_type=None):
         self.eid = eid
         self.top_type = top_type
         self.object_type = object_type
         self.meta = {}
+        self.doc = doc
 
     def add_meta(self, name, value):
         self.meta[name] = value
@@ -111,25 +112,37 @@ class Top:
 
 
 class ClusterObject(Top):
-    def __init__(self, eid, top_type, object_type=None):
-        super().__init__(eid, top_type, object_type)
-        self.mentions = []
+    def __init__(self, doc, eid, top_type, object_type=None):
+        super().__init__(doc, eid, top_type, object_type)
+        self.mentions = {}
 
     def get_mentions(self):
-        return self.mentions
+        return sorted(self.mentions.values())
 
     def add_mention(self, mention):
         assert isinstance(mention, Annotation)
-        self.mentions.append(mention)
+        self.mentions[mention.aid] = mention
+        mention.cluster = self
+
+    def remove_mention(self, mention):
+        self.mentions.pop(mention.aid)
+        mention.cluster = None
 
     def to_json(self):
         data = super().to_json()
-        data['mentions'] = [m.to_json() for m in self.mentions]
+        data['mentions'] = [m.to_json() for m in sorted(self.mentions.values())]
+        data['is_singleton'] = len(self.mentions) == 1
         return data
+
+    def __lt__(self, other):
+        return self.eid < other.eid
+
+    def __gt__(self, other):
+        return self.eid > other.eid
 
 
 class Annotation:
-    def __init__(self, aid, anno_type, text, spans):
+    def __init__(self, doc, aid, anno_type, text, spans):
         self.aid = aid
         self.text = text.replace('\n', ' ').strip()
         self.anno_type = anno_type
@@ -139,11 +152,28 @@ class Annotation:
         else:
             self.spans = [s for s in spans]
         self.meta = {}
+        self.cluster = None
+        self.doc = doc
+
+    def __key(self):
+        return self.aid, self.anno_type
+
+    def __hash__(self):
+        return hash(self.__key())
+
+    def __eq__(self, other):
+        return isinstance(self, type(other)) and self.__key() == other.key()
+
+    def __lt__(self, other):
+        return self.aid < other.aid
+
+    def __gt__(self, other):
+        return self.aid > other.aid
 
     def add_meta(self, name, value):
         self.meta[name] = value
 
-    def get_unique_key(self):
+    def get_span_key(self):
         """
         Use spans as a key
         :return:
@@ -205,8 +235,8 @@ class Annotation:
 
 
 class Argument(Top):
-    def __init__(self, aid, predicate, arg, arg_type):
-        super().__init__(aid, 'Argument')
+    def __init__(self, doc, aid, predicate, arg, arg_type):
+        super().__init__(doc, aid, 'Argument')
         self.meta = {}
         self.predicate = predicate
         self.arg = arg
@@ -223,14 +253,14 @@ class Argument(Top):
 
 class Predicate(Annotation):
     def __init__(self, doc, eid, spans, text, frame_type=None, realis=None):
-        super().__init__(eid, 'Predicate', text, spans)
+        super().__init__(doc, eid, 'Predicate', text, spans)
         self.arguments = defaultdict(list)
         self.frame_type = frame_type
         self.realis = realis
         self.doc = doc
 
-    def get_unique_key(self):
-        return super().get_unique_key(), self.frame_type
+    def get_span_key(self):
+        return super().get_span_key(), self.frame_type
 
     def add_arg(self, argument):
         assert isinstance(argument, Argument)
@@ -260,14 +290,14 @@ class Predicate(Annotation):
 
 
 class EntityMention(Annotation):
-    def __init__(self, eid, spans, text, noun_type=None,
+    def __init__(self, doc, eid, spans, text, noun_type=None,
                  entity_type=None):
-        super().__init__(eid, 'EntityMention', text, spans)
+        super().__init__(doc, eid, 'EntityMention', text, spans)
         self.entity_type = entity_type
         self.noun_type = noun_type
 
-    def get_unique_key(self):
-        return 'entity', super().get_unique_key(), self.entity_type
+    def get_span_key(self):
+        return 'entity', super().get_span_key(), self.entity_type
 
     def merge(self, anno_b):
         # If two entities are have the same unique key, then they should have
@@ -287,12 +317,12 @@ class EntityMention(Annotation):
 
 
 class Filler(Annotation):
-    def __init__(self, eid, spans, text, filler_type=None):
-        super().__init__(eid, 'Filler', text, spans)
+    def __init__(self, doc, eid, spans, text, filler_type=None):
+        super().__init__(doc, eid, 'Filler', text, spans)
         self.entity_type = filler_type
 
-    def get_unique_key(self):
-        return super().get_unique_key(), self.entity_type
+    def get_span_key(self):
+        return super().get_span_key(), self.entity_type
 
     def merge(self, anno_b):
         assert isinstance(anno_b, Filler)
@@ -305,8 +335,8 @@ class Filler(Annotation):
 
 
 class RelationMention(Annotation):
-    def __init__(self, rid, spans, text, realis=None, relation_type=None):
-        super().__init__(rid, 'RelationMention', text, spans)
+    def __init__(self, doc, rid, spans, text, realis=None, relation_type=None):
+        super().__init__(doc, rid, 'RelationMention', text, spans)
         self.args = {}
         self.relation_type = relation_type
         self.realis = realis
@@ -332,13 +362,13 @@ class RelationMention(Annotation):
 
 
 class Entity(ClusterObject):
-    def __init__(self, eid, object_type):
-        super().__init__(eid, 'Entity', object_type)
+    def __init__(self, doc, eid, object_type):
+        super().__init__(doc, eid, 'Entity', object_type)
 
 
 class Event(ClusterObject):
-    def __init__(self, eid):
-        super().__init__(eid, 'Event')
+    def __init__(self, doc, eid):
+        super().__init__(doc, eid, 'Event')
 
 
 class Relation:
@@ -431,8 +461,8 @@ class DEDocument:
         self.token_spans = []
         self.parsed_sents = []
 
-        self.entities = []
-        self.events = []
+        self.entities = {}
+        self.events = {}
         self.relations = []
 
         self.span_mentions = {}
@@ -530,22 +560,48 @@ class DEDocument:
         if entity_type is None:
             entity_type = 'Entity'
 
-        ent = Entity(eid, entity_type)
-        self.entities.append(ent)
+        ent = Entity(self, eid, entity_type)
+        self.entities[eid] = ent
         self.corpus.add_entity_type(entity_type)
         return ent
+
+    def join_entity(self, em, new_cluster):
+        old_cluster = em.cluster
+        if old_cluster is not None:
+            old_cluster.remove_mention(em)
+            if len(old_cluster.mentions) == 0:
+                self.remove_entity(old_cluster.eid)
+
+        new_cluster.add_mention(em)
+
+    def join_event(self, evm, new_cluster):
+        old_cluster = evm.cluster
+        if old_cluster is not None:
+            old_cluster.remove_mention(evm)
+            if len(old_cluster.mentions) == 0:
+                self.remove_hopper(old_cluster.eid)
+
+        new_cluster.add_mention(evm)
+
+    def remove_entity(self, eid):
+        if eid in self.entities:
+            self.entities.pop(eid)
+
+    def remove_hopper(self, eid):
+        if eid in self.events:
+            self.events.pop(eid)
 
     def add_hopper(self, eid=None):
         if eid is None:
             eid = 'h-%d' % self.indices['event']
             self.indices['event'] += 1
 
-        event = Event(eid)
-        self.events.append(event)
+        event = Event(self, eid)
+        self.events[eid] = event
         return event
 
     def __get_existed_mention(self, mention):
-        key = mention.get_unique_key()
+        key = mention.get_span_key()
         if key in self.span_mentions:
             return self.span_mentions[key]
 
@@ -563,7 +619,7 @@ class DEDocument:
                 is_valid = mention.validate(self.doc_text)
 
             if is_valid:
-                self.span_mentions[mention.get_unique_key()] = mention
+                self.span_mentions[mention.get_span_key()] = mention
                 return mention, 0
             else:
                 return None, -1
@@ -572,7 +628,7 @@ class DEDocument:
         if not aid:
             aid = 'arg-%d' % self.indices['argument']
             self.indices['argument'] += 1
-        arg = Argument(aid, predicate, filler, arg_type)
+        arg = Argument(self, aid, predicate, filler, arg_type)
         predicate.add_arg(arg)
         return arg
 
@@ -586,15 +642,15 @@ class DEDocument:
         if not text:
             text = get_text_from_span(self.doc_text, spans)
 
-        em = EntityMention(eid, spans, text, noun_type, entity_type)
+        em = EntityMention(self, eid, spans, text, noun_type, entity_type)
         added_em, status = self.__add_mention_with_check(em, validate)
         self.corpus.add_entity_type(entity_type)
 
-        if status == 0:
+        if status >= 0:
             if ent is None:
                 # Provide a pseudo entity to each mention (singleton entity).
                 ent = self.add_entity()
-                ent.add_mention(added_em)
+            self.join_entity(added_em, ent)
         return added_em
 
     def add_predicate(self, hopper, spans, text=None,
@@ -610,11 +666,12 @@ class DEDocument:
         added_evm, status = self.__add_mention_with_check(evm, validate)
         self.corpus.add_event_type(frame_type)
 
-        if status == 0:
+        if status >= 0:
+            # status == 0 means a new and valid mention.
             if hopper is None:
                 # Provide a pseudo cluster to each mention (singleton).
                 hopper = self.add_hopper()
-                hopper.add_mention(added_evm)
+            self.join_event(added_evm, hopper)
         return added_evm
 
     def add_filler(self, spans, text, eid=None, filler_type=None):
@@ -625,7 +682,7 @@ class DEDocument:
         if not text:
             text = get_text_from_span(self.doc_text, spans)
 
-        filler = Filler(eid, spans, text, filler_type)
+        filler = Filler(self, eid, spans, text, filler_type)
         self.corpus.add_entity_type(filler_type)
         return self.__add_mention_with_check(filler, True)
 
@@ -676,7 +733,7 @@ class DEDocument:
                 links.append((ei, ej))
             return links
 
-        for ent in self.entities:
+        for ent in self.entities.values():
             ent_cluster = []
             for em in ent.get_mentions():
                 tid = 'T%d' % t_count
@@ -698,7 +755,7 @@ class DEDocument:
                 #     r_count, e1, e2)
                 r_count += 1
 
-        for event in self.events:
+        for event in self.events.values():
             evm_cluster = []
             for em in event.get_mentions():
                 tid = 'T%d' % t_count
@@ -743,8 +800,8 @@ class DEDocument:
     def dump(self, indent=None):
         doc = {
             'text': self.doc_text,
-            'events': [e.to_json() for e in self.events],
-            'entities': [e.to_json() for e in self.entities],
+            'events': [e.to_json() for e in sorted(self.events.values())],
+            'entities': [e.to_json() for e in sorted(self.entities.values())],
             'fillers': [e.to_json() for e in self.fillers],
             'relations': [e.to_json() for e in self.relations],
         }
