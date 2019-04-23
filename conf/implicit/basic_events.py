@@ -31,26 +31,30 @@ if 'implicit_corpus' not in os.environ:
 else:
     base = os.environ['implicit_corpus']
 
+raw_corpus_name = 'gigaword_corpus'
+
 c.ImplicitArgResources.event_embedding_path = os.path.join(
-    base, 'gigaword_corpus',
+    base, raw_corpus_name,
     'embeddings/event_frame_embeddings_min500.pickle.wv.vectors.npy')
 c.ImplicitArgResources.event_vocab_path = os.path.join(
-    base, 'gigaword_corpus', 'embeddings/event_frame_embeddings_min500.voc')
+    base, raw_corpus_name, 'embeddings/event_frame_embeddings_min500.voc')
 
 c.ImplicitArgResources.word_embedding_path = os.path.join(
-    base, 'gigaword_corpus', 'embeddings/word_embeddings.pickle.wv.vectors.npy')
+    base, raw_corpus_name, 'embeddings/word_embeddings.pickle.wv.vectors.npy')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
-    base, 'gigaword_corpus', 'embeddings/word_embeddings.voc')
-c.ImplicitArgResources.raw_lookup_path = os.path.join(base, 'gigaword_corpus',
-                                                      'vocab/')
+    base, raw_corpus_name, 'embeddings/word_embeddings.voc')
+c.ImplicitArgResources.raw_lookup_path = os.path.join(
+    base, raw_corpus_name, 'vocab/')
+
 # Runner parameters
-c.Basic.train_in = os.path.join(base, 'gigaword_corpus', 'hashed')
+c.Basic.train_in = os.path.join(base, raw_corpus_name, 'hashed')
+c.Basic.validation_size = 10000
+c.Basic.debug_dir = os.path.join(base, raw_corpus_name, 'debug')
+c.Basic.log_dir = os.path.join(base, raw_corpus_name, 'logs')
+c.Basic.model_dir = os.path.join(base, raw_corpus_name, 'models')
+
 c.Basic.test_in = os.path.join(base, 'nombank_with_gc', 'processed',
                                'cloze_hashed_filter.json.gz')
-c.Basic.validation_size = 10000
-c.Basic.debug_dir = os.path.join(base, 'gigaword_corpus', 'debug')
-c.Basic.log_dir = os.path.join(base, 'gigaword_corpus', 'logs')
-c.Basic.model_dir = os.path.join(base, 'gigaword_corpus', 'models')
 
 c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
 c.Basic.do_training = True

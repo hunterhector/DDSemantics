@@ -12,7 +12,7 @@ TODO List:
     - ~~Make the mapping between 1.4 and 1.7~~
     - Mark exact match lexicon as coref
 1. Remove unknown predicate.
-    - Use the verb form when reading the data 
+    - ~~Use the verb form when reading the data  (Done in generating json)~~
     - ~~Need to regenerate the training data somehow.~~
 1. Make sure go over the argument from prepositions.
     - ~~check training data (Training data is fine because we use frame parse 
@@ -49,12 +49,18 @@ Experiments setups:
 1. basic_biaffine:
 
 Preprocessing steps:
-1. Parse the large dataset with Stanford and Semafor
+1. Parse the large dataset with Stanford and Semafor (for example, get nyt_events.json.gz)
+1. Split it into sub files 
+    1. ```gunzip -c nyt_all_frames.json.gz | split -l 400000 - nyt_frames_shuffled/part_  --filter='gzip > $FILE.gz```
 1. Calculate vocabulary
-1. Create event sentences to train embeddings
+    1. ```python -m event.arguments.prepare.event_vocab --input_data /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/nyt_events.json.gz --vocab_dir /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/vocab --embedding_dir /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/embeddings --sent_out /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/```
+    1. This will also create event sentences to train embeddings
+1. Train event embedding
+    1. ```train_event_vectors```
 1. Hash the dataset
     1. make sure ner types are considered
     1. make sure frame types are taken care of 
+    1. run hash_train_filter.sh in the scripts directory
 
 Processing steps:
 1. Create the automatically constructed training set

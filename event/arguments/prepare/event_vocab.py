@@ -235,7 +235,7 @@ def load_vocab(vocab_dir):
     return lookups, oov_words
 
 
-def main(event_data, vocab_dir, sent_out, add_frame_word):
+def main(event_data, vocab_dir, sent_out):
     if not os.path.exists(vocab_dir):
         os.makedirs(vocab_dir)
 
@@ -266,11 +266,15 @@ def main(event_data, vocab_dir, sent_out, add_frame_word):
         print("Done loading.")
 
     print("Creating event sentences")
+    sent_out = sent_out + '_pred_only'
+    sent_out_with_frame = sent_out + '_with_frames'
+
     if not os.path.exists(sent_out):
         create_sentences(event_data, sent_out, lookups, oovs,
-                         include_frame=add_frame_word)
-    else:
-        print("Sentence frame file exists, skipping.")
+                         include_frame=True)
+    if not os.path.exists(sent_out_with_frame):
+        create_sentences(event_data, sent_out_with_frame, lookups, oovs,
+                         include_frame=True)
 
 
 if __name__ == '__main__':
@@ -281,10 +285,8 @@ if __name__ == '__main__':
     parser.add_argument('--vocab_dir', type=str, help='Vocabulary direcotry.')
     parser.add_argument('--input_data', type=str, help='Input data.')
     parser.add_argument('--sent_out', type=str, help='Sentence out file.')
-    parser.add_argument('--add_frame_word', action='store_true',
-                        help='Add frame word.')
 
     args = parser.parse_args()
     main(
-        args.input_data, args.vocab_dir, args.sent_out, args.add_frame_word
+        args.input_data, args.vocab_dir, args.sent_out
     )
