@@ -190,8 +190,7 @@ class NomBank(DataLoader):
         p = doc.add_predicate(None, predicate_span, frame_type='NOMBANK')
         p.add_meta('node', pred_node_repr)
 
-        arg_em = doc.add_entity_mention(None, argument_span,
-                                        entity_type='ARG_ENT')
+        arg_em = doc.add_entity_mention(None, argument_span)
 
         if p and arg_em:
             if implicit:

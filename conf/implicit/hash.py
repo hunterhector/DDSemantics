@@ -7,12 +7,12 @@ else:
     base = os.environ['implicit_corpus']
 
 c.HashParam.event_vocab = os.path.join(
-    base, 'gigaword_corpus', 'embeddings/event_frame_embeddings.voc')
+    base, 'gigaword_events', 'embeddings/event_frame_embeddings.voc')
 c.HashParam.word_vocab = os.path.join(
-    base, 'gigaword_corpus', 'embeddings/word_embeddings.voc')
+    base, 'gigaword_events', 'embeddings/word_embeddings.voc')
 c.HashParam.frame_arg_map = os.path.join(
-    base, 'gigaword_corpus', 'frame_maps/frames_args_filled.tsv')
+    base, 'gigaword_events', 'frame_maps/frames_args_filled.tsv')
 c.HashParam.dep_frame_map = os.path.join(
-    base, 'gigaword_corpus', 'frame_maps/args_frames_filled.tsv')
+    base, 'gigaword_events', 'frame_maps/args_frames_filled.tsv')
 c.HashParam.component_vocab_dir = os.path.join(
-    base, 'gigaword_corpus', 'vocab/')
+    base, 'gigaword_events', 'vocab/')

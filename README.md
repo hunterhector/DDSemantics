@@ -8,17 +8,17 @@ TODO List:
     - ~~Add a field for full argument span~~
     - ~~Run this in background~~
         - ~~Now copying data, will process it next~~
-1. Rehash dataset
+1. ~~Rehash dataset~~
     - ~~Make the mapping between 1.4 and 1.7~~
-    - Mark exact match lexicon as coref
-1. Remove unknown predicate.
+    - ~~Mark exact match lexicon as coref~~
+1. ~~Remove unknown predicate.~~
     - ~~Use the verb form when reading the data  (Done in generating json)~~
     - ~~Need to regenerate the training data somehow.~~
-1. Make sure go over the argument from prepositions.
+1. ~~Make sure go over the argument from prepositions.~~
     - ~~check training data (Training data is fine because we use frame parse 
     and dep parse, we haven't use the propbank parse.)~~
-    - also check test data
-1. Use NER type can reduce unknown args
+    - ~~also check test data~~
+1. ~~Use NER type can reduce unknown args~~
     - ~~Convert below threshold args to their ner entity types, else use the original word~~
 1. The SemEval dataset
     - ~~Parse it~~

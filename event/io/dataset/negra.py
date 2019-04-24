@@ -167,8 +167,7 @@ class NeGraXML(DataLoader):
 
                 fe_span = self.id2span[fe_id]
 
-                arg_em = doc.add_entity_mention(None, fe_span,
-                                                entity_type='ARG_ENT')
+                arg_em = doc.add_entity_mention(None, fe_span)
                 arg_mention = doc.add_argument_mention(p, arg_em.aid, role)
 
                 for flag in flags:
@@ -181,7 +180,7 @@ class NeGraXML(DataLoader):
             ent = doc.add_entity()
 
             for m_span in coref:
-                doc.add_entity_mention(ent, m_span, entity_type='ARG_ENT')
+                doc.add_entity_mention(ent, m_span)
 
     def build_next_sent(self, doc, c_parse):
         # Build token spans.

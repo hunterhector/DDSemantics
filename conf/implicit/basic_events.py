@@ -31,7 +31,7 @@ if 'implicit_corpus' not in os.environ:
 else:
     base = os.environ['implicit_corpus']
 
-raw_corpus_name = 'gigaword_corpus'
+raw_corpus_name = 'gigaword_events'
 
 c.ImplicitArgResources.event_embedding_path = os.path.join(
     base, raw_corpus_name,

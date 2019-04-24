@@ -77,8 +77,7 @@ class PropBank(DataLoader):
                     continue
 
                 p = doc.add_predicate(None, pred_span, frame_type='PROPBANK')
-                arg_em = doc.add_entity_mention(None, arg_span,
-                                                entity_type='ARG_ENT')
+                arg_em = doc.add_entity_mention(None, arg_span)
                 arg_node_repr = "%s:%d:%s" % (
                     doc.docid, inst.sentnum, argloc)
 
