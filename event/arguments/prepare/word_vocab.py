@@ -89,7 +89,7 @@ if __name__ == '__main__':
 
     parser = OptionPerLineParser(description='Word Vocabulary.',
                                  fromfile_prefix_chars='@')
-    parser.add_argument('--vocab_dir', type=str, help='Vocabulary direcotry.')
+    parser.add_argument('--vocab_dir', type=str, help='Vocabulary directory.')
     parser.add_argument('--embedding_dir', type=str, help='Event Embedding.')
     parser.add_argument('--input_data', type=str, help='Input data.')
     args = parser.parse_args()

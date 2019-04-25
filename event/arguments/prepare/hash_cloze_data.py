@@ -1,12 +1,13 @@
 from event.io.readers import EventReader
 import gzip
-from event.arguments.prepare.event_vocab import (
-    make_predicate,
-    make_arg,
-    make_fe,
-    load_vocab,
-    get_vocab_word,
-)
+# from event.arguments.prepare.event_vocab import (
+#     make_predicate,
+#     make_arg,
+#     make_fe,
+#     load_vocab,
+#     get_vocab_word,
+# )
+from event.arguments.prepare.event_vocab import EventVocab
 from event.arguments import consts, util
 from collections import defaultdict, Counter
 import json
@@ -109,7 +110,7 @@ def hash_arg_role(arg_text, dep, event_vocab, oovs):
     return arg_id
 
 
-def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
+def hash_arg(arg, event_indices, word_indices, event_vocab):
     if arg is None:
         # Empty argument case.
         return {
@@ -118,28 +119,30 @@ def hash_arg(arg, event_vocab, word_vocab, lookups, oovs):
         dep, full_fe, content, source = arg
 
         if dep.startswith('prep'):
-            dep = get_vocab_word(dep, 'preposition', lookups, oovs)
+            dep = event_vocab.get_vocab_word(dep, 'preposition')
 
-        arg_text = get_vocab_word(
-            content['represent'], 'argument', lookups, oovs)
+        arg_text = event_vocab.get_vocab_word(content['represent'], 'argument')
+
         if arg_text == oovs['argument']:
             # Replace the argument with the NER type if possible.
             arg_text = content.get('ner', arg_text)
 
-        arg_role_id = hash_arg_role(arg_text, dep, event_vocab, oovs)
+        arg_role_id = hash_arg_role(arg_text, dep, event_indices, oovs)
+
+        get_arg_rep(arg)
 
         if full_fe is not None:
             frame, fe = full_fe
             fe_name = get_vocab_word(make_fe(frame, fe), 'fe', lookups, oovs)
-            if fe_name in event_vocab:
-                fe_id = event_vocab[fe_name]
+            if fe_name in event_indices:
+                fe_id = event_indices[fe_name]
             else:
-                fe_id = event_vocab[oovs['fe']]
+                fe_id = event_indices[oovs['fe']]
         else:
             # Treat empty frame element as UNK.
-            fe_id = event_vocab[oovs['fe']]
+            fe_id = event_indices[oovs['fe']]
 
-        hashed_context = hash_context(word_vocab, content['arg_context'])
+        hashed_context = hash_context(word_indices, content['arg_context'])
 
         return {
             'arg_role': arg_role_id,
@@ -249,12 +252,12 @@ def get_args(event, frame_args, arg_frames):
     return final_args
 
 
-def read_entity_features(entities, lookups, oovs):
+def read_entity_features(entities, event_vocab):
     hashed_entities = {}
 
     for eid, entity in entities.items():
-        entity_head = get_vocab_word(
-            entity['representEntityHead'], 'argument', lookups, oovs)
+        entity_head = event_vocab.get_vocab_word(
+            entity['representEntityHead'], 'argument')
         hashed_entities[eid] = {
             'features': entity['features'],
             'entity_head': entity_head,
@@ -268,31 +271,29 @@ def get_predicate(predicate, lookups, oovs):
     )
 
 
-def hash_one_doc(docid, events, entities, event_vocab, word_vocab, lookups,
-                 oovs, frame_args, dep_frames):
+def hash_one_doc(docid, events, entities, event_indices, word_indices,
+                 event_vocab, frame_args, dep_frames):
     hashed_doc = {
         'docid': docid,
         'events': [],
     }
 
-    read_entity_features(entities, lookups, oovs)
-    hashed_doc['entities'] = read_entity_features(entities, lookups, oovs)
+    read_entity_features(entities, event_vocab)
+    hashed_doc['entities'] = read_entity_features(entities, event_vocab)
 
     for event in events:
-        pred_text = event.get('verbForm', event['predicate'])
-
-        pid = event_vocab[get_predicate(pred_text, lookups, oovs)]
+        pid = event_indices[event_vocab.get_pred_rep(event)]
 
         frame_name = event.get('frame')
-        fid = event_vocab.get(frame_name, -1)
+        fid = event_indices.get(frame_name, -1)
         mapped_args = get_args(event, frame_args, dep_frames)
 
         full_args = {}
         for slot, arg in mapped_args.items():
             full_args[slot] = hash_arg(
-                arg, event_vocab, word_vocab, lookups, oovs)
+                arg, event_indices, word_indices, event_vocab)
 
-        context = hash_context(word_vocab, event['predicate_context'])
+        context = hash_context(word_indices, event['predicate_context'])
 
         hashed_doc['events'].append({
             'predicate': pid,
@@ -309,10 +310,12 @@ def hash_data(params):
     frame_args, frame_counts = load_frame_map(params.frame_arg_map)
     dep_frames, dep_counts = load_frame_map(params.dep_frame_map)
 
-    event_vocab = load_emb_vocab(params.event_vocab)
-    word_vocab = load_emb_vocab(params.word_vocab)
+    event_indices = load_emb_vocab(params.event_vocab)
+    word_indices = load_emb_vocab(params.word_vocab)
 
-    lookups, oovs = load_vocab(params.component_vocab_dir)
+    event_vocab = EventVocab(params.component_vocab_dir)
+
+    # lookups, oovs = load_vocab(params.component_vocab_dir)
 
     reader = EventReader()
 
@@ -323,8 +326,8 @@ def hash_data(params):
     with gzip.open(params.raw_data) as data_in, gzip.open(
             params.output_path, 'w') as data_out:
         for docid, events, entities in reader.read_events(data_in):
-            hashed_doc = hash_one_doc(docid, events, entities, event_vocab,
-                                      word_vocab, lookups, oovs, frame_args,
+            hashed_doc = hash_one_doc(docid, events, entities, event_indices,
+                                      word_indices, event_vocab, frame_args,
                                       dep_frames)
             data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
