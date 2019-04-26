@@ -8,6 +8,7 @@ TODO List:
     - ~~Add a field for full argument span~~
     - ~~Run this in background~~
         - ~~Now copying data, will process it next~~
+    - It is a pity that not all dependencies are added, let's add them back.
 1. ~~Rehash dataset~~
     - ~~Make the mapping between 1.4 and 1.7~~
     - ~~Mark exact match lexicon as coref~~
@@ -18,8 +19,9 @@ TODO List:
     - ~~check training data (Training data is fine because we use frame parse 
     and dep parse, we haven't use the propbank parse.)~~
     - ~~also check test data~~
-1. ~~Use NER type can reduce unknown args~~
+1. Use NER type can reduce unknown args
     - ~~Convert below threshold args to their ner entity types, else use the original word~~
+    - Check why NER tags are not included.
 1. The SemEval dataset
     - ~~Parse it~~
     - ~~Do not read "coreference" as frame relations~~
