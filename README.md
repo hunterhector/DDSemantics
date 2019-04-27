@@ -2,30 +2,11 @@
 Learning semantic regularities with data driven approaches
 
 TODO List:
-1. ~~Reprocess dataset~~
-    - ~~Use more lexicon units to enrich the FrameNet output~~
-        - ~~Will do if the novel contains unseen frames and stuff~~
-    - ~~Add a field for full argument span~~
-    - ~~Run this in background~~
-        - ~~Now copying data, will process it next~~
-    - It is a pity that not all dependencies are added, let's add them back.
-1. ~~Rehash dataset~~
-    - ~~Make the mapping between 1.4 and 1.7~~
-    - ~~Mark exact match lexicon as coref~~
-1. ~~Remove unknown predicate.~~
-    - ~~Use the verb form when reading the data  (Done in generating json)~~
-    - ~~Need to regenerate the training data somehow.~~
-1. ~~Make sure go over the argument from prepositions.~~
-    - ~~check training data (Training data is fine because we use frame parse 
-    and dep parse, we haven't use the propbank parse.)~~
-    - ~~also check test data~~
-1. Use NER type can reduce unknown args
-    - ~~Convert below threshold args to their ner entity types, else use the original word~~
-    - Check why NER tags are not included.
 1. The SemEval dataset
-    - ~~Parse it~~
-    - ~~Do not read "coreference" as frame relations~~
     - Check how to map frame args to "arg0" form
+1. Adding all dependencies
+    - ~~All dependencies are included in training~~
+    - Deal with the change of format
 1. Embedding baseline result too high
     - Check after removing unk
 1. Create an embedding for the empty slot
@@ -83,3 +64,31 @@ Processing steps:
         1. ```python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash.py --HashParam.raw_data=cloze.json.gz --HashParam.output_path=cloze_hashed.json.gz```
 
 
+
+Last TODO List:
+1. ~~Reprocess dataset~~
+    - ~~Use more lexicon units to enrich the FrameNet output~~
+        - ~~Will do if the novel contains unseen frames and stuff~~
+    - ~~Add a field for full argument span~~
+    - ~~Run this in background~~
+        - ~~Now copying data, will process it next~~
+    - ~~It is a pity that not all dependencies are added, let's add them back.~~
+1. ~~Rehash dataset~~
+    - ~~Make the mapping between 1.4 and 1.7~~
+    - ~~Mark exact match lexicon as coref~~
+1. ~~Remove unknown predicate.~~
+    - ~~Use the verb form when reading the data  (Done in generating json)~~
+    - ~~Need to regenerate the training data somehow.~~
+1. ~~Make sure go over the argument from prepositions.~~
+    - ~~check training data (Training data is fine because we use frame parse 
+    and dep parse, we haven't use the propbank parse.)~~
+    - ~~also check test data~~
+1. ~~Use NER type can reduce unknown args~~
+    - ~~Convert below threshold args to their ner entity types, else use the original word~~
+    - ~~Check why NER tags are not included.~~
+1. ~~Include all frames from the training data~~
+    - ~~Read all frames~~
+    - ~~Take the event frame list and use it in later steps if we want to filter~~
+1. The SemEval dataset
+    - ~~Parse it~~
+    - ~~Do not read "coreference" as frame relations~~

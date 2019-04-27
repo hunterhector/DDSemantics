@@ -94,22 +94,6 @@ def tiebreak_arg(tied_args, pred_start, pred_end):
     return tied_args[top_index]
 
 
-def hash_arg_role(arg_text, dep, event_vocab, oovs):
-    arg_role = make_arg(arg_text, dep)
-
-    if arg_role in event_vocab:
-        arg_id = event_vocab[arg_role]
-    else:
-        arg_role = make_arg(oovs['argument'], dep)
-        if arg_role in event_vocab:
-            arg_id = event_vocab[arg_role]
-        else:
-            arg_role = make_arg(oovs['argument'], oovs['preposition'])
-            arg_id = event_vocab[arg_role]
-
-    return arg_id
-
-
 def hash_arg(arg, event_indices, word_indices, event_vocab):
     if arg is None:
         # Empty argument case.
@@ -123,24 +107,16 @@ def hash_arg(arg, event_indices, word_indices, event_vocab):
 
         arg_text = event_vocab.get_vocab_word(content['represent'], 'argument')
 
-        if arg_text == oovs['argument']:
-            # Replace the argument with the NER type if possible.
-            arg_text = content.get('ner', arg_text)
+        arg_role = event_vocab.get_arg_rep(arg, entity_represents)
 
-        arg_role_id = hash_arg_role(arg_text, dep, event_indices, oovs)
-
-        get_arg_rep(arg)
+        arg_role_id = event_vocab.lookups['arguments'][arg_role]
 
         if full_fe is not None:
             frame, fe = full_fe
-            fe_name = get_vocab_word(make_fe(frame, fe), 'fe', lookups, oovs)
-            if fe_name in event_indices:
-                fe_id = event_indices[fe_name]
-            else:
-                fe_id = event_indices[oovs['fe']]
+            fe_id = event_indices[event_vocab.get_fe_rep(frame, fe)]
         else:
             # Treat empty frame element as UNK.
-            fe_id = event_indices[oovs['fe']]
+            fe_id = event_indices[event_vocab.oovs['fe']]
 
         hashed_context = hash_context(word_indices, content['arg_context'])
 
@@ -263,12 +239,6 @@ def read_entity_features(entities, event_vocab):
             'entity_head': entity_head,
         }
     return hashed_entities
-
-
-def get_predicate(predicate, lookups, oovs):
-    return make_predicate(
-        get_vocab_word(predicate, 'predicate', lookups, oovs)
-    )
 
 
 def hash_one_doc(docid, events, entities, event_indices, word_indices,
