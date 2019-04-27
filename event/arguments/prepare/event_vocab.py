@@ -99,12 +99,6 @@ class EventVocab:
             # Replace the argument with the NER type if not seen.
             arg_text = arg.get('ner', arg_text)
 
-            if 'ner' in arg:
-                print(arg)
-                print(arg_text)
-                print(self.make_arg(arg_text, dep))
-                input('wait')
-
         arg_role = self.make_arg(arg_text, dep)
         return arg_role
 
@@ -257,8 +251,6 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False):
                     sentence.append(
                         event_vocab.get_arg_rep(arg, represent_by_id)
                     )
-
-
 
                     if include_frame:
                         sentence.append(
