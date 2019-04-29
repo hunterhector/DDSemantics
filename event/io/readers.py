@@ -163,22 +163,24 @@ class EventReader:
                     if entity_heads:
                         represent = entity_heads[arg_info['entityId']]
                     else:
-                        represent = arg_info['representText']
-
-                    role = arg_info.get('argument_role', 'NA')
+                        represent = arg_info['text']
 
                     arg = {
                         'dep': arg_info.get('dep', 'NA'),
                         'fe': arg_info['feName'],
                         'arg_context': arg_context,
-                        'represent': represent,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
-                        'implicit': arg_info['isImplicit"'],
+                        'implicit': arg_info['isImplicit'],
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
-                        'role': role
+                        'role': arg_info.get('argument_role', 'NA'),
+                        'arg_phrase': arg_info['argumentPhrase'],
+                        'represent': represent,
                     }
+
+                    if 'ner' in arg_info:
+                        arg['ner'] = arg_info['ner']
 
                     eid_count[arg_info['entityId']] += 1
                     event['arguments'].append(arg)

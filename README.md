@@ -10,6 +10,8 @@ TODO List:
 1. Refactor the vocab class to make it consistent
     - ~~Refactor the class itself~~
     - Refactor the use cases
+1. NER is not correct in the test data
+    - Example Izquierda Unida
 1. Embedding baseline result too high
     - Check after removing unk
 1. Create an embedding for the empty slot

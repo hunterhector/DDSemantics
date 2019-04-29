@@ -58,6 +58,7 @@ def tiebreak_arg(tied_args, pred_start, pred_end):
     top_index = 0
     priority = (3, float('inf'))
 
+    # TODO: priority didn't consider the source.
     for i, (d, ffe, a, source) in enumerate(tied_args):
         arg_start, arg_end = a['arg_start'], a['arg_end']
 
@@ -76,11 +77,11 @@ def tiebreak_arg(tied_args, pred_start, pred_end):
         if ffe == 'None':
             num_emtpy += 1
 
-        this_piority = (num_emtpy, dist)
+        this_priority = (num_emtpy, dist)
 
-        if this_piority < priority:
+        if this_priority < priority:
             top_index = i
-            priority = this_piority
+            priority = this_priority
 
     return tied_args[top_index]
 
@@ -100,7 +101,7 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
         )
     else:
         # Treat empty frame element as UNK.
-        fe_id = event_emb_vocab.get_index([typed_event_vocab.oovs['fe']])
+        fe_id = event_emb_vocab.get_index(typed_event_vocab.oovs['fe'], None)
 
     hashed_context = hash_context(word_emb_vocab, arg['arg_context'])
 
@@ -111,7 +112,7 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
         'entity_id': arg['entity_id'],
         'implicit': arg['implicit'],
         'resolvable': arg['resolvable'],
-        'origin_text': arg['text'],
+        'arg_phrase': arg['arg_phrase'],
         'represent': entity_rep,
         'dep': dep,
     }
@@ -173,9 +174,9 @@ def impute_args(event, frame_args, arg_frames):
             if not imputed:
                 # No impute can be found, or we do not trust the imputation.
                 # In this case, we place an empty FE name here.
-                arg_candidates[position].append((dep, None, arg))
+                arg_candidates[position].append((dep, None, arg, 'no_impute'))
         else:
-            arg_candidates[position].append((dep, full_fe, arg))
+            arg_candidates[position].append((dep, full_fe, arg, 'origin'))
 
     imputed_deps = defaultdict(Counter)
     for (frame, fe), (dep, arg) in frame_slots.items():
@@ -190,25 +191,24 @@ def impute_args(event, frame_args, arg_frames):
         dep, count = dep_counts.most_common(1)[0]
         _, arg = dep_slots[dep]
         position = get_position(dep)
-        arg_candidates[position].append((dep, full_fe, arg))
+        arg_candidates[position].append((dep, full_fe, arg, 'deps'))
 
     for i_dep, frame_counts in imputed_deps.items():
         full_fe, count = frame_counts.most_common(1)[0]
         position = get_position(i_dep)
         _, arg = frame_slots[full_fe]
-        arg_candidates[position].append((i_dep, full_fe, arg))
+        arg_candidates[position].append((i_dep, full_fe, arg, 'frames'))
 
     final_args = {}
     for position, candidate_args in arg_candidates.items():
         if len(candidate_args) > 1:
             a = tiebreak_arg(candidate_args, pred_start, pred_end)
-            final_args[position] = a
+            # Here we only take the first 3.
+            final_args[position] = a[:3]
         elif len(candidate_args) == 1:
-            final_args[position] = candidate_args[0]
+            final_args[position] = candidate_args[0][:3]
         else:
             final_args[position] = None
-
-    pprint.pprint(final_args)
 
     return final_args
 
@@ -239,18 +239,12 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         fid = event_emb_vocab.get_index(event.get('frame'), None)
         mapped_args = impute_args(event, frame_args, dep_frames)
 
-        pprint.pprint(event)
-
-
-        print(mapped_args)
-
         full_args = {}
         for slot, arg_info in mapped_args.items():
             if arg_info is None:
                 full_args[slot] = {}
             else:
                 dep, full_fe, arg = arg_info
-                print(arg)
                 full_args[slot] = hash_arg(
                     arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents

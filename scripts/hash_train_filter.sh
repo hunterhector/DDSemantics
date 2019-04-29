@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-mkdir -p ${implicit_corpus}/gigaword_corpus/hashed_filter
+mkdir -p ${implicit_corpus}/gigaword_events/hashed_filter
 
-for f in ${implicit_corpus}/gigaword_corpus/nyt_events_shuffled/*.gz
+for f in ${implicit_corpus}/gigaword_events/nyt_events_shuffled/*.gz
 do
     if [[ -f ${f} ]]; then
         h=${f//nyt_events_shuffled/hashed_filter}
