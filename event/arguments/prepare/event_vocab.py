@@ -8,7 +8,7 @@ import logging
 from event import util
 
 
-class EventVocab:
+class TypedEventVocab:
     unk_predicate = 'unk_predicate-pred'
     unk_arg_word = 'unk_argument'
     unk_frame = 'unk_frame'
@@ -87,20 +87,18 @@ class EventVocab:
     def make_fe(frame, fe):
         return frame + ',' + fe
 
-    def get_arg_rep(self, arg, entity_represents):
-        text = entity_represents.get(arg['entityId'], arg['text'])
-        arg_text = self.get_vocab_word(text, 'argument')
+    def get_arg_entity_rep(self, arg, entity_text):
+        rep = self.get_vocab_word(entity_text, 'argument')
+        if rep == self.oovs['argument']:
+            if 'ner' in arg:
+                rep = arg['ner']
+        return rep
 
-        dep = arg['dep']
-        if dep.startswith('prep'):
-            dep = self.get_vocab_word(dep, 'preposition')
-
-        if arg_text == self.oovs['argument']:
-            # Replace the argument with the NER type if not seen.
-            arg_text = arg.get('ner', arg_text)
-
-        arg_role = self.make_arg(arg_text, dep)
-        return arg_role
+    def get_arg_rep(self, arg_dep, entity_rep):
+        if arg_dep.startswith('prep'):
+            arg_dep = self.get_vocab_word(arg_dep, 'preposition')
+        arg_rep = self.make_arg(entity_rep, arg_dep)
+        return arg_rep
 
     def get_pred_rep(self, event):
         pred = self.get_vocab_word(event['predicate'], 'predicate')
@@ -212,6 +210,41 @@ class EventVocab:
         return vocab_counters
 
 
+class EmbbedingVocab:
+    def __init__(self, vocab_file):
+        self.vocab_file = vocab_file
+        self.vocab = {}
+        self.tf = []
+        self.__read_vocab()
+
+    def get_index(self, token, unk):
+        try:
+            return self.vocab[token]
+        except KeyError:
+            if unk:
+                return self.vocab[unk]
+            else:
+                return -1
+
+    def get_size(self):
+        return len(self.vocab)
+
+    def vocab_items(self):
+        return self.vocab.items()
+
+    def get_term_freq(self, token):
+        return self.tf[self.get_index(token, None)]
+
+    def __read_vocab(self):
+        with open(self.vocab_file) as din:
+            index = 0
+            for line in din:
+                word, count = line.split()
+                self.vocab[word] = index
+                self.tf.append(int(count))
+                index += 1
+
+
 def create_sentences(doc, event_vocab, output_path, include_frame=False):
     if include_frame:
         print("Adding frames to sentences.")
@@ -249,7 +282,12 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False):
                         continue
 
                     sentence.append(
-                        event_vocab.get_arg_rep(arg, represent_by_id)
+                        event_vocab.get_arg_rep(
+                            dep,
+                            event_vocab.get_arg_entity_rep(
+                                arg, represent_by_id[arg['entityId']]
+                            )
+                        )
                     )
 
                     if include_frame:
@@ -273,7 +311,7 @@ def main(event_data, vocab_dir, sent_out):
     if not os.path.exists(vocab_dir):
         os.makedirs(vocab_dir)
 
-    event_vocab = EventVocab(vocab_dir, event_data=event_data)
+    event_vocab = TypedEventVocab(vocab_dir, event_data=event_data)
     logging.info("Done loading vocabulary.")
 
     logging.info("Creating event sentences")

@@ -174,7 +174,7 @@ class EventReader:
                         'represent': represent,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
-                        'implicit': role.startswith('i_'),
+                        'implicit': arg_info['isImplicit"'],
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
                         'role': role

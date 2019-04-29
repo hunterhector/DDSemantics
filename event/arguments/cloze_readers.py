@@ -7,9 +7,6 @@ import numpy as np
 import torch
 
 from event.arguments import consts
-from event.arguments.prepare.hash_cloze_data import (
-    hash_arg_role,
-)
 from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
 
@@ -97,19 +94,18 @@ class HashedClozeReader:
         self.max_instance = max_cloze
         self.from_hashed = from_hashed
 
-        self.event_vocab = resources.event_vocab
-        self.event_count = resources.term_freq
-        self.pred_count = resources.typed_count['predicate']
+        self.event_emb_vocab = resources.event_embed_vocab
+        self.word_emb_vocab = resources.word_embed_vocab
 
-        self.lookups = resources.lookups
-        # There are specific oovs for different type of vocabularies.
-        self.oovs = resources.oovs
+        self.pred_count = resources.predicate_count
+
+        self.typed_event_vocab = resources.typed_event_vocab
 
         # Inverted vocab for debug purpose.
-        self.event_inverted = self.__inverse_vocab(self.event_vocab)
+        self.event_inverted = self.__inverse_vocab(self.event_emb_vocab)
 
         # Some extra embeddings.
-        extra_index = len(self.event_vocab)
+        extra_index = self.event_emb_vocab.get_size()
         self.unobserved_fe = extra_index
         self.unobserved_arg = extra_index + 1
 
@@ -144,8 +140,8 @@ class HashedClozeReader:
         )
 
     def __inverse_vocab(self, vocab):
-        inverted = [0] * len(vocab)
-        for w, index in vocab.items():
+        inverted = [0] * vocab.get_size()
+        for w, index in vocab.vocab_items():
             inverted[index] = w
         return inverted
 
@@ -283,7 +279,9 @@ class HashedClozeReader:
         frame_id = event_info['frame']
         event_components = [
             event_info['predicate'],
-            self.event_vocab[consts.unk_frame] if frame_id == -1 else frame_id]
+            self.event_emb_vocab.get_index(
+                consts.unk_frame, None) if frame_id == -1 else frame_id
+        ]
 
         for slot_name in self.slot_names:
             slot = event_info['args'][slot_name]
@@ -328,20 +326,22 @@ class HashedClozeReader:
         gold_eid = args[target_slot]['entity_id']
 
         # Replace the target slot with other entities for generating this.
-        for evm, eid, arg_text in doc_args:
+        for evm_id, ent_id, arg_text in doc_args:
             # Make a copy of the original slots.
             cand_args = {}
             for slot, content in args.items():
                 cand_args[slot] = {}
                 cand_args[slot].update(content)
 
-            if evm == target_evm_id and eid == gold_eid:
-                # This is the correct answer.
+            if evm_id == target_evm_id and ent_id == gold_eid:
+                # This is the correct answer, not including it.
                 continue
 
             # Replace with another entity.
-            self.replace_slot(cand_args, target_slot, eid, arg_text)
-            test_rank_list.append((cand_args, eid))
+            self.replace_instance_detail(
+                cand_args, target_slot, ent_id, arg_text
+            )
+            test_rank_list.append((cand_args, ent_id))
 
         return test_rank_list
 
@@ -398,7 +398,7 @@ class HashedClozeReader:
 
                 if is_instance and arg['resolvable']:
                     test_rank_list = self.create_test_instance(
-                        evm_index, slot, event['args'], doc_args
+                        evm_index, slot, event['args'], doc_args, entity_heads
                     )
 
                     for cand_args, filler_eid in test_rank_list:
@@ -539,10 +539,10 @@ class HashedClozeReader:
 
         for evm_index, event_info in enumerate(event_subset):
             pred = event_info['predicate']
-            if pred == self.event_vocab[consts.unk_predicate]:
+            if pred == self.event_emb_vocab[consts.unk_predicate]:
                 continue
 
-            pred_tf = self.event_count[pred]
+            pred_tf = self.event_emb_vocab.get_term_freq(pred)
             freq = 1.0 * pred_tf / self.pred_count
             keep_pred = sampler.subsample_pred(pred_tf, freq)
 
@@ -673,23 +673,31 @@ class HashedClozeReader:
                 }
         return full_info
 
-    def replace_slot(self, instance, slot, new_eid, new_text, fe=None):
+    def replace_instance_detail(self, instance, slot, new_eid, new_text,
+                                new_entity_rep, new_fe=None):
+        from pprint import pprint
+        pprint(instance)
+
+        print("Going to replace slot ", slot)
         slot_info = instance[slot]
 
-        # Fall back from specific dep label.
-        dep = slot_info.get('dep', slot)
+        dep = instance[slot].get('dep', slot)
 
-        new_arg_role = hash_arg_role(
-            new_text, dep, self.event_vocab, self.oovs)
-
-        slot_info['arg_role'] = new_arg_role
+        # Make a copy of the slot.
         slot_info['entity_id'] = new_eid
-        slot_info['text'] = new_text
+        slot_info['origin_text'] = new_text
+        slot_info['represent'] = new_entity_rep
+        slot_info['arg_role'] = self.typed_event_vocab.get_arg_rep(
+            dep, new_entity_rep
+        )
 
-        if fe is not None:
-            slot_info['fe'] = fe
+        if new_fe is not None:
+            slot_info['fe'] = new_fe
 
         slot_info['context'] = slot_info.get('context', [[], []])
+
+        pprint(slot_info)
+        input('wait')
 
     def cross_cloze(self, sampler, args, arg_entities, target_evm_id,
                     target_slot):
@@ -700,6 +708,7 @@ class HashedClozeReader:
         :param arg_entities: List of original (event id, entity id) pairs.
         :param target_evm_id: The target event id.
         :param target_slot: The target slot name.
+        :param entity_heads: Entity id to the head word mapping.
         :return:
         """
         target_arg = args[target_slot]
@@ -721,7 +730,8 @@ class HashedClozeReader:
 
         # When taking entity from another slot, we don't take its FE,
         # because the FE from another sentence will not make sense here.
-        self.replace_slot(neg_instance, target_slot, wrong_id, wrong_text)
+        self.replace_instance_detail(neg_instance, target_slot, wrong_id,
+                                     wrong_text)
         return neg_instance, wrong_id
 
     def inside_cloze(self, sampler, origin_event_args, target_slot):
@@ -751,19 +761,17 @@ class HashedClozeReader:
         # When swapping the two slots, we also swap the FEs
         # this help us learn the correct slot for a FE.
         if swap_slot_info:
-            self.replace_slot(
+            self.replace_instance_detail(
                 neg_instance, target_slot, swap_slot_info['entity_id'],
                 swap_slot_info['text'], swap_slot_info['fe'])
         else:
             neg_instance[target_slot] = {}
 
         if target_slot_info:
-            self.replace_slot(
+            self.replace_instance_detail(
                 neg_instance, swap_slot, target_slot_info['entity_id'],
                 target_slot_info['text'], target_slot_info['fe'])
         else:
             neg_instance[swap_slot] = {}
-
-        # print("Swapping {} and {}".format(target_slot, swap_slot))
 
         return neg_instance, target_slot_info['entity_id']

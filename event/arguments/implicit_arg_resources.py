@@ -6,8 +6,8 @@ from traitlets import (
 )
 import numpy as np
 import logging
-from event.arguments.prepare.event_vocab import load_vocab
-from collections import Counter
+from event.arguments.prepare.event_vocab import TypedEventVocab
+from event.arguments.prepare.event_vocab import EmbbedingVocab
 
 
 class ImplicitArgResources(Configurable):
@@ -27,30 +27,27 @@ class ImplicitArgResources(Configurable):
         self.event_embedding = np.load(self.event_embedding_path)
         self.word_embedding = np.load(self.word_embedding_path)
 
-        self.event_vocab, self.term_freq, self.typed_count = self.__read_vocab(
-            self.event_vocab_path)
-        logging.info("%d events in vocabulary." % len(self.event_vocab))
+        self.event_embed_vocab = EmbbedingVocab(self.event_vocab_path)
+        self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path)
 
-        self.lookups, self.oovs = load_vocab(self.raw_lookup_path)
-        logging.info("Loaded lookup maps and oov words.")
+        self.predicate_count = self.count_predicates(self.event_vocab_path)
 
-    def __read_vocab(self, vocab_file):
-        vocab = {}
-        tf = []
-        typed_counts = {
-            'predicate': 0,
-        }
+        logging.info(
+            f"{len(self.event_embed_vocab.vocab)} events in embedding.")
 
+        logging.info(
+            f"{len(self.word_embed_vocab.vocab)} words in embedding."
+        )
+
+        self.typed_event_vocab = TypedEventVocab(self.raw_lookup_path)
+        logging.info("Loaded typed vocab, including oov words.")
+
+    @staticmethod
+    def count_predicates(vocab_file):
+        pred_count = 0
         with open(vocab_file) as din:
-            index = 0
             for line in din:
                 word, count = line.split()
-                vocab[word] = index
-                tf.append(int(count))
-
                 if word.endswith('-pred'):
-                    typed_counts['predicate'] += int(count)
-                index += 1
-
-        return vocab, tf, typed_counts
-
+                    pred_count += int(count)
+        return pred_count

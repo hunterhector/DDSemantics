@@ -1,13 +1,6 @@
 from event.io.readers import EventReader
 import gzip
-# from event.arguments.prepare.event_vocab import (
-#     make_predicate,
-#     make_arg,
-#     make_fe,
-#     load_vocab,
-#     get_vocab_word,
-# )
-from event.arguments.prepare.event_vocab import EventVocab
+from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
 from event.arguments import consts, util
 from collections import defaultdict, Counter
 import json
@@ -17,15 +10,13 @@ from traitlets import (
 from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
 import sys
+import pprint
 
 
-def hash_context(word_vocab, context):
+def hash_context(word_emb_vocab, context):
     left, right = context
-
-    unk_word_index = word_vocab[consts.unk_word]
-
-    return [word_vocab.get(word, unk_word_index) for word in left], \
-           [word_vocab.get(word, unk_word_index) for word in right]
+    return [word_emb_vocab.get_index(word, consts.unk_word) for word in left], \
+           [word_emb_vocab.get_index(word, consts.unk_word) for word in right]
 
 
 def load_emb_vocab(vocab_file):
@@ -94,46 +85,39 @@ def tiebreak_arg(tied_args, pred_start, pred_end):
     return tied_args[top_index]
 
 
-def hash_arg(arg, event_indices, word_indices, event_vocab):
-    if arg is None:
-        # Empty argument case.
-        return {
-        }
+def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
+             typed_event_vocab, entity_represents):
+    entity_rep = typed_event_vocab.get_arg_entity_rep(
+        arg, entity_represents.get(arg['entity_id']))
+    arg_role = typed_event_vocab.get_arg_rep(dep, entity_rep)
+    arg_role_id = event_emb_vocab.get_index(arg_role, None)
+
+    if full_fe is not None:
+        frame, fe = full_fe
+        fe_id = event_emb_vocab.get_index(
+            typed_event_vocab.get_fe_rep(frame, fe),
+            None
+        )
     else:
-        dep, full_fe, content, source = arg
+        # Treat empty frame element as UNK.
+        fe_id = event_emb_vocab.get_index([typed_event_vocab.oovs['fe']])
 
-        if dep.startswith('prep'):
-            dep = event_vocab.get_vocab_word(dep, 'preposition')
+    hashed_context = hash_context(word_emb_vocab, arg['arg_context'])
 
-        arg_text = event_vocab.get_vocab_word(content['represent'], 'argument')
-
-        arg_role = event_vocab.get_arg_rep(arg, entity_represents)
-
-        arg_role_id = event_vocab.lookups['arguments'][arg_role]
-
-        if full_fe is not None:
-            frame, fe = full_fe
-            fe_id = event_indices[event_vocab.get_fe_rep(frame, fe)]
-        else:
-            # Treat empty frame element as UNK.
-            fe_id = event_indices[event_vocab.oovs['fe']]
-
-        hashed_context = hash_context(word_indices, content['arg_context'])
-
-        return {
-            'arg_role': arg_role_id,
-            'fe': fe_id,
-            'context': hashed_context,
-            'entity_id': content['entity_id'],
-            'implicit': content['implicit'],
-            'resolvable': content['resolvable'],
-            'vocab_text': arg_text,
-            'text': content['represent'],
-            'dep': dep,
-        }
+    return {
+        'arg_role': arg_role_id,
+        'fe': fe_id,
+        'context': hashed_context,
+        'entity_id': arg['entity_id'],
+        'implicit': arg['implicit'],
+        'resolvable': arg['resolvable'],
+        'origin_text': arg['text'],
+        'represent': entity_rep,
+        'dep': dep,
+    }
 
 
-def get_args(event, frame_args, arg_frames):
+def impute_args(event, frame_args, arg_frames):
     args = event['arguments']
     pred_start, pred_end = event['predicate_start'], event['predicate_end']
 
@@ -189,9 +173,9 @@ def get_args(event, frame_args, arg_frames):
             if not imputed:
                 # No impute can be found, or we do not trust the imputation.
                 # In this case, we place an empty FE name here.
-                arg_candidates[position].append((dep, None, arg, 'no_impute'))
+                arg_candidates[position].append((dep, None, arg))
         else:
-            arg_candidates[position].append((dep, full_fe, arg, 'origin'))
+            arg_candidates[position].append((dep, full_fe, arg))
 
     imputed_deps = defaultdict(Counter)
     for (frame, fe), (dep, arg) in frame_slots.items():
@@ -206,64 +190,73 @@ def get_args(event, frame_args, arg_frames):
         dep, count = dep_counts.most_common(1)[0]
         _, arg = dep_slots[dep]
         position = get_position(dep)
-        arg_candidates[position].append((dep, full_fe, arg, 'deps'))
+        arg_candidates[position].append((dep, full_fe, arg))
 
     for i_dep, frame_counts in imputed_deps.items():
         full_fe, count = frame_counts.most_common(1)[0]
         position = get_position(i_dep)
         _, arg = frame_slots[full_fe]
-        arg_candidates[position].append((i_dep, full_fe, arg, 'frames'))
+        arg_candidates[position].append((i_dep, full_fe, arg))
 
     final_args = {}
     for position, candidate_args in arg_candidates.items():
         if len(candidate_args) > 1:
             a = tiebreak_arg(candidate_args, pred_start, pred_end)
             final_args[position] = a
-
         elif len(candidate_args) == 1:
             final_args[position] = candidate_args[0]
         else:
             final_args[position] = None
 
+    pprint.pprint(final_args)
+
     return final_args
 
 
-def read_entity_features(entities, event_vocab):
-    hashed_entities = {}
-
-    for eid, entity in entities.items():
-        entity_head = event_vocab.get_vocab_word(
-            entity['representEntityHead'], 'argument')
-        hashed_entities[eid] = {
-            'features': entity['features'],
-            'entity_head': entity_head,
-        }
-    return hashed_entities
-
-
-def hash_one_doc(docid, events, entities, event_indices, word_indices,
-                 event_vocab, frame_args, dep_frames):
+def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
+                 typed_event_vocab, frame_args, dep_frames):
     hashed_doc = {
         'docid': docid,
         'events': [],
     }
 
-    read_entity_features(entities, event_vocab)
-    hashed_doc['entities'] = read_entity_features(entities, event_vocab)
+    hashed_entities = {}
+    entity_represents = {}
+    for eid, entity in entities.items():
+        entity_head = typed_event_vocab.get_vocab_word(
+            entity['representEntityHead'], 'argument')
+        hashed_entities[eid] = {
+            'features': entity['features'],
+            'entity_head': entity_head,
+        }
+        entity_represents[eid] = entity_head
+
+    hashed_doc['entities'] = hashed_entities
 
     for event in events:
-        pid = event_indices[event_vocab.get_pred_rep(event)]
+        pid = event_emb_vocab.get_index(typed_event_vocab.get_pred_rep(event),
+                                        None)
+        fid = event_emb_vocab.get_index(event.get('frame'), None)
+        mapped_args = impute_args(event, frame_args, dep_frames)
 
-        frame_name = event.get('frame')
-        fid = event_indices.get(frame_name, -1)
-        mapped_args = get_args(event, frame_args, dep_frames)
+        pprint.pprint(event)
+
+
+        print(mapped_args)
 
         full_args = {}
-        for slot, arg in mapped_args.items():
-            full_args[slot] = hash_arg(
-                arg, event_indices, word_indices, event_vocab)
+        for slot, arg_info in mapped_args.items():
+            if arg_info is None:
+                full_args[slot] = {}
+            else:
+                dep, full_fe, arg = arg_info
+                print(arg)
+                full_args[slot] = hash_arg(
+                    arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
+                    typed_event_vocab, entity_represents
+                )
 
-        context = hash_context(word_indices, event['predicate_context'])
+        context = hash_context(word_emb_vocab, event['predicate_context'])
 
         hashed_doc['events'].append({
             'predicate': pid,
@@ -280,12 +273,10 @@ def hash_data(params):
     frame_args, frame_counts = load_frame_map(params.frame_arg_map)
     dep_frames, dep_counts = load_frame_map(params.dep_frame_map)
 
-    event_indices = load_emb_vocab(params.event_vocab)
-    word_indices = load_emb_vocab(params.word_vocab)
+    typed_event_vocab = TypedEventVocab(params.component_vocab_dir)
 
-    event_vocab = EventVocab(params.component_vocab_dir)
-
-    # lookups, oovs = load_vocab(params.component_vocab_dir)
+    event_emb_vocab = EmbbedingVocab(params.event_vocab)
+    word_emb_vocab = EmbbedingVocab(params.word_vocab)
 
     reader = EventReader()
 
@@ -296,9 +287,9 @@ def hash_data(params):
     with gzip.open(params.raw_data) as data_in, gzip.open(
             params.output_path, 'w') as data_out:
         for docid, events, entities in reader.read_events(data_in):
-            hashed_doc = hash_one_doc(docid, events, entities, event_indices,
-                                      word_indices, event_vocab, frame_args,
-                                      dep_frames)
+            hashed_doc = hash_one_doc(
+                docid, events, entities, event_emb_vocab, word_emb_vocab,
+                typed_event_vocab, frame_args, dep_frames)
             data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
             doc_count += 1

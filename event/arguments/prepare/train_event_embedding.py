@@ -26,6 +26,9 @@ def train_event_vectors(input_pattern, vector_out_base, window_size,
 
 
 def main(input_pattern, event_emb_out_base, min_count=5):
+    print("Input pattern is " + input_pattern)
+    print("Output base is " + event_emb_out_base)
+
     if not os.path.exists(event_emb_out_base + '.vectors'):
         print("Training embeddings.")
 

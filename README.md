@@ -7,6 +7,9 @@ TODO List:
 1. Adding all dependencies
     - ~~All dependencies are included in training~~
     - Deal with the change of format
+1. Refactor the vocab class to make it consistent
+    - ~~Refactor the class itself~~
+    - Refactor the use cases
 1. Embedding baseline result too high
     - Check after removing unk
 1. Create an embedding for the empty slot
