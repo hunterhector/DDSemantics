@@ -90,6 +90,11 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
              typed_event_vocab, entity_represents):
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
+
+    if entity_rep == typed_event_vocab.oovs['argument']:
+        print(arg)
+        input('check why we have oov here')
+
     arg_role = typed_event_vocab.get_arg_rep(dep, entity_rep)
     arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
@@ -224,7 +229,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
     entity_represents = {}
     for eid, entity in entities.items():
         entity_head = typed_event_vocab.get_vocab_word(
-            entity['representEntityHead'], 'argument')
+            entity['represent_entity_head'], 'argument')
         hashed_entities[eid] = {
             'features': entity['features'],
             'entity_head': entity_head,
@@ -232,6 +237,8 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         entity_represents[eid] = entity_head
 
     hashed_doc['entities'] = hashed_entities
+
+    print(docid)
 
     for event in events:
         pid = event_emb_vocab.get_index(typed_event_vocab.get_pred_rep(event),

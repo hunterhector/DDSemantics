@@ -129,8 +129,12 @@ class EventReader:
 
                     entities[ent['entityId']] = {
                         'features': ent['entityFeatures'],
-                        'representEntityHead': ent['representEntityHead'],
+                        'represent_entity_head': ent['representEntityHead'],
                     }
+
+                    if 'entityType' in ent:
+                        entities[ent['entityId']]['entity_type'] = ent[
+                            'entityType']
 
             for event_info in doc['events']:
                 sent = doc['sentences'][event_info['sentenceId']]
@@ -176,11 +180,16 @@ class EventReader:
                         'arg_end': arg_info['argEnd'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
+                        'text': arg_info['text'],
                         'represent': represent,
                     }
 
                     if 'ner' in arg_info:
                         arg['ner'] = arg_info['ner']
+                    else:
+                        its_entity = entities[arg_info['entityId']]
+                        if 'entity_type' in its_entity:
+                            arg['ner'] = its_entity['entity_type']
 
                     eid_count[arg_info['entityId']] += 1
                     event['arguments'].append(arg)

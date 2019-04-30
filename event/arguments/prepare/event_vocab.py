@@ -92,6 +92,17 @@ class TypedEventVocab:
         if rep == self.oovs['argument']:
             if 'ner' in arg:
                 rep = arg['ner']
+
+        # If still.
+        if rep == self.oovs['argument']:
+            # Fall back to use the argument's own text.
+            rep = self.get_vocab_word(arg['text'], 'argument')
+
+        if rep == self.oovs['argument']:
+            if '-' in entity_text:
+                rep = self.get_vocab_word(entity_text.split('-')[-1],
+                                          'argument')
+
         return rep
 
     def get_arg_rep(self, arg_dep, entity_rep):
