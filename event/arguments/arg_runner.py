@@ -17,7 +17,7 @@ import sys
 
 from event.arguments.cloze_readers import HashedClozeReader
 
-from smart_open import smart_open
+from smart_open import open
 from event.arguments.implicit_arg_resources import ImplicitArgResources
 import math
 import os
@@ -39,7 +39,7 @@ def data_gen(data_path, from_line=None, until_line=None):
     if os.path.isdir(data_path):
         last_file = None
         for f in sorted(os.listdir(data_path)):
-            with smart_open(os.path.join(data_path, f)) as fin:
+            with open(os.path.join(data_path, f)) as fin:
                 for line in fin:
                     line_num += 1
                     if from_line and line_num <= from_line:
@@ -52,7 +52,7 @@ def data_gen(data_path, from_line=None, until_line=None):
                         last_file = f
                     yield line
     else:
-        with smart_open(data_path) as fin:
+        with open(data_path) as fin:
             logging.info("Reading from {}".format(data_path))
             for line in fin:
                 line_num += 1
@@ -141,11 +141,11 @@ class ArgRunner(Configurable):
                 logging.info("Initialize model")
                 logging.info(str(self.model))
 
-        self.reader = HashedClozeReader(self.resources,
-                                        self.para.batch_size,
-                                        multi_context=self.para.multi_context,
-                                        max_events=self.para.max_events,
-                                        max_cloze=self.para.max_cloze)
+        self.reader = HashedClozeReader(self.resources, self.para)
+        # self.para.batch_size,
+        # multi_context=self.para.multi_context,
+        # max_events=self.para.max_events,
+        # max_cloze=self.para.max_cloze)
 
         # Set up Null Instantiation detector.
         if self.para.nid_method == 'gold':
@@ -427,6 +427,7 @@ class ArgRunner(Configurable):
 
                 batch_instance, batch_info, b_size, mask = batch_data
 
+                # Count predicates for debugging.
                 for batch_preds in debug_data['predicate']:
                     for pred in batch_preds:
                         pred_text = pred.replace('-pred', '')

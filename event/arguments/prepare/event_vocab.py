@@ -110,6 +110,11 @@ class TypedEventVocab:
 
         return rep
 
+    def get_unk_arg_rep(self):
+        # TODO: This will create a full unknown argument, but we can back off to
+        # a partial unknown argument in many cases.
+        return self.make_arg(self.unk_arg_word, self.unk_dep)
+
     def get_arg_rep(self, arg_dep, entity_rep):
         if arg_dep.startswith('prep'):
             arg_dep = self.get_vocab_word(arg_dep, 'preposition')
@@ -232,6 +237,7 @@ class EmbbedingVocab:
         self.vocab = {}
         self.tf = []
         self.__read_vocab()
+        self.extras = []
 
     def get_index(self, token, unk):
         try:
@@ -241,6 +247,27 @@ class EmbbedingVocab:
                 return self.vocab[unk]
             else:
                 return -1
+
+    def extra_size(self):
+        return len(self.extras)
+
+    def add_extra(self, name):
+        """
+        Add extra dimensions into the embedding vocab, used for special tokens.
+        :param name:
+        :return:
+        """
+        if name in self.extras:
+            raise ValueError(
+                "Cannot add extras to an embedding with the same name")
+        self.extras.append(name)
+        extra_index = len(self.vocab)
+        self.vocab[name] = extra_index
+        self.tf.append(0)
+
+        logging.info(f"Adding {name} as extra dimension {extra_index}")
+
+        return extra_index
 
     def get_size(self):
         return len(self.vocab)

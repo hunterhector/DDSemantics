@@ -14,6 +14,7 @@ class ImplicitArgResources(Configurable):
     """
     Resource class.
     """
+    raw_corpus_name = Unicode(help='Raw corpus name').tag(config=True)
     event_embedding_path = Unicode(help='Event Embedding path').tag(config=True)
     word_embedding_path = Unicode(help='Word Embedding path').tag(config=True)
 
@@ -29,6 +30,7 @@ class ImplicitArgResources(Configurable):
 
         self.event_embed_vocab = EmbbedingVocab(self.event_vocab_path)
         self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path)
+        self.word_embed_vocab.add_extra('__word_pad__')
 
         self.predicate_count = self.count_predicates(self.event_vocab_path)
 

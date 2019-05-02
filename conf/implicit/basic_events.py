@@ -31,27 +31,32 @@ if 'implicit_corpus' not in os.environ:
 else:
     base = os.environ['implicit_corpus']
 
-raw_corpus_name = 'gigaword_events'
+c.ImplicitArgResources.raw_corpus_name = 'gigaword_events'
 
 c.ImplicitArgResources.event_embedding_path = os.path.join(
-    base, raw_corpus_name,
-    'embeddings/event_frame_embeddings_min500.pickle.wv.vectors.npy')
+    base, c.ImplicitArgResources.raw_corpus_name,
+    'embeddings/event_embeddings_mixed.pickle.wv.vectors.npy')
 c.ImplicitArgResources.event_vocab_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/event_frame_embeddings_min500.voc')
+    base, c.ImplicitArgResources.raw_corpus_name,
+    'embeddings/event_embeddings_mixed.voc')
+c.ImplicitArgResources.raw_lookup_path = os.path.join(
+    base, c.ImplicitArgResources.raw_corpus_name, 'vocab/')
 
 c.ImplicitArgResources.word_embedding_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/word_embeddings.pickle.wv.vectors.npy')
+    base, 'gigaword_word_embeddings', 'word_embeddings.pickle.wv.vectors.npy')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/word_embeddings.voc')
-c.ImplicitArgResources.raw_lookup_path = os.path.join(
-    base, raw_corpus_name, 'vocab/')
+    base, 'gigaword_word_embeddings', 'word_embeddings.voc')
 
 # Runner parameters
-c.Basic.train_in = os.path.join(base, raw_corpus_name, 'hashed')
+c.Basic.train_in = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
+                                'hashed')
 c.Basic.validation_size = 10000
-c.Basic.debug_dir = os.path.join(base, raw_corpus_name, 'debug')
-c.Basic.log_dir = os.path.join(base, raw_corpus_name, 'logs')
-c.Basic.model_dir = os.path.join(base, raw_corpus_name, 'models')
+c.Basic.debug_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
+                                 'debug')
+c.Basic.log_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
+                               'logs')
+c.Basic.model_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
+                                 'models')
 
 c.Basic.test_in = os.path.join(base, 'nombank_with_gc', 'processed',
                                'cloze_hashed_filter.json.gz')

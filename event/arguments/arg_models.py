@@ -3,9 +3,7 @@ from torch.nn import functional as F
 import torch
 import logging
 from event.nn.models import KernelPooling
-from torch.nn.parameter import Parameter
 from event import torch_util
-from torch.nn.modules.linear import Bilinear
 
 
 class ArgCompatibleModel(nn.Module):
@@ -22,51 +20,44 @@ class ArgCompatibleModel(nn.Module):
         self.__load_embeddings(resources)
 
     def __load_embeddings(self, resources):
-        # Event argument vocabulary size, 2 additional dimensions here for
-        # unobserved roles.
-        extra_event_vocab = 2
-
         logging.info("Loading %d x %d event embedding." % (
-            self.para.event_arg_vocab_size + extra_event_vocab,
+            resources.event_embed_vocab.get_size(),
             self.para.event_embedding_dim
         ))
 
         # Add additional dimension for extra event vocab.
         self.event_embedding = nn.Embedding(
-            self.para.event_arg_vocab_size + extra_event_vocab,
+            resources.event_embed_vocab.get_size(),
             self.para.event_embedding_dim,
-            # padding_idx=self.para.event_arg_vocab_size
         )
 
         logging.info("Loading %d x %d word embedding." % (
-            self.para.word_vocab_size + 1,
+            resources.word_embed_vocab.get_size(),
             self.para.word_embedding_dim
         ))
+
         self.word_embedding = nn.Embedding(
-            self.para.word_vocab_size + 1,
+            resources.word_embed_vocab.get_size(),
             self.para.word_embedding_dim,
             padding_idx=self.para.word_vocab_size
         )
 
         if resources.word_embedding_path is not None:
-            word_embed = torch.from_numpy(
-                resources.word_embedding
-            )
+            word_embed = torch.from_numpy(resources.word_embedding)
 
-            # Add one additional dimension for word padding.
-            zeros = torch.zeros(1, self.para.word_embedding_dim)
+            # Add extra dimensions for word padding.
+            zeros = torch.zeros(resources.word_embed_vocab.extra_size(),
+                                self.para.word_embedding_dim)
             self.word_embedding.weight = nn.Parameter(
                 torch.cat((word_embed, zeros))
             )
 
         if resources.event_embedding_path is not None:
-            event_emb = torch.from_numpy(
-                resources.event_embedding
-            )
+            event_emb = torch.from_numpy(resources.event_embedding)
 
             # Add extra event vocab for unobserved args.
-            zeros = torch.zeros(
-                extra_event_vocab, self.para.event_embedding_dim)
+            zeros = torch.zeros(resources.event_embed_vocab.extra_size(),
+                                self.para.event_embedding_dim)
             self.event_embedding.weight = nn.Parameter(
                 torch.cat((event_emb, zeros))
             )
@@ -141,7 +132,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
         super(EventPairCompositionModel, self).__init__(para, resources)
         logging.info("Pair composition network started, with %d "
                      "extracted features and %d distance features." % (
-                         self.para.num_extracted_features, 9
+                         self.para.num_extracted_features,
+                         self.para.num_distance_features
                      ))
 
         self.arg_compositions_layers = self._config_mlp(

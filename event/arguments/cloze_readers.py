@@ -6,11 +6,8 @@ from collections import defaultdict
 import numpy as np
 import torch
 
-from event.arguments import consts
 from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
-
-from pprint import pprint
 
 
 def get_distance_signature(
@@ -76,42 +73,37 @@ def get_distance_signature(
 
 
 class HashedClozeReader:
-    def __init__(self, resources, batch_size, from_hashed=True,
-                 multi_context=False, max_events=200, max_cloze=150, gpu=True):
+    def __init__(self, resources, para, gpu=True):
         """
         Reading the hashed dataset into cloze tasks.
         :param resources: Resources containing vocabulary and more.
-        :param batch_size: Number of cloze tasks per batch.
-        :param from_hashed: Reading form hashed json file.
-        :param multi_context: Whether to use multiple events as context.
-        :param max_events: Number of events to keep per document.
-        :param max_cloze: Max cloze to keep per document.
-        :param gpu: Whethere to run on gpu.
+        :param gpu: Whether to run on gpu.
         """
-        self.batch_size = batch_size
-        self.multi_context = multi_context
-        self.max_events = max_events
-        self.max_instance = max_cloze
-        self.from_hashed = from_hashed
+        self.para = para
+
+        # self.batch_size = para.batch_size
+        # self.multi_context = para.multi_context
+        # self.max_events = para.max_events
+        # self.max_instance = para.max_cloze
+        # self.num_event_component = para.num_event_components
+        # self.num_distance_features = para.num_distance_features
+        # self.num_extracted_features = para.num_extracted_features
 
         self.event_emb_vocab = resources.event_embed_vocab
         self.word_emb_vocab = resources.word_embed_vocab
 
         self.pred_count = resources.predicate_count
-
         self.typed_event_vocab = resources.typed_event_vocab
 
         # Inverted vocab for debug purpose.
         self.event_inverted = self.__inverse_vocab(self.event_emb_vocab)
 
         # Some extra embeddings.
-        extra_index = self.event_emb_vocab.get_size()
-        self.unobserved_fe = extra_index
-        self.unobserved_arg = extra_index + 1
-
-        logging.info(
-            "Use extra %d for unobserved fe, %d for unobserved arg." % (
-                self.unobserved_fe, self.unobserved_arg))
+        self.unobserved_fe = self.event_emb_vocab.add_extra('__unobserved_fe__')
+        self.unobserved_arg = self.event_emb_vocab.add_extra(
+            '__unobserved_arg__')
+        self.ghost_component = self.event_emb_vocab.add_extra(
+            '__ghost_component__')
 
         self.slot_names = ['subj', 'obj', 'prep', ]
 
@@ -224,7 +216,7 @@ class HashedClozeReader:
                 data_in, sampler, from_line, until_line):
             gold_event_data = instance_data['gold']
 
-            # Debug purpose only.
+            # Take a look at the predicates for debug purpose only.
             predicate_text = []
             for gold_rep in gold_event_data['rep']:
                 eid = gold_rep[0]
@@ -249,8 +241,8 @@ class HashedClozeReader:
 
             doc_count += 1
 
-            # Each document is considered as one single instance since.
-            if doc_count % self.batch_size == 0:
+            # Each document is computed as a whole.
+            if doc_count % self.para.batch_size == 0:
                 debug_data = {
                     'predicate': batch_predicates,
                 }
@@ -498,7 +490,7 @@ class HashedClozeReader:
         event_subset = []
 
         for evm_index, event in enumerate(doc_info['events']):
-            if evm_index == self.max_events:
+            if evm_index == self.para.max_events:
                 # Ignore documents that are too long.
                 break
 
@@ -542,7 +534,8 @@ class HashedClozeReader:
 
         for evm_index, event_info in enumerate(event_subset):
             pred = event_info['predicate']
-            if pred == self.event_emb_vocab[consts.unk_predicate]:
+            if pred == self.event_emb_vocab.get_index(
+                    self.typed_event_vocab.unk_predicate, None):
                 continue
 
             pred_tf = self.event_emb_vocab.get_term_freq(pred)
@@ -560,52 +553,54 @@ class HashedClozeReader:
 
                 correct_id = arg.get('entity_id', -1)
 
-                # Apparently, singleton and unks are not resolvable.
-                if correct_id < 0:
+                # unks are not resolvable.
+                if correct_id < 0 or entity_heads[
+                    correct_id] == self.typed_event_vocab.unk_arg_word:
                     continue
 
+                is_singleton = False
                 if eid_count[correct_id] <= 1:
-                    continue
-
-                if entity_heads[correct_id] == consts.unk_arg_word:
-                    continue
+                    # Only one mention for this one.
+                    is_singleton = True
 
                 cross_sample = self.cross_cloze(
                     sampler, event_info['args'], arg_entities,
                     evm_index, slot, entity_heads
                 )
 
-                if not cross_sample:
-                    continue
-
                 inside_sample = self.inside_cloze(
                     sampler, event_info['args'], slot
                 )
 
-                if not inside_sample:
-                    continue
+                if cross_sample:
+                    cross_args, cross_filler_id = cross_sample
+                    cross_info = self.update_arguments(
+                        doc_info, evm_index, cross_args)
+                    self.assemble_instance(cross_event_data,
+                                           features_by_eid,
+                                           entity_positions, evm_index,
+                                           current_sent, cross_info,
+                                           cross_filler_id)
 
-                cross_args, cross_filler_id = cross_sample
+                if inside_sample:
+                    inside_args, inside_filler_id = inside_sample
+                    inside_info = self.update_arguments(
+                        doc_info, evm_index, inside_args)
 
-                cross_info = self.update_arguments(
-                    doc_info, evm_index, cross_args)
-                self.assemble_instance(cross_event_data, features_by_eid,
-                                       entity_positions, evm_index,
-                                       current_sent, cross_info,
-                                       cross_filler_id)
+                    self.assemble_instance(inside_event_data,
+                                           features_by_eid,
+                                           entity_positions, evm_index,
+                                           current_sent, inside_info,
+                                           inside_filler_id)
 
-                inside_args, inside_filler_id = inside_sample
-                inside_info = self.update_arguments(
-                    doc_info, evm_index, inside_args)
-
-                self.assemble_instance(inside_event_data, features_by_eid,
-                                       entity_positions, evm_index,
-                                       current_sent, inside_info,
-                                       inside_filler_id)
-
-                self.assemble_instance(gold_event_data, features_by_eid,
-                                       entity_positions, evm_index,
-                                       current_sent, event_info, correct_id)
+                if is_singleton:
+                    # If it is a singleton, than the highest instance should be
+                    # the ghost instance.
+                    self.add_ghost_instance(gold_event_data)
+                else:
+                    self.assemble_instance(gold_event_data, features_by_eid,
+                                           entity_positions, evm_index,
+                                           current_sent, event_info, correct_id)
 
                 # These two list indicate where the target argument is.
                 cloze_event_indices.append(evm_index)
@@ -636,6 +631,14 @@ class HashedClozeReader:
         instance_data['features'].append(features_by_eid[filler_eid])
         instance_data['distances'].append(get_distance_signature(
             evm_index, entity_positions, event_words, sent_id))
+
+    def add_ghost_instance(self, instance_data):
+        instance_data['rep'].append(
+            [self.ghost_component] * self.para.num_event_component)
+        instance_data['features'].append(
+            [0.0] * self.para.num_extracted_features)
+        instance_data['distances'].append(
+            [0.0] * self.para.num_distance_features)
 
     def parse_docs(self, data_in, sampler, from_line=None, until_line=None):
         line_num = 0
@@ -682,25 +685,24 @@ class HashedClozeReader:
         pprint(instance)
 
         print("Going to replace slot ", slot)
-        slot_info = instance[slot]
-
-        dep = instance[slot].get('dep', slot)
-
         # Make a copy of the slot.
+        slot_info = dict((k, v) for k, v in instance[slot].items())
+
+        # Replace the slot info with the new information.
         slot_info['entity_id'] = new_eid
-        slot_info['origin_text'] = new_text
+
+        # TODO: The "represent" slot will be in the new hash data.
         slot_info['represent'] = new_entity_rep
-        slot_info['arg_role'] = self.typed_event_vocab.get_arg_rep(
-            dep, new_entity_rep
+        slot_info['text'] = new_text
+        slot_info['arg_role'] = self.event_emb_vocab.get_index(
+            self.typed_event_vocab.get_arg_rep(
+                slot_info.get('dep', slot), new_entity_rep
+            ), self.typed_event_vocab.get_unk_arg_rep()
         )
 
+        # Some training instance also change the frame element name.
         if new_fe is not None:
             slot_info['fe'] = new_fe
-
-        slot_info['context'] = slot_info.get('context', [[], []])
-
-        pprint(slot_info)
-        input('wait')
 
     def cross_cloze(self, sampler, args, arg_entities, target_evm_id,
                     target_slot, entity_heads):

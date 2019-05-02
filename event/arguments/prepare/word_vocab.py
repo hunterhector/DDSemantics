@@ -3,7 +3,8 @@ import json
 from collections import Counter
 import os
 from gensim.models.word2vec import Word2Vec
-from event.arguments import consts
+
+unk_word = 'UNK_word'
 
 
 def main(input_data, vocab_dir, embedding_dir):
@@ -40,8 +41,8 @@ def embed(input_data, vocab_dir, embedding_dir, min_count=50):
                 for line in doc:
                     for sent in json.loads(line)['sentences']:
                         words = sent.split()
-                        yield [w if w in kept_words else consts.unk_word for w
-                               in words]
+                        yield [w if w in kept_words else unk_word for w in
+                               words]
 
     print("Start training embeddings.")
     emb_out_base = os.path.join(embedding_dir, 'word_embeddings')

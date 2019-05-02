@@ -1,6 +1,7 @@
 from event.io.readers import EventReader
 import gzip
 from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
+from event.arguments.prepare import word_vocab
 from event.arguments import consts, util
 from collections import defaultdict, Counter
 import json
@@ -14,8 +15,10 @@ import sys
 
 def hash_context(word_emb_vocab, context):
     left, right = context
-    return [word_emb_vocab.get_index(word, consts.unk_word) for word in left], \
-           [word_emb_vocab.get_index(word, consts.unk_word) for word in right]
+    return [word_emb_vocab.get_index(word, word_vocab.unk_word) for word in
+            left], \
+           [word_emb_vocab.get_index(word, word_vocab.unk_word) for word in
+            right]
 
 
 def load_emb_vocab(vocab_file):
@@ -96,7 +99,6 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
     if arg_role_id == -1:
         print('Arg role pair ', arg_role, ' is in data, but not in embedding')
         input('what to do?')
-
 
     if full_fe is not None:
         frame, fe = full_fe

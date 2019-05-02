@@ -12,6 +12,8 @@ def train_event_vectors(input_pattern, vector_out_base, window_size,
 
         def __iter__(self):
             for sent_file in glob.glob(self.input_pattern):
+                if not os.path.exists(sent_file):
+                    print(f"Warning: provided path not exists: {sent_file}")
                 with open(sent_file) as doc:
                     print("Processing ", sent_file)
                     for line in doc:
