@@ -7,7 +7,7 @@ else:
     base = os.environ['implicit_corpus']
 
 c.HashParam.event_vocab = os.path.join(
-    base, 'gigaword_frames', 'embeddings', 'event_embedding_mixed.voc')
+    base, 'gigaword_frames', 'embeddings', 'event_embeddings_mixed.voc')
 c.HashParam.word_vocab = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.voc')
 c.HashParam.frame_arg_map = os.path.join(

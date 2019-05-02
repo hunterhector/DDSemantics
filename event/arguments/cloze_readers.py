@@ -572,6 +572,9 @@ class HashedClozeReader:
                     sampler, event_info['args'], slot
                 )
 
+
+                # TODO: Can the samples of different sizes?
+
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
                     cross_info = self.update_arguments(

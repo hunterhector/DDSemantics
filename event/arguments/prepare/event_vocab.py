@@ -115,6 +115,15 @@ class TypedEventVocab:
         # a partial unknown argument in many cases.
         return self.make_arg(self.unk_arg_word, self.unk_dep)
 
+    def get_arg_rep_no_dep(self, entity_rep):
+        """
+        Return the backoff version of the argument representation by using the
+        unk_dep, but the actual entity.
+        :param entity_rep:
+        :return:
+        """
+        return self.make_arg(entity_rep, self.unk_dep)
+
     def get_arg_rep(self, arg_dep, entity_rep):
         if arg_dep.startswith('prep'):
             arg_dep = self.get_vocab_word(arg_dep, 'preposition')

@@ -2,7 +2,7 @@ from event.io.readers import EventReader
 import gzip
 from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
 from event.arguments.prepare import word_vocab
-from event.arguments import consts, util
+from event.arguments import util
 from collections import defaultdict, Counter
 import json
 from traitlets import (
@@ -42,7 +42,11 @@ def load_frame_map(frame_map_file):
             fmap[from_pred, from_arg] = []
             for target in target_info.split():
                 role_info, count = target.split(':')
-                to_pred, to_arg = role_info.split(',')
+                role_parts = role_info.split(',')
+
+                to_pred = ','.join(role_parts[:-1])
+                to_arg = role_parts[-1]
+
                 fmap[from_pred, from_arg].append((to_pred, to_arg, int(count)))
             counts[from_pred] = from_count
     return fmap, counts
@@ -97,8 +101,13 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
     arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
-        print('Arg role pair ', arg_role, ' is in data, but not in embedding')
-        input('what to do?')
+        # arg_role = typed_event_vocab.get_arg_rep(t, entity_rep)
+        arg_role = typed_event_vocab.get_arg_rep_no_dep(entity_rep)
+        arg_role_id = event_emb_vocab.get_index(arg_role, None)
+
+    if arg_role_id == -1:
+        arg_role = typed_event_vocab.get_unk_arg_rep()
+        arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if full_fe is not None:
         frame, fe = full_fe
@@ -125,7 +134,23 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
     }
 
 
+def get_dep_position(dep):
+    if dep == 'nsubj' or dep == 'agent':
+        return 'subj'
+    elif dep == 'dobj' or dep == 'nsubjpass':
+        return 'obj'
+    elif dep == 'iobj':
+        # iobj is more prep like location
+        return 'prep'
+    elif dep.startswith('prep_'):
+        return 'prep'
+
+    return 'NA'
+
+
 def impute_args(event, frame_args, arg_frames):
+    # If we would like to have frames here, then we should come up with another
+    # priority strategy.
     args = event['arguments']
     pred_start, pred_end = event['predicate_start'], event['predicate_end']
 
@@ -141,18 +166,11 @@ def impute_args(event, frame_args, arg_frames):
     predicate = util.remove_neg(event.get('predicate'))
     frame = event.get('frame', 'NA')
 
-    def get_position(dep):
-        p = dep.split('_')[0]
-        if p == 'iobj':
-            # 'iobj' is not seen frequently, we put it to the 'prep' slot.
-            p = 'prep'
-        return p
-
     for arg in args:
         dep = arg.get('dep', 'NA')
         fe = arg.get('fe', 'NA')
 
-        if not dep == 'NA' and get_position(dep) not in arg_candidates:
+        if not dep == 'NA' and get_dep_position(dep) not in arg_candidates:
             # If dep is an known but not in our target list, ignore them.
             continue
 
@@ -164,7 +182,7 @@ def impute_args(event, frame_args, arg_frames):
 
     imputed_fes = defaultdict(Counter)
     for dep, (full_fe, arg) in dep_slots.items():
-        position = get_position(dep)
+        position = get_dep_position(dep)
 
         if full_fe[1] == 'NA':
             candidates = arg_frames.get((predicate, dep), [])
@@ -188,23 +206,24 @@ def impute_args(event, frame_args, arg_frames):
     imputed_deps = defaultdict(Counter)
     for (frame, fe), (dep, arg) in frame_slots.items():
         if dep == 'NA':
-            candidates = frame_args.get((frame, fe), [])
-            for pred, dep, cand_count in candidates:
-                if dep not in dep_slots:
+            for pred, dep, cand_count in frame_args.get((frame, fe), []):
+                if dep not in dep_slots and pred == event['predicate']:
                     imputed_deps[dep][(frame, fe)] = cand_count
                     break
 
     for full_fe, dep_counts in imputed_fes.items():
         dep, count = dep_counts.most_common(1)[0]
         _, arg = dep_slots[dep]
-        position = get_position(dep)
+        position = get_dep_position(dep)
         arg_candidates[position].append((dep, full_fe, arg, 'deps'))
 
     for i_dep, frame_counts in imputed_deps.items():
         full_fe, count = frame_counts.most_common(1)[0]
-        position = get_position(i_dep)
+        position = get_dep_position(i_dep)
         _, arg = frame_slots[full_fe]
-        arg_candidates[position].append((i_dep, full_fe, arg, 'frames'))
+        if position == 'NA':
+            if 'prep' not in arg_candidates:
+                arg_candidates['prep'].append((i_dep, full_fe, arg, 'frames'))
 
     final_args = {}
     for position, candidate_args in arg_candidates.items():

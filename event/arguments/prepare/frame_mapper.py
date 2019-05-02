@@ -89,7 +89,9 @@ class FrameMapper:
                     parts = arg_count.split(":")
                     if len(parts) == 2:
                         arg, count = parts
-                        predicate, role = arg.split(',')
+                        arg_parts = arg.split(',')
+                        predicate = ','.join(arg_parts[:-1])
+                        role = arg_parts[-1]
 
                         if dep_target:
                             predicate = util.remove_neg(predicate)
