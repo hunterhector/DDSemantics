@@ -10,7 +10,6 @@ from traitlets import (
 from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
 import sys
-import pprint
 
 
 def hash_context(word_emb_vocab, context):
@@ -91,12 +90,13 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
 
-    if entity_rep == typed_event_vocab.oovs['argument']:
-        print(arg)
-        input('check why we have oov here')
-
     arg_role = typed_event_vocab.get_arg_rep(dep, entity_rep)
     arg_role_id = event_emb_vocab.get_index(arg_role, None)
+
+    if arg_role_id == -1:
+        print('Arg role pair ', arg_role, ' is in data, but not in embedding')
+        input('what to do?')
+
 
     if full_fe is not None:
         frame, fe = full_fe
@@ -237,8 +237,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         entity_represents[eid] = entity_head
 
     hashed_doc['entities'] = hashed_entities
-
-    print(docid)
 
     for event in events:
         pid = event_emb_vocab.get_index(typed_event_vocab.get_pred_rep(event),

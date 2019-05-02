@@ -6,20 +6,20 @@ TODO List:
     - Check how to map frame args to "arg0" form
 1. Adding all dependencies
     - ~~All dependencies are included in training~~
-    - Deal with the change of format
+    - ~~Deal with the change of format~~
 1. Refactor the vocab class to make it consistent
     - ~~Refactor the class itself~~
     - Refactor the use cases
-1. UNK_Arguments
-    - Solve the following ner problem
-    - If the representing entity is unk, use the text itself
-1. NER is not correct in the test data
+1. ~~UNK_Arguments~~
+    - ~~Solve the following ner problem~~
+    - ~~If the representing entity is unk, use the text itself~~
+1. ~~NER is not correct in the test data~~
     - ~~Example Izquierda Unida~~
     - ~~Solution 1: merge mentions of the same head together and propagate ner type~~
-    - Solution 2: allow map to covering entity mention in addition to head word
-        - Izquierda Unida
-        - 183 years
-        - hyphenated
+    - ~~Solution 2: allow map to covering entity mention in addition to head word~~
+        - ~~Izquierda Unida~~
+        - ~~183 years~~
+        - ~~hyphenated~~
 1. Embedding baseline result too high
     - Check after removing unk
 1. Create an embedding for the empty slot
@@ -75,6 +75,7 @@ Processing steps:
         1. Use different conf will use different vocab (filter or not) 
         1. ```python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash_filter.py --HashParam.raw_data=cloze.json.gz --HashParam.output_path=cloze_hashed_filter.json.gz```
         1. ```python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash.py --HashParam.raw_data=cloze.json.gz --HashParam.output_path=cloze_hashed.json.gz```
+        1. Or simply ```scripts/hash_test_data.sh```
 
 
 

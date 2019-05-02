@@ -280,7 +280,8 @@ class HashedClozeReader:
         event_components = [
             event_info['predicate'],
             self.event_emb_vocab.get_index(
-                consts.unk_frame, None) if frame_id == -1 else frame_id
+                self.typed_event_vocab.unk_frame, None
+            ) if frame_id == -1 else frame_id
         ]
 
         for slot_name in self.slot_names:
@@ -296,7 +297,8 @@ class HashedClozeReader:
                 event_components.append(slot['arg_role'])
 
         if any([c < 0 for c in event_components]):
-            print(event_info)
+            import pprint
+            pprint.pprint(event_info)
             print(event_components)
             input('not positive')
 
@@ -321,7 +323,8 @@ class HashedClozeReader:
 
         return features_by_eid, entity_heads
 
-    def create_test_instance(self, target_evm_id, target_slot, args, doc_args):
+    def create_test_instance(self, target_evm_id, target_slot, args, doc_args,
+                             entity_heads):
         test_rank_list = []
         gold_eid = args[target_slot]['entity_id']
 
@@ -339,7 +342,7 @@ class HashedClozeReader:
 
             # Replace with another entity.
             self.replace_instance_detail(
-                cand_args, target_slot, ent_id, arg_text
+                cand_args, target_slot, ent_id, arg_text, entity_heads[ent_id]
             )
             test_rank_list.append((cand_args, ent_id))
 
@@ -569,7 +572,7 @@ class HashedClozeReader:
 
                 cross_sample = self.cross_cloze(
                     sampler, event_info['args'], arg_entities,
-                    evm_index, slot
+                    evm_index, slot, entity_heads
                 )
 
                 if not cross_sample:
@@ -700,15 +703,15 @@ class HashedClozeReader:
         input('wait')
 
     def cross_cloze(self, sampler, args, arg_entities, target_evm_id,
-                    target_slot):
+                    target_slot, entity_heads):
         """
         A negative cloze instance that use arguments from other events.
         :param sampler: A random sampler.
         :param args: Dict of origin event arguments.
-        :param arg_entities: List of original (event id, entity id) pairs.
+        :param arg_entities: List of arguments (event id, entity id, text).
         :param target_evm_id: The target event id.
         :param target_slot: The target slot name.
-        :param entity_heads: Entity id to the head word mapping.
+        :param entity_heads: A map from entity id to its represnet.
         :return:
         """
         target_arg = args[target_slot]
@@ -731,7 +734,7 @@ class HashedClozeReader:
         # When taking entity from another slot, we don't take its FE,
         # because the FE from another sentence will not make sense here.
         self.replace_instance_detail(neg_instance, target_slot, wrong_id,
-                                     wrong_text)
+                                     wrong_text, entity_heads[wrong_id])
         return neg_instance, wrong_id
 
     def inside_cloze(self, sampler, origin_event_args, target_slot):
@@ -763,14 +766,16 @@ class HashedClozeReader:
         if swap_slot_info:
             self.replace_instance_detail(
                 neg_instance, target_slot, swap_slot_info['entity_id'],
-                swap_slot_info['text'], swap_slot_info['fe'])
+                swap_slot_info['text'], swap_slot_info['represent'],
+                swap_slot_info['fe'])
         else:
             neg_instance[target_slot] = {}
 
         if target_slot_info:
             self.replace_instance_detail(
                 neg_instance, swap_slot, target_slot_info['entity_id'],
-                target_slot_info['text'], target_slot_info['fe'])
+                target_slot_info['text'], target_slot_info['represent'],
+                target_slot_info['fe'])
         else:
             neg_instance[swap_slot] = {}
 
