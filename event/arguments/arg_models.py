@@ -127,23 +127,74 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         return pooled
 
 
-class EventPairCompositionModel(ArgCompatibleModel):
+class ArgCompositionModel(nn.Module):
     def __init__(self, para, resources, gpu=True):
-        super(EventPairCompositionModel, self).__init__(para, resources)
+        super(ArgCompositionModel, self).__init__()
+        self.compose_method = para.compose_method
+
+        if self.compose_method == 'fix_slot_mlp':
+            self.arg_compositions_layers = self._setup_fix_slot_mlp(para)
+
+        elif self.compose_method == 'role_based_attention':
+            self.attention_model = self._setup_role_based_attention()
+
+    def _setup_fix_slot_mlp(self, para):
+        emb_size = self.para.num_event_components * \
+                   self.para.event_embedding_dim
+        self.arg_comp_layers = _config_mlp(emb_size,
+                                           para.arg_composition_layer_sizes)
+
+    def _setup_role_based_attention(self):
+        pass
+
+    def forward(self, *input):
+        if self.compose_method == 'fix_slot_mlp':
+            event_emb = input[0]
+            full_evm_embedding_size = event_emb.size()[-1] * event_emb.size()[
+                -2]
+            flatten_event_emb = event_emb.view(
+                event_emb.size()[0], -1, full_evm_embedding_size)
+            return _mlp(self.arg_compositions_layers, flatten_event_emb)
+        elif self.compose_method == 'role_based_attention':
+            return
+
+
+def _config_mlp(input_hidden_size, output_sizes):
+    """
+    Set up some MLP layers.
+    :param input_hidden_size: The input feature size.
+    :param output_sizes: A list of output feature size, for each layer.
+    :return:
+    """
+    layers = []
+    input_size = input_hidden_size
+    for output_size in output_sizes:
+        layers.append(nn.Linear(input_size, output_size))
+        input_size = output_size
+    return nn.ModuleList(layers)
+
+
+def _mlp(layers, input_data, activation=F.relu):
+    data = input_data
+    for layer in layers:
+        data = activation(layer(data))
+    return data
+
+
+class EventCoherenceModel(ArgCompatibleModel):
+    def __init__(self, para, resources, gpu=True):
+        super(EventCoherenceModel, self).__init__(para, resources)
         logging.info("Pair composition network started, with %d "
                      "extracted features and %d distance features." % (
                          self.para.num_extracted_features,
                          self.para.num_distance_features
                      ))
 
-        self.arg_compositions_layers = self._config_mlp(
-            self._full_event_embedding_size(),
-            para.arg_composition_layer_sizes
-        )
+        self.arg_composition_model = ArgCompositionModel(para, resources, gpu)
 
         composed_event_dim = para.arg_composition_layer_sizes[-1]
 
-        self.event_composition_layers = self._config_mlp(
+        self.event_composition_layers = _config_mlp(
             composed_event_dim + para.num_extracted_features + 9,
             para.event_composition_layer_sizes
         )
@@ -176,8 +227,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
             self.biaffine_att_layer = nn.Linear(self.para.event_embedding_dim,
                                                 self.para.event_embedding_dim)
         elif self._vote_method == 'mlp':
-            self.mlp_att = self._config_mlp(self.para.event_embedding_dim * 2,
-                                            [1])
+            self.mlp_att = _config_mlp(self.para.event_embedding_dim * 2,
+                                       [1])
 
         self._linear_combine = nn.Linear(feature_size, 1)
 
@@ -200,26 +251,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
 
     def _full_event_embedding_size(self):
         return self.para.num_event_components * self.para.event_embedding_dim
-
-    def _config_mlp(self, input_hidden_size, output_sizes):
-        """
-        Set up some MLP layers.
-        :param input_hidden_size: The input feature size.
-        :param output_sizes: A list of output feature size, for each layer.
-        :return:
-        """
-        layers = []
-        input_size = input_hidden_size
-        for output_size in output_sizes:
-            layers.append(nn.Linear(input_size, output_size))
-            input_size = output_size
-        return nn.ModuleList(layers)
-
-    def _mlp(self, layers, input_data, activation=F.relu):
-        data = input_data
-        for layer in layers:
-            data = activation(layer(data))
-        return data
 
     def _encode_distance(self, event_emb, distances):
         """
@@ -358,13 +389,6 @@ class EventPairCompositionModel(ArgCompatibleModel):
             )
         return pooled_value
 
-    def _event_repr(self, event_emb):
-        # Flatten the last 2 dimension.
-        full_evm_embedding_size = event_emb.size()[-1] * event_emb.size()[-2]
-        flatten_event_emb = event_emb.view(
-            event_emb.size()[0], -1, full_evm_embedding_size)
-        return self._mlp(self.arg_compositions_layers, flatten_event_emb)
-
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
         batch_event_rep = batch_event_data['rep']
@@ -421,8 +445,8 @@ class EventPairCompositionModel(ArgCompatibleModel):
                 print(distance_emb.shape)
             print(extracted_features.shape)
 
-        event_repr = self._event_repr(event_emb)
-        context_repr = self._event_repr(context_emb)
+        event_repr = self.arg_composition_model(event_emb)
+        context_repr = self.arg_composition_model(context_emb)
 
         if self.__debug_show_shapes:
             print("Event and context repr")

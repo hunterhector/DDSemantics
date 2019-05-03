@@ -1,7 +1,7 @@
 from traitlets.config import Configurable
 from event.arguments.impicit_arg_params import ArgModelPara
 from event.arguments.arg_models import (
-    EventPairCompositionModel,
+    EventCoherenceModel,
     BaselineEmbeddingModel,
 )
 from traitlets import (
@@ -136,7 +136,7 @@ class ArgRunner(Configurable):
 
         if self.para.model_type:
             if self.para.model_type == 'EventPairComposition':
-                self.model = EventPairCompositionModel(
+                self.model = EventCoherenceModel(
                     self.para, self.resources).to(self.device)
                 logging.info("Initialize model")
                 logging.info(str(self.model))
