@@ -33,6 +33,8 @@
 1. More baselines
     - Using Centering theory baseline
 1. Design core experiments: pooling, attention, distance, empty embedding
+1. Bad idea to use fixed size slots for frame assemble
+    - Using a FE-weighted attention should work well
 
 
 Last TODO List:
