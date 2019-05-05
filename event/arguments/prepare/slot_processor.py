@@ -123,7 +123,7 @@ class SlotHandler:
                     imputed = True
                     break
             if not imputed:
-                arg_list.append(dep, full_fe, arg, 'origin')
+                arg_list.append((dep, full_fe, arg, 'origin'))
         return imputed_fes
 
     def impute_deps(self, arg_list, predicate, dep_slots, frame_slots):
@@ -137,7 +137,7 @@ class SlotHandler:
                     imputed = True
                     break
             if not imputed:
-                arg_list.append(dep, (frame, fe), arg, 'origin')
+                arg_list.append((dep, (frame, fe), arg, 'origin'))
         return imputed_deps
 
     def organize_args(self, event):
