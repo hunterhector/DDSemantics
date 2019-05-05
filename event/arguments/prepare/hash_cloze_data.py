@@ -3,6 +3,7 @@ import gzip
 from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
 from event.arguments.prepare import word_vocab
 from event.arguments import util
+from event.arguments.prepare.slot_processor import  SlotHandler
 from collections import defaultdict, Counter
 import json
 from traitlets import (
@@ -240,7 +241,7 @@ def impute_args(event, frame_args, arg_frames):
 
 
 def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
-                 typed_event_vocab, frame_args, dep_frames):
+                 typed_event_vocab, slot_handler):
     hashed_doc = {
         'docid': docid,
         'events': [],
@@ -263,18 +264,18 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         pid = event_emb_vocab.get_index(typed_event_vocab.get_pred_rep(event),
                                         None)
         fid = event_emb_vocab.get_index(event.get('frame'), None)
-        mapped_args = impute_args(event, frame_args, dep_frames)
+        mapped_args = slot_handler.organize_args(event)
 
         full_args = {}
-        for slot, arg_info in mapped_args.items():
-            if arg_info is None:
-                full_args[slot] = {}
-            else:
+        for slot, arg_info_list in mapped_args.items():
+            hashed_arg_list = []
+            for arg_info in arg_info_list:
                 dep, full_fe, arg = arg_info
-                full_args[slot] = hash_arg(
+                hashed_arg_list.append(hash_arg(
                     arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents
-                )
+                ))
+            full_args[slot] = hashed_arg_list
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
 
@@ -290,8 +291,8 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
 
 def hash_data(params):
-    frame_args, frame_counts = load_frame_map(params.frame_arg_map)
-    dep_frames, dep_counts = load_frame_map(params.dep_frame_map)
+    slot_handler = SlotHandler(params.frame_files, params.frame_dep_map,
+                               params.dep_frame_map)
 
     typed_event_vocab = TypedEventVocab(params.component_vocab_dir)
 
@@ -309,7 +310,7 @@ def hash_data(params):
         for docid, events, entities in reader.read_events(data_in):
             hashed_doc = hash_one_doc(
                 docid, events, entities, event_emb_vocab, word_emb_vocab,
-                typed_event_vocab, frame_args, dep_frames)
+                typed_event_vocab, slot_handler)
             data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
             doc_count += 1
@@ -334,12 +335,14 @@ if __name__ == '__main__':
         component_vocab_dir = Unicode(
             help='Directory containing vocab for each component'
         ).tag(config=True)
-        frame_arg_map = Unicode(
-            help='Mapping from predicate arguments to frame elements.'
+        frame_dep_map = Unicode(
+            help='Mapping from predicate dependencies to frame elements.'
         ).tag(config=True)
         dep_frame_map = Unicode(
-            help='Mapping from frame elements to arguments.').tag(config=True)
+            help='Mapping from frame elements to predicate dependencies.'
+        ).tag(config=True)
         raw_data = Unicode(help='The dataset to hash.').tag(config=True)
+        frame_files = Unicode(help="Frame file data.").tag(config=True)
         output_path = Unicode(
             help='Output path of the hashed data.').tag(config=True)
 
