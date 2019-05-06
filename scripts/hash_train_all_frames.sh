@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
+cd ${implicit_corpus}/gigaword_frames/
+mkdir -p ${implicit_corpus}/nyt_all_frames_shuffled
+gunzip -c nyt_all_frames.json.gz | split -l 50000 - nyt_all_frames_shuffled/part_ --filter='shuf | gzip > $FILE.gz'
+
 mkdir -p ${implicit_corpus}/gigaword_frames/hashed
+
+cd ~/project/DDSemantics
 
 for f in ${implicit_corpus}/gigaword_frames/nyt_all_frames_shuffled/*.gz
 do
