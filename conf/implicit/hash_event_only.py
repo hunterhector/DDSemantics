@@ -17,4 +17,5 @@ c.HashParam.dep_frame_map = os.path.join(
 c.HashParam.component_vocab_dir = os.path.join(
     base, 'gigaword_events', 'vocab/')
 c.HashParam.frame_files = '/home/zhengzhl/resources/fndata-1.5/frame'
+c.HashParam.nom_map = 'resources/nombankArgMap.tsv'
 

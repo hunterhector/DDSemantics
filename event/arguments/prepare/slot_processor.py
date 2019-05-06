@@ -14,22 +14,23 @@ def remove_slot_info(arg_info):
 
 
 def get_dep_position(dep):
-    if dep == 'nsubj' or dep == 'agent':
+    if dep == 'nsubj' or dep == 'agent' or dep == 'subj':
         return 'subj'
-    elif dep == 'dobj' or dep == 'nsubjpass':
+    elif dep == 'dobj' or dep == 'nsubjpass' or dep == 'obj':
         return 'obj'
     elif dep == 'iobj':
         # iobj is more prep like location
         return 'prep'
-    elif dep.startswith('prep_'):
+    elif dep.startswith('prep'):
         return 'prep'
     return 'NA'
 
 
 def sort_arg_priority(args, pred_start, pred_end):
+    # TODO priority didn't consider sources from GoldStandard
     p_arg_list = []
 
-    for i, (d, fe, a, source) in enumerate(args):
+    for i, (dep, fe, a, source) in enumerate(args):
         arg_start, arg_end = a['arg_start'], a['arg_end']
 
         if arg_start >= pred_end:
@@ -41,7 +42,7 @@ def sort_arg_priority(args, pred_start, pred_end):
             dist = float('inf')
 
         num_emtpy = 0
-        if d == 'None':
+        if dep == 'None':
             num_emtpy += 1
 
         if fe == 'None':
@@ -57,17 +58,43 @@ def sort_arg_priority(args, pred_start, pred_end):
         # Large number correspond to lower priority.
         # Corresponds to: source_level, empty_level, distance
         priority = (source_level, num_emtpy, dist)
-        p_arg_list.append((priority, (d, fe, a)))
+        p_arg_list.append((priority, (dep, fe, a)))
 
-    return sorted(p_arg_list)
+    return sorted(p_arg_list, key=itemgetter(0))
 
 
 class SlotHandler:
-    def __init__(self, frame_dir, frame_dep_map, dep_frame_map):
+    def __init__(self, frame_dir, frame_dep_map, dep_frame_map,
+                 nombank_arg_map):
         self.frame_priority = self.__load_fe_orders(frame_dir)
         self.frame_deps, self.frame_counts = self.__load_frame_map(
             frame_dep_map)
+
+        self.nombank_mapping = self.__load_nombank_map(
+            nombank_arg_map
+        )
+
         self.dep_frames, self.dep_counts = self.__load_frame_map(dep_frame_map)
+
+    @staticmethod
+    def __load_nombank_map(nombank_arg_map):
+        nom_map = {}
+
+        with open(nombank_arg_map) as map_file:
+            for line in map_file:
+                fields = line.strip().split('\t')
+                if line.startswith("#"):
+                    role_names = fields[2:]
+                else:
+                    nom_form = fields[0]
+                    verb_form = fields[1]
+
+                    nom_map[nom_form] = (verb_form, {})
+
+                    for role_name, dep_name in zip(role_names, fields[2:]):
+                        if not dep_name == '-':
+                            nom_map[nom_form][1][role_name] = dep_name
+        return nom_map
 
     @staticmethod
     def __load_fe_orders(frame_dir):
@@ -162,7 +189,7 @@ class SlotHandler:
                     dep_slots[dep] = ((frame, fe), remove_slot_info(arg))
             elif dep == 'NA' and not fe == 'NA':
                 frame_slots[(frame, fe)] = (dep, remove_slot_info(arg))
-            elif not dep == 'NA' and not fe == 'NA':
+            else:
                 arg_list.append((dep, (frame, fe), plain_arg, 'origin'))
 
         # Step 1, impute dependency or FE slot.
@@ -190,9 +217,20 @@ class SlotHandler:
         }
 
         for dep, full_fe, arg, source in arg_list:
-            arg_candidates[get_dep_position(dep)].append(
-                (dep, full_fe, arg, source)
-            )
+            nombank_special_dep = None
+            if predicate in self.nombank_mapping and 'propbank_role' in arg:
+                this_nom_map = self.nombank_mapping[predicate][1]
+                prop_role = arg['propbank_role'].replace('i_', '')
+
+                if prop_role in this_nom_map:
+                    nombank_special_dep = this_nom_map[prop_role]
+
+            if nombank_special_dep is None:
+                position = get_dep_position(dep)
+            else:
+                position = get_dep_position(nombank_special_dep)
+
+            arg_candidates[position].append((dep, full_fe, arg, source))
 
         # Final step, organize all the args.
         final_args = {}
@@ -211,28 +249,6 @@ class SlotHandler:
         # Put all the unsured ones to the last bin.
         final_args['prep'].extend(unsure_args)
 
-        # import pprint
-        # pprint.pprint('initial ')
-        # pprint.pprint(args)
-        # pprint.pprint('final args')
-        # pprint.pprint(final_args)
-        #
-        # input('wait')
 
         return final_args
 
-
-def main():
-    handler = SlotHandler('/home/zhengzhl/resources/fndata-1.5/frame/')
-
-    while True:
-        f = input('Input frame:')
-        p = handler.frame_priority.get(f, None)
-        if not p:
-            continue
-        else:
-            print(p)
-
-
-if __name__ == '__main__':
-    main()

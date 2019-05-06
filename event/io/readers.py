@@ -180,6 +180,7 @@ class EventReader:
                         'arg_end': arg_info['argEnd'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
+                        'propbank_role': arg_info.get('propbank_role', 'NA'),
                         'text': arg_info['text'],
                         'represent': represent,
                     }

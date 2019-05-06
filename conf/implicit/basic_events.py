@@ -59,7 +59,7 @@ c.Basic.model_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
                                  'models')
 
 c.Basic.test_in = os.path.join(base, 'nombank_with_gc', 'processed',
-                               'cloze_hashed_filter.json.gz')
+                               'cloze_hashed.json.gz')
 
 c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
 c.Basic.do_training = True

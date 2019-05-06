@@ -10,68 +10,6 @@ from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
 
 
-def get_distance_signature(
-        current_evm_id, entity_mentions, event, sent_id):
-    """
-    Compute the distance signature of the instance's other mentions to the
-    sentence.
-    :param current_evm_id:
-    :param entity_mentions:
-    :param event:
-    :param sent_id:
-    :return:
-    """
-    distances = []
-
-    # Now use a large distance to represent Infinity.
-    # Infinity: if the entity cannot be found again, or it is not an entity.
-    # A number is arbitrarily decided since most document is shorter than
-    # this.
-    inf = 30.0
-
-    for current_slot, slot_info in event['args'].items():
-        entity_id = slot_info.get('entity_id', -1)
-
-        if entity_id == -1:
-            # This is an empty slot.
-            distances.append((inf, inf, inf))
-            continue
-
-        max_dist = 0.0
-        min_dist = inf
-        total_dist = 0.0
-        total_pair = 0.0
-
-        for evm_id, slot, sid in entity_mentions[entity_id]:
-            if evm_id == current_evm_id:
-                # Do not compute mentions at the same event.
-                continue
-
-            distance = abs(sid - sent_id)
-
-            # We make a ceiling for the distance calculation.
-            distance = min(distance, inf - 1)
-
-            if distance < min_dist:
-                min_dist = distance
-            if distance > max_dist:
-                max_dist = distance
-            total_dist += distance
-            total_pair += 1.0
-
-        if total_pair > 0:
-            distances.append((max_dist, min_dist, total_dist / total_pair))
-            # print(max_dist, min_dist, total_dist / total_pair)
-        else:
-            # This argument is not seen elsewhere, it should be a special
-            # distance label.
-            distances.append((inf, inf, inf))
-            # print("No other mentions found")
-
-    # Flatten the (argument x type) distances into a flat list.
-    return [d for l in distances for d in l]
-
-
 class HashedClozeReader:
     def __init__(self, resources, para, gpu=True):
         """
@@ -106,6 +44,8 @@ class HashedClozeReader:
             '__ghost_component__')
 
         self.slot_names = ['subj', 'obj', 'prep', ]
+
+        self.fix_slot_mode = True
 
         self.__data_types = {
             'context': np.int64,
@@ -267,30 +207,32 @@ class HashedClozeReader:
             yield train_batch, debug_data
             _clear()
 
-    def _take_event_parts(self, event_info):
-        frame_id = event_info['frame']
+    def _take_fixed_size_event_parts(self, predicate, frame_id, args):
+        """
+        Take event information from the data, one element per slot, hence the
+        size of the event parts is fixed.
+        :param predicate:
+        :param frame_id:
+        :param args:
+        :return:
+        """
+        # frame_id = event_info['frame']
         event_components = [
-            event_info['predicate'],
+            predicate,
             self.event_emb_vocab.get_index(
                 self.typed_event_vocab.unk_frame, None
             ) if frame_id == -1 else frame_id
         ]
 
-        for slot_name in self.slot_names:
-            slot = event_info['args'][slot_name]
-
-            if len(slot) == 0:
-                # event_components.append(self.unobserved_fe)
-                # event_components.append(self.unobserved_arg)
-                event_components.append(0)
-                event_components.append(2)
+        for slot, fe, arg in args:
+            if len(arg) == 0:
+                event_components.append(self.unobserved_fe)
+                event_components.append(self.unobserved_arg)
             else:
-                event_components.append(slot['fe'])
-                event_components.append(slot['arg_role'])
+                event_components.append(arg['fe'])
+                event_components.append(arg['arg_role'])
 
         if any([c < 0 for c in event_components]):
-            import pprint
-            pprint.pprint(event_info)
             print(event_components)
             input('not positive')
 
@@ -315,30 +257,48 @@ class HashedClozeReader:
 
         return features_by_eid, entity_heads
 
-    def create_test_instance(self, target_evm_id, target_slot, args, doc_args,
-                             entity_heads):
+    def create_test_instance(self, target_arg_index, target_evm_id, target_slot,
+                             target_eid, this_args, doc_args):
         test_rank_list = []
-        gold_eid = args[target_slot]['entity_id']
 
         # Replace the target slot with other entities for generating this.
-        for evm_id, ent_id, arg_text in doc_args:
-            # Make a copy of the original slots.
-            cand_args = {}
-            for slot, content in args.items():
-                cand_args[slot] = {}
-                cand_args[slot].update(content)
-
-            if evm_id == target_evm_id and ent_id == gold_eid:
-                # This is the correct answer, not including it.
+        for evm_id, ent_id, arg_text, arg_represent in doc_args:
+            if evm_id == target_evm_id and ent_id == target_eid:
+                # This is the argument itself, not including it.
                 continue
 
-            # Replace with another entity.
-            self.replace_instance_detail(
-                cand_args, target_slot, ent_id, arg_text, entity_heads[ent_id]
-            )
-            test_rank_list.append((cand_args, ent_id))
+            created_args = []
+            for arg_index, arg_info in enumerate(this_args):
+                if arg_index == target_arg_index:
+                    # Replace the data in the target slot with another entity.
+                    update_arg = self.replace_slot_detail(
+                        arg_info,
+                        target_slot,
+                        ent_id,
+                        arg_text,
+                        arg_represent,
+                    )
+                    created_args.append(update_arg)
+                else:
+                    created_args.append(arg_info)
+
+            test_rank_list.append((created_args, ent_id))
 
         return test_rank_list
+
+    def get_args_anyway(self, event_args):
+        args = []
+        if self.fix_slot_mode:
+            for slot, l_arg in event_args.items():
+                if len(l_arg) > 0:
+                    args.append((slot, l_arg[0]['fe'], l_arg[0]))
+                else:
+                    args.append((slot, self.unobserved_fe, {}))
+        else:
+            for slot, l_arg in event_args.items():
+                for arg in l_arg:
+                    args.append((slot, arg['fe'], arg))
+        return args
 
     def get_one_test_doc(self, doc_info, nid_detector):
         """
@@ -352,7 +312,10 @@ class HashedClozeReader:
 
         # Collect information such as features and entity positions.
         features_by_eid, entity_heads = self.collect_features(doc_info)
-        all_event_reps = [self._take_event_parts(e) for e in doc_info['events']]
+        all_event_reps = [
+            self._take_fixed_size_event_parts(
+                e['predicate'], e['frame'], self.get_args_anyway(e['args'])) for
+            e in doc_info['events']]
 
         # Some need to be done in iteration.
         entity_positions = defaultdict(list)
@@ -365,11 +328,13 @@ class HashedClozeReader:
 
             event_subset.append(event)
 
-            for slot, arg in event['args'].items():
+            for slot, fe, arg in self.get_args_anyway(event['args']):
                 # implicit arguments will not be candidates.
                 if len(arg) > 0 and not arg.get('implicit', False):
                     eid = arg['entity_id']
-                    doc_args.add((evm_index, eid, arg['text']))
+                    doc_args.add(
+                        (evm_index, eid, arg['arg_phrase'], arg['represent'])
+                    )
                     entity_positions[eid].append((evm_index, slot, sentence_id))
 
         # Make sure this order is the same, but this should not matter.
@@ -388,21 +353,22 @@ class HashedClozeReader:
                 event['predicate_text']
             )
 
-            for slot, arg in event['args'].items():
-                is_instance = nid_detector.should_fill(event, slot)
+            this_args = self.get_args_anyway(event['args'])
+            for target_arg_index, (slot, fe, arg) in enumerate(this_args):
+                is_instance = nid_detector.should_fill(event, slot, arg)
 
                 if is_instance and arg['resolvable']:
                     test_rank_list = self.create_test_instance(
-                        evm_index, slot, event['args'], doc_args, entity_heads
+                        target_arg_index, evm_index, slot, arg['entity_id'],
+                        this_args, doc_args,
                     )
 
                     for cand_args, filler_eid in test_rank_list:
-                        cand_event = self.update_arguments(
-                            doc_info, evm_index, cand_args
-                        )
                         self.assemble_instance(
                             instance_data, features_by_eid, entity_positions,
-                            evm_index, pred_sent, cand_event, filler_eid)
+                            evm_index, pred_sent, pred_idx, event['frame'],
+                            cand_args, filler_eid,
+                        )
 
                         cloze_event_indices.append(evm_index)
                         cloze_slot_indices.append(self.slot_names.index(slot))
@@ -499,7 +465,7 @@ class HashedClozeReader:
             sentence_id = event.get('sentence_id', None)
 
             arg_info = {}
-            for slot, arg in event['args'].items():
+            for slot, fe, arg in self.get_args_anyway(event['args']):
                 if not arg or arg['entity_id'] == -1:
                     arg_info[slot] = {}
                 else:
@@ -511,7 +477,11 @@ class HashedClozeReader:
                     arg_entities.add((evm_index, eid, arg['text']))
                     eid_count[eid] += 1
 
-        all_event_reps = [self._take_event_parts(e) for e in event_subset]
+        all_event_reps = [
+            self._take_fixed_size_event_parts(
+                e['predicate'], e['frame'], self.get_args_anyway(e['args'])) for
+            e in event_subset
+        ]
 
         if len(arg_entities) <= 1:
             # There no enough arguments to sample from.
@@ -532,8 +502,8 @@ class HashedClozeReader:
         cloze_event_indices = []
         cloze_slot_indices = []
 
-        for evm_index, event_info in enumerate(event_subset):
-            pred = event_info['predicate']
+        for evm_index, event in enumerate(event_subset):
+            pred = event['predicate']
             if pred == self.event_emb_vocab.get_index(
                     self.typed_event_vocab.unk_predicate, None):
                 continue
@@ -546,10 +516,10 @@ class HashedClozeReader:
                 # Too frequent word will be down-sampled.
                 continue
 
-            current_sent = event_info['sentence_id']
+            current_sent = event['sentence_id']
 
             for slot_index, slot in enumerate(self.slot_names):
-                arg = event_info['args'][slot]
+                arg = event['args'][slot]
 
                 correct_id = arg.get('entity_id', -1)
 
@@ -564,46 +534,42 @@ class HashedClozeReader:
                     is_singleton = True
 
                 cross_sample = self.cross_cloze(
-                    sampler, event_info['args'], arg_entities,
-                    evm_index, slot, entity_heads
+                    sampler, self.get_args_anyway(event['args']),
+                    arg_entities, evm_index, slot, entity_heads
                 )
 
                 inside_sample = self.inside_cloze(
-                    sampler, event_info['args'], slot
+                    sampler, event['args'], slot
                 )
-
 
                 # TODO: Can the samples of different sizes?
 
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
-                    cross_info = self.update_arguments(
-                        doc_info, evm_index, cross_args)
-                    self.assemble_instance(cross_event_data,
-                                           features_by_eid,
-                                           entity_positions, evm_index,
-                                           current_sent, cross_info,
-                                           cross_filler_id)
+
+                    self.assemble_instance(
+                        cross_event_data, features_by_eid, entity_positions,
+                        evm_index, current_sent, pred, event['frame'],
+                        cross_args, cross_filler_id
+                    )
 
                 if inside_sample:
                     inside_args, inside_filler_id = inside_sample
-                    inside_info = self.update_arguments(
-                        doc_info, evm_index, inside_args)
 
-                    self.assemble_instance(inside_event_data,
-                                           features_by_eid,
-                                           entity_positions, evm_index,
-                                           current_sent, inside_info,
-                                           inside_filler_id)
+                    self.assemble_instance(
+                        inside_event_data, features_by_eid, entity_positions,
+                        evm_index, current_sent, pred, event['frame'],
+                        inside_args, inside_filler_id
+                    )
 
                 if is_singleton:
                     # If it is a singleton, than the highest instance should be
                     # the ghost instance.
                     self.add_ghost_instance(gold_event_data)
                 else:
-                    self.assemble_instance(gold_event_data, features_by_eid,
-                                           entity_positions, evm_index,
-                                           current_sent, event_info, correct_id)
+                    self.assemble_instance(
+                        gold_event_data, features_by_eid, entity_positions,
+                        evm_index, current_sent, event, correct_id)
 
                 # These two list indicate where the target argument is.
                 cloze_event_indices.append(evm_index)
@@ -627,13 +593,80 @@ class HashedClozeReader:
 
         return instance_data, common_data
 
+    def get_distance_signature(
+            self, current_evm_id, entity_mentions, arg_list, sent_id):
+        """
+        Compute the distance signature of the instance's other mentions to the
+        sentence.
+        :param current_evm_id:
+        :param entity_mentions:
+        :param arg_list:
+        :param sent_id:
+        :return:
+        """
+        distances = []
+
+        # Now use a large distance to represent Infinity.
+        # Infinity: if the entity cannot be found again, or it is not an entity.
+        # A number is arbitrarily decided since most document is shorter than
+        # this.
+        inf = 30.0
+
+        for current_slot, fe, slot_info in arg_list:
+            entity_id = slot_info.get('entity_id', -1)
+
+            if entity_id == -1:
+                # This is an empty slot.
+                distances.append((inf, inf, inf))
+                continue
+
+            max_dist = 0.0
+            min_dist = inf
+            total_dist = 0.0
+            total_pair = 0.0
+
+            for evm_id, slot, sid in entity_mentions[entity_id]:
+                if evm_id == current_evm_id:
+                    # Do not compute mentions at the same event.
+                    continue
+
+                distance = abs(sid - sent_id)
+
+                # We make a ceiling for the distance calculation.
+                distance = min(distance, inf - 1)
+
+                if distance < min_dist:
+                    min_dist = distance
+                if distance > max_dist:
+                    max_dist = distance
+                total_dist += distance
+                total_pair += 1.0
+
+            if total_pair > 0:
+                distances.append((max_dist, min_dist, total_dist / total_pair))
+            else:
+                # This argument is not seen elsewhere, it should be a special
+                # distance label.
+                distances.append((inf, inf, inf))
+
+        # Flatten the (argument x type) distances into a flat list.
+        return [d for l in distances for d in l]
+
     def assemble_instance(self, instance_data, features_by_eid,
                           entity_positions, evm_index, sent_id,
-                          event_words, filler_eid):
-        instance_data['rep'].append(self._take_event_parts(event_words))
+                          predicate, frame, arg_list, filler_eid):
+        instance_data['rep'].append(
+            self._take_fixed_size_event_parts(
+                predicate,
+                frame,
+                arg_list,
+            )
+        )
         instance_data['features'].append(features_by_eid[filler_eid])
-        instance_data['distances'].append(get_distance_signature(
-            evm_index, entity_positions, event_words, sent_id))
+        instance_data['distances'].append(
+            self.get_distance_signature(
+                evm_index, entity_positions, arg_list, sent_id
+            ))
 
     def add_ghost_instance(self, instance_data):
         instance_data['rep'].append(
@@ -682,30 +715,29 @@ class HashedClozeReader:
                 }
         return full_info
 
-    def replace_instance_detail(self, instance, slot, new_eid, new_text,
-                                new_entity_rep, new_fe=None):
-        from pprint import pprint
-        pprint(instance)
-
-        print("Going to replace slot ", slot)
+    def replace_slot_detail(self, slot_instance, new_slot, new_eid, new_text,
+                            new_entity_rep, new_fe=None):
         # Make a copy of the slot.
-        slot_info = dict((k, v) for k, v in instance[slot].items())
+        slot_name, slot_fe, slot_info = slot_instance
+
+        updated_slot_info = dict((k, v) for k, v in slot_info.items())
 
         # Replace the slot info with the new information.
-        slot_info['entity_id'] = new_eid
-
-        # TODO: The "represent" slot will be in the new hash data.
-        slot_info['represent'] = new_entity_rep
-        slot_info['text'] = new_text
-        slot_info['arg_role'] = self.event_emb_vocab.get_index(
+        updated_slot_info['entity_id'] = new_eid
+        updated_slot_info['represent'] = new_entity_rep
+        updated_slot_info['text'] = new_text
+        updated_slot_info['arg_role'] = self.event_emb_vocab.get_index(
             self.typed_event_vocab.get_arg_rep(
-                slot_info.get('dep', slot), new_entity_rep
+                updated_slot_info.get('dep', new_slot), new_entity_rep
             ), self.typed_event_vocab.get_unk_arg_rep()
         )
 
         # Some training instance also change the frame element name.
         if new_fe is not None:
-            slot_info['fe'] = new_fe
+            updated_slot_info['fe'] = new_fe
+            slot_fe = new_fe
+
+        return slot_name, slot_fe, updated_slot_info
 
     def cross_cloze(self, sampler, args, arg_entities, target_evm_id,
                     target_slot, entity_heads):
@@ -738,8 +770,8 @@ class HashedClozeReader:
 
         # When taking entity from another slot, we don't take its FE,
         # because the FE from another sentence will not make sense here.
-        self.replace_instance_detail(neg_instance, target_slot, wrong_id,
-                                     wrong_text, entity_heads[wrong_id])
+        self.replace_slot_detail(neg_instance, target_slot, wrong_id,
+                                 wrong_text, entity_heads[wrong_id])
         return neg_instance, wrong_id
 
     def inside_cloze(self, sampler, origin_event_args, target_slot):
@@ -769,7 +801,7 @@ class HashedClozeReader:
         # When swapping the two slots, we also swap the FEs
         # this help us learn the correct slot for a FE.
         if swap_slot_info:
-            self.replace_instance_detail(
+            self.replace_slot_detail(
                 neg_instance, target_slot, swap_slot_info['entity_id'],
                 swap_slot_info['text'], swap_slot_info['represent'],
                 swap_slot_info['fe'])
@@ -777,7 +809,7 @@ class HashedClozeReader:
             neg_instance[target_slot] = {}
 
         if target_slot_info:
-            self.replace_instance_detail(
+            self.replace_slot_detail(
                 neg_instance, swap_slot, target_slot_info['entity_id'],
                 target_slot_info['text'], target_slot_info['represent'],
                 target_slot_info['fe'])

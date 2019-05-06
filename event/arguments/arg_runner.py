@@ -67,7 +67,7 @@ class NullArgDetector:
     def __init__(self):
         pass
 
-    def should_fill(self, event_info, slot):
+    def should_fill(self, event_info, slot, arg):
         pass
 
 
@@ -79,8 +79,8 @@ class GoldNullArgDetector(NullArgDetector):
     def __index__(self):
         super(NullArgDetector, self).__init__()
 
-    def should_fill(self, event_info, slot):
-        return event_info['args'][slot].get('implicit', False)
+    def should_fill(self, event_info, slot, arg):
+        return arg.get('implicit', False)
 
 
 class AllArgDetector(NullArgDetector):
@@ -91,7 +91,7 @@ class AllArgDetector(NullArgDetector):
     def __init__(self):
         super(NullArgDetector, self).__init__()
 
-    def should_fill(self, event_info, slot):
+    def should_fill(self, event_info, slot, arg):
         return len(event_info['args'][slot]) > 0
 
 
@@ -103,7 +103,7 @@ class TrainableNullArgDetector(NullArgDetector):
     def __index__(self):
         super(NullArgDetector, self).__init__()
 
-    def should_fill(self, doc_info, arg_info):
+    def should_fill(self, doc_info, arg_info, arg):
         raise NotImplementedError
 
 
