@@ -59,6 +59,7 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
         'implicit': arg['implicit'],
         'resolvable': arg['resolvable'],
         'arg_phrase': arg['arg_phrase'],
+        'propbank_role': arg['propbank_role'],
         'represent': entity_rep,
         'dep': dep,
     }

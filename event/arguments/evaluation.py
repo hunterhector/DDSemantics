@@ -13,6 +13,11 @@ class ImplicitEval:
         self.out_dir = out_dir
         self.cutoffs = [1, 5, 10]
 
+        self.detail_path = os.path.join(self.out_dir, 'detailed_out.json')
+        self.overall_path = os.path.join(self.out_dir, 'overall.json')
+        if os.path.exists(self.detail_path):
+            os.remove(self.detail_path)
+
     def add_result(self, doc_id, event_idx, slot, score_labels, debug_data):
         self.results.append(
             (doc_id, event_idx, slot, score_labels, debug_data,)
@@ -99,9 +104,8 @@ class ImplicitEval:
                 data['predictions'].append(instance_res)
 
             if self.out_dir:
-                detailed_path = os.path.join(self.out_dir, 'detailed_out.json')
-                mode = 'a' if os.path.exists(detailed_path) else 'w'
-                with open(detailed_path, mode) as res_out:
+                mode = 'a' if os.path.exists(self.detail_path) else 'w'
+                with open(self.detail_path, mode) as res_out:
                     json.dump(data, res_out, indent=2)
                     res_out.write('\n')
 
@@ -112,10 +116,9 @@ class ImplicitEval:
             overall_res['gold'][k] = v / overall_res['num_instances']
 
         if self.out_dir:
-            overall_path = os.path.join(self.out_dir, 'overall.json')
-            with open(overall_path, 'w') as overall_out:
-                json.dump(overall_res, overall_out, indent=2)
-                overall_out.write('\n')
+            with open(self.overall_path, 'w') as out:
+                json.dump(overall_res, out, indent=2)
+                out.write('\n')
         else:
             logging.info("Test p@1 is %.4f." % overall_res['scores']['p@1'])
 

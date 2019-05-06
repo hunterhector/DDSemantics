@@ -1,13 +1,13 @@
 # List of TODOs 
 
-1. The SemEval dataset
-    - Check how to map frame args to "arg0" form
-1. Adding all dependencies
+1. ~~The SemEval dataset~~
+    - ~~Check how to map frame args to "arg0" form~~
+1. ~~Adding all dependencies~~
     - ~~All dependencies are included in training~~
     - ~~Deal with the change of format~~
-1. Refactor the vocab class to make it consistent
+1. ~~Refactor the vocab class to make it consistent~~
     - ~~Refactor the class itself~~
-    - Refactor the use cases
+    - ~~Refactor the use cases~~
 1. ~~UNK_Arguments~~
     - ~~Solve the following ner problem~~
     - ~~If the representing entity is unk, use the text itself~~
@@ -18,6 +18,10 @@
         - ~~Izquierda Unida~~
         - ~~183 years~~
         - ~~hyphenated~~
+1. Add correct candidates in test
+    - try put the gold argument in the ranking 
+    - all other arguments
+    - all named entities
 1. Embedding baseline result too high
     - Check after removing unk
 1. Create an embedding for the empty slot

@@ -83,16 +83,16 @@ class GoldNullArgDetector(NullArgDetector):
         return arg.get('implicit', False)
 
 
-class AllArgDetector(NullArgDetector):
+class ResolvableArgDetector(NullArgDetector):
     """
-    A Null arg detector that returns true for every arg.
+    A Null arg detector that returns true for resolvable arguments.
     """
 
     def __init__(self):
         super(NullArgDetector, self).__init__()
 
     def should_fill(self, event_info, slot, arg):
-        return len(event_info['args'][slot]) > 0
+        return len(arg) > 0 and arg['resolvable']
 
 
 class TrainableNullArgDetector(NullArgDetector):
@@ -153,7 +153,7 @@ class ArgRunner(Configurable):
         elif self.para.nid_method == 'train':
             self.nid_detector = TrainableNullArgDetector()
 
-        self.all_detector = AllArgDetector()
+        self.all_detector = ResolvableArgDetector()
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -274,11 +274,13 @@ class ArgRunner(Configurable):
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint['state_dict'])
 
-    def __test(self, model, test_lines, nid_detector, eval_dir=None):
+    def __test(self, model, test_lines, nid_detector, auto_test=False,
+               eval_dir=None):
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
 
-        for test_data in self.reader.read_test_docs(test_lines, nid_detector):
+        for test_data in self.reader.read_test_docs(test_lines, nid_detector,
+                                                    auto_test):
             doc_id, instances, common_data, gold_labels, debug_data = test_data
 
             coh = model(instances, common_data)
@@ -300,6 +302,8 @@ class ArgRunner(Configurable):
                 _, score_labels, debug_preds, debug_entities, golds = zip(
                     *result)
 
+                # print(score_labels)
+
                 slot_name = self.reader.slot_names[slot_idx]
 
                 evaluator.add_result(
@@ -312,6 +316,7 @@ class ArgRunner(Configurable):
                 )
 
             doc_count += 1
+            # input(f'processed {doc_id}')
 
             if doc_count % 1000 == 0:
                 logging.info("Tested %d documents." % doc_count)
@@ -493,7 +498,8 @@ class ArgRunner(Configurable):
             logging.info("Computing test result on dev set.")
             self.model.eval()
             self.__test(self.model, test_lines=dev_lines,
-                        nid_detector=self.all_detector)
+                        nid_detector=self.all_detector,
+                        auto_test=True)
             self.model.train()
 
             logging.info(
@@ -569,9 +575,8 @@ if __name__ == '__main__':
     basic_para = Basic(config=conf)
 
     from event.util import set_file_log, set_basic_log, ensure_dir
-    from time import localtime, strftime
 
-    timestamp = strftime("%Y-%m-%d_%H-%M-%S", localtime())
+    from time import localtime, strftime
 
     if not basic_para.cmd_log and basic_para.log_dir:
         mode = ''
@@ -584,14 +589,15 @@ if __name__ == '__main__':
         log_path = os.path.join(
             basic_para.log_dir,
             basic_para.model_name,
-            basic_para.run_name + "_" + timestamp + mode + '.log')
+            basic_para.run_name + "_" + mode + '.log')
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
 
     set_basic_log()
 
-    logging.info("Started the runner at " + timestamp)
+    logging.info(
+        "Started the runner at " + strftime("%Y-%m-%d_%H-%M-%S", localtime()))
     logging.info(json.dumps(conf, indent=2))
 
     runner = ArgRunner(
@@ -612,7 +618,7 @@ if __name__ == '__main__':
 
     result_dir = os.path.join(
         basic_para.log_dir, basic_para.model_name, 'results',
-        basic_para.run_name + "_" + timestamp,
+        basic_para.run_name,
     )
 
     if basic_para.run_baselines:

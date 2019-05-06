@@ -258,13 +258,13 @@ class HashedClozeReader:
         return features_by_eid, entity_heads
 
     def create_test_instance(self, target_arg_index, target_evm_id, target_slot,
-                             target_eid, this_args, doc_args):
+                             target_eid, this_args, doc_args, auto_test):
         test_rank_list = []
 
         # Replace the target slot with other entities for generating this.
         for evm_id, ent_id, arg_text, arg_represent in doc_args:
-            if evm_id == target_evm_id and ent_id == target_eid:
-                # This is the argument itself, not including it.
+            if auto_test and evm_id == target_evm_id and ent_id == target_eid:
+                # During auto test, we will not use the original argument
                 continue
 
             created_args = []
@@ -300,11 +300,12 @@ class HashedClozeReader:
                     args.append((slot, arg['fe'], arg))
         return args
 
-    def get_one_test_doc(self, doc_info, nid_detector):
+    def get_one_test_doc(self, doc_info, nid_detector, auto_test):
         """
         Parse and get one test document.
         :param doc_info: The JSON data of one document.
         :param nid_detector: NID detector to detect which slot to fill.
+        :param auto_test: If true, then we are creating test from coreference.
         :return:
         """
         instance_data = {'rep': [], 'distances': [], 'features': [], }
@@ -329,8 +330,7 @@ class HashedClozeReader:
             event_subset.append(event)
 
             for slot, fe, arg in self.get_args_anyway(event['args']):
-                # implicit arguments will not be candidates.
-                if len(arg) > 0 and not arg.get('implicit', False):
+                if len(arg) > 0:
                     eid = arg['entity_id']
                     doc_args.add(
                         (evm_index, eid, arg['arg_phrase'], arg['represent'])
@@ -354,15 +354,26 @@ class HashedClozeReader:
             )
 
             this_args = self.get_args_anyway(event['args'])
+
+            # from pprint import pprint
+            # pprint(event)
+            # pprint(this_args)
+
             for target_arg_index, (slot, fe, arg) in enumerate(this_args):
                 is_instance = nid_detector.should_fill(event, slot, arg)
 
-                if is_instance and arg['resolvable']:
+                if is_instance:
                     test_rank_list = self.create_test_instance(
                         target_arg_index, evm_index, slot, arg['entity_id'],
-                        this_args, doc_args,
+                        this_args, doc_args, auto_test
                     )
 
+                    # print("is an instance")
+                    # print(test_rank_list)
+                    # input(f'rank list found at {evm_index} of doc '
+                    #       f'{doc_info["docid"]}')
+
+                    has_gold = False
                     for cand_args, filler_eid in test_rank_list:
                         self.assemble_instance(
                             instance_data, features_by_eid, entity_positions,
@@ -373,9 +384,11 @@ class HashedClozeReader:
                         cloze_event_indices.append(evm_index)
                         cloze_slot_indices.append(self.slot_names.index(slot))
 
-                        gold_labels.append(
-                            1 if filler_eid == arg['entity_id'] else 0
-                        )
+                        if filler_eid == arg['entity_id']:
+                            gold_labels.append(1)
+                            has_gold = True
+                        else:
+                            gold_labels.append(0)
 
                         debug_data['predicate'].append(predicate)
                         debug_data['entity_text'].append(
@@ -389,6 +402,14 @@ class HashedClozeReader:
                         if len(cloze_event_indices) > 500:
                             break
 
+                    if not has_gold:
+                        logging.warning(
+                            f"No gold label for {doc_info['docid']},"
+                            f"predicate {event['predicate_text']}, slot {slot}"
+                        )
+        # input(f'Found {len(cloze_event_indices)} instances in'
+        #       f' {doc_info["docid"]}')
+
         if len(cloze_event_indices) == 0:
             return None
 
@@ -400,21 +421,23 @@ class HashedClozeReader:
 
         return instance_data, common_data, gold_labels, debug_data
 
-    def read_test_docs(self, test_in, nid_detector):
+    def read_test_docs(self, test_in, nid_detector, auto_test):
         """
         Load test data. Importantly, this will create alternative cloze
          filling for ranking.
         :param test_in: supply lines as test data.
         :param nid_detector: Null Instantiation Detector.
+        :param auto_test: If true, then we are creating test from coreference.
         :return:
         """
         for line in test_in:
             doc_info = json.loads(line)
             doc_id = doc_info['docid']
 
-            test_data = self.get_one_test_doc(doc_info, nid_detector)
+            test_data = self.get_one_test_doc(doc_info, nid_detector, auto_test)
 
             if not test_data:
+                logging.info(f"No test data for doc {doc_id}")
                 continue
 
             doc_instances, common_data, gold_labels, debug_data = test_data
