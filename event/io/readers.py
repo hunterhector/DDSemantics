@@ -169,6 +169,7 @@ class EventReader:
                     else:
                         represent = arg_info['text']
 
+                    # TODO: can automate the field mapping here.
                     arg = {
                         'dep': arg_info.get('dep', 'NA'),
                         'fe': arg_info['feName'],
@@ -176,6 +177,8 @@ class EventReader:
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
                         'implicit': arg_info['isImplicit'],
+                        'succeeding': arg_info['isSucceeding'],
+                        'incorporated': arg_info['isIncorporated'],
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
                         'role': arg_info.get('argument_role', 'NA'),

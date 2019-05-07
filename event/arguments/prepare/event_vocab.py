@@ -132,10 +132,11 @@ class TypedEventVocab:
 
     def get_pred_rep(self, event):
         pred = self.get_vocab_word(event['predicate'], 'predicate')
+
         if pred == self.oovs['predicate']:
             # Try to see if the verb form help.
-            if 'verbForm' in pred:
-                pred = self.get_vocab_word(event['verbForm'], 'predicate')
+            if 'verb_form' in event:
+                pred = self.get_vocab_word(event['verb_form'], 'predicate')
         return self.make_predicate(pred)
 
     def get_fe_rep(self, frame_name, fe_role):

@@ -51,18 +51,18 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
 
     hashed_context = hash_context(word_emb_vocab, arg['arg_context'])
 
-    return {
-        'arg_role': arg_role_id,
-        'fe': fe_id,
-        'context': hashed_context,
-        'entity_id': arg['entity_id'],
-        'implicit': arg['implicit'],
-        'resolvable': arg['resolvable'],
-        'arg_phrase': arg['arg_phrase'],
-        'propbank_role': arg['propbank_role'],
-        'represent': entity_rep,
-        'dep': dep,
-    }
+    hashed_arg = dict([(k, v) for (k, v) in arg.items()])
+
+    hashed_arg.pop('arg_context', None)
+    hashed_arg.pop('role', None)
+
+    hashed_arg['arg_role'] = arg_role_id
+    hashed_arg['dep'] = dep
+    hashed_arg['represent'] = entity_rep
+    hashed_arg['fe'] = fe_id
+    hashed_arg['context'] = hashed_context
+
+    return hashed_arg
 
 
 def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
@@ -90,11 +90,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
             typed_event_vocab.get_pred_rep(event), None)
         fid = event_emb_vocab.get_index(event.get('frame'), None)
         mapped_args = slot_handler.organize_args(event)
-
-        # if event['predicate'] == 'investment':
-        #     import pprint
-        #     pprint.pprint(mapped_args)
-        #     input('check')
 
         full_args = {}
         for slot, arg_info_list in mapped_args.items():

@@ -9,6 +9,7 @@ import torch
 from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
 from pprint import pprint
+from operator import itemgetter
 
 
 class HashedClozeReader:
@@ -46,7 +47,11 @@ class HashedClozeReader:
 
         self.slot_names = ['subj', 'obj', 'prep', ]
 
+        # In fix slot mode we assume there is a fixed number of slots.
         self.fix_slot_mode = True
+
+        self.gold_role_field = None
+        self.auto_test = False
 
         self.__data_types = {
             'context': np.int64,
@@ -225,7 +230,7 @@ class HashedClozeReader:
             ) if frame_id == -1 else frame_id
         ]
 
-        for slot, fe, arg in args:
+        for slot, arg in args:
             if len(arg) == 0:
                 event_components.append(self.unobserved_fe)
                 event_components.append(self.unobserved_arg)
@@ -258,17 +263,61 @@ class HashedClozeReader:
 
         return features_by_eid, entity_heads
 
-    def create_test_instance(self, target_arg_index, target_evm_id, target_slot,
-                             target_eid, this_args, doc_args, auto_test):
-        test_rank_list = []
+    def __group_by_gold_role(self, args, gold_role_value):
+        grouped_args = defaultdict(list)
+
+        for arg in args:
+            arg_role = arg[self.gold_role_field]
+            if arg_role == gold_role_value:
+                grouped_args[arg_role].append(arg)
+        return grouped_args
+
+    def create_actual_test_instance(self, this_args, doc_args,
+                                    abs_target_arg_idx):
+        target_arg_info = doc_args[abs_target_arg_idx]
+
+        for doc_arg in doc_args:
+            # doc_args.append({
+            #     'event_index': evm_index,
+            #     'relative_arg_index': rel_arg_index,
+            #     'eid': eid,
+            #     'arg_phrase': arg['arg_phrase'],
+            #     'represent': arg['represent']
+            # })
+
+            arg_by_role = self.__group_by_gold_role(
+                this_args, target_arg_info[self.gold_role_field]
+            )
+
+            for role, l_arg_info in self.__group_by_gold_role(
+                    this_args, target_arg_info[self.gold_role_field]).items():
+                # Replace the whole role with an candidate doc arg.
+                print(role)
+                print(l_arg_info)
+
+                input('check creating test data')
+
+                pass
+
+    def create_test_instance(self, this_args, doc_args, abs_target_arg_idx,
+                             target_slot):
+        dist_test_rank_list = []
+
+        target_arg_info = doc_args[abs_target_arg_idx]
+
+        target_arg_index = target_arg_info['relative_arg_index']
+        target_evm_id = target_arg_info['event_index']
+        target_eid = target_arg_info['eid']
 
         # Replace the target slot with other entities for generating this.
         for evm_id, ent_id, arg_text, arg_represent in doc_args:
-            if auto_test and evm_id == target_evm_id and ent_id == target_eid:
+            if (self.auto_test and evm_id == target_evm_id and
+                    ent_id == target_eid):
                 # During auto test, we will not use the original argument
                 continue
 
             created_args = []
+
             for arg_index, arg_info in enumerate(this_args):
                 if arg_index == target_arg_index:
                     # Replace the data in the target slot with another entity.
@@ -283,37 +332,42 @@ class HashedClozeReader:
                 else:
                     created_args.append(arg_info)
 
-            test_rank_list.append((created_args, ent_id))
+            dist_test_rank_list.append(
+                (abs(target_evm_id - evm_id), (created_args, ent_id)))
 
-        return test_rank_list
+        # Sort the rank list based on the distance to the target evm.
+        dist_test_rank_list.sort(key=itemgetter(0))
+
+        return [b for (a, b) in dist_test_rank_list]
 
     def get_args_anyway(self, event_args):
         args = []
         if self.fix_slot_mode:
             for slot, l_arg in event_args.items():
+                pprint(slot)
+
                 if len(l_arg) > 0:
-                    args.append((slot, l_arg[0]['fe'], l_arg[0]))
+                    args.append((slot, l_arg[0]))
                 else:
-                    args.append((slot, self.unobserved_fe, {}))
+                    args.append((slot, {}))
+
+                print()
         else:
             for slot, l_arg in event_args.items():
                 for arg in l_arg:
-                    args.append((slot, arg['fe'], arg))
+                    args.append((slot, arg))
         return args
 
-    def get_one_test_doc(self, doc_info, nid_detector, auto_test):
+    def get_one_test_doc(self, doc_info, nid_detector):
         """
         Parse and get one test document.
         :param doc_info: The JSON data of one document.
         :param nid_detector: NID detector to detect which slot to fill.
-        :param auto_test: If true, then we are creating test from coreference.
         :return:
         """
-        instance_data = {'rep': [], 'distances': [], 'features': [], }
-        debug_data = {'predicate': [], 'entity_text': [], 'gold_entity': [], }
-
         # Collect information such as features and entity positions.
         features_by_eid, entity_heads = self.collect_features(doc_info)
+
         all_event_reps = [
             self._take_fixed_size_event_parts(
                 e['predicate'], e['frame'], self.get_args_anyway(e['args'])) for
@@ -321,56 +375,83 @@ class HashedClozeReader:
 
         # Some need to be done in iteration.
         entity_positions = defaultdict(list)
-        doc_args = set()
-
-        event_subset = []
+        doc_args = []
+        indexed_data = []
 
         for evm_index, event in enumerate(doc_info['events']):
             sentence_id = event.get('sentence_id', None)
 
-            event_subset.append(event)
+            valid_args = []
 
-            for slot, fe, arg in self.get_args_anyway(event['args']):
+            for rel_arg_index, (slot, arg) in enumerate(
+                    self.get_args_anyway(event['args'])):
                 if len(arg) > 0:
+                    # TODO: Empty args will be ignored.
+                    # If one wanted to fill some arguments, please make an fake
+                    # argument first.
                     eid = arg['entity_id']
-                    doc_args.add(
-                        (evm_index, eid, arg['arg_phrase'], arg['represent'])
-                    )
+                    doc_arg_info = {
+                        'event_index': evm_index,
+                        'relative_arg_index': rel_arg_index,
+                        'eid': eid,
+                        'arg_phrase': arg['arg_phrase'],
+                        'represent': arg['represent'],
+                    }
+
+                    if not self.auto_test:
+                        doc_arg_info[self.gold_role_field] = arg[
+                            self.gold_role_field
+                        ]
+
+                    doc_args.append(doc_arg_info)
+
                     entity_positions[eid].append((evm_index, slot, sentence_id))
+                    valid_args.append((slot, arg['fe'], arg))
 
-        # Make sure this order is the same, but this should not matter.
-        doc_args = sorted(list(doc_args))
+            indexed_data.append(
+                (event, valid_args)
+            )
 
-        cloze_event_indices = []
-        cloze_slot_indices = []
-        gold_labels = []
-
-        for evm_index, event in enumerate(event_subset):
+        absolute_arg_index = 0
+        for evm_index, (event, valid_args) in enumerate(indexed_data):
             pred_sent = event['sentence_id']
-
             pred_idx = event['predicate']
             predicate = (
                 pred_idx, self.event_inverted[pred_idx],
                 event['predicate_text']
             )
 
-            this_args = self.get_args_anyway(event['args'])
+            for target_arg_index, (slot, fe, arg) in enumerate(valid_args):
+                absolute_arg_index += 1
 
-            for target_arg_index, (slot, fe, arg) in enumerate(this_args):
+                print(slot)
+                print(fe)
+                pprint(arg)
+
                 is_instance = nid_detector.should_fill(event, slot, arg)
 
                 if is_instance:
-                    test_rank_list = self.create_test_instance(
-                        target_arg_index, evm_index, slot, arg['entity_id'],
-                        this_args, doc_args, auto_test
-                    )
+                    if self.auto_test:
+                        test_rank_list = self.create_test_instance(
+                            valid_args, doc_args, absolute_arg_index, slot
+                        )
+                    else:
+                        test_rank_list = self.create_actual_test_instance(
+                            valid_args, doc_args, absolute_arg_index
+                        )
 
-                    # print("is an instance")
-                    # print(test_rank_list)
-                    # input(f'rank list found at {evm_index} of doc '
-                    #       f'{doc_info["docid"]}')
+                    # Prepare instance data for each possible instance.
+                    instance_data = {'rep': [], 'distances': [],
+                                     'features': [], }
+                    debug_data = {'predicate': [], 'entity_text': [],
+                                  'gold_entity': [], }
+
+                    cloze_event_indices = []
+                    cloze_slot_indices = []
+                    gold_labels = []
 
                     has_gold = False
+
                     for cand_args, filler_eid in test_rank_list:
                         self.assemble_instance(
                             instance_data, features_by_eid, entity_positions,
@@ -395,8 +476,9 @@ class HashedClozeReader:
                              entity_heads[arg['entity_id']])
                         )
 
-                        # TODO: Set a hard threshold here might be dangerous.
                         if len(cloze_event_indices) > 500:
+                            logging.warning(
+                                "Some test instances are ignored due to length")
                             break
 
                     if not has_gold:
@@ -404,63 +486,63 @@ class HashedClozeReader:
                             f"No gold label for {doc_info['docid']},"
                             f"predicate {event['predicate_text']}, slot {slot}"
                         )
-                        pprint()
+
+                        pprint(predicate)
+                        print(evm_index)
+                        pprint(valid_args[target_arg_index])
 
                         input('check unfound gold.')
-        # input(f'Found {len(cloze_event_indices)} instances in'
-        #       f' {doc_info["docid"]}')
 
-        if len(cloze_event_indices) == 0:
-            return None
+                    common_data = {
+                        'context': all_event_reps,
+                        'event_indices': cloze_event_indices,
+                        'slot_indices': cloze_slot_indices,
+                    }
 
-        common_data = {
-            'context': all_event_reps,
-            'event_indices': cloze_event_indices,
-            'slot_indices': cloze_slot_indices,
-        }
+                    if len(cloze_event_indices) > 0:
+                        yield (instance_data, common_data, gold_labels,
+                               debug_data)
 
-        return instance_data, common_data, gold_labels, debug_data
+        # if len(cloze_event_indices) == 0:
+        #     return None
 
-    def read_test_docs(self, test_in, nid_detector, auto_test):
+        # return instance_data, common_data, gold_labels, debug_data
+
+    def read_test_docs(self, test_in, nid_detector):
         """
         Load test data. Importantly, this will create alternative cloze
          filling for ranking.
         :param test_in: supply lines as test data.
         :param nid_detector: Null Instantiation Detector.
-        :param auto_test: If true, then we are creating test from coreference.
         :return:
         """
         for line in test_in:
             doc_info = json.loads(line)
             doc_id = doc_info['docid']
 
-            test_data = self.get_one_test_doc(doc_info, nid_detector, auto_test)
+            for test_data in self.get_one_test_doc(doc_info, nid_detector):
+                instances, common_data, gold_labels, debug_data = test_data
 
-            if not test_data:
-                logging.info(f"No test data for doc {doc_id}")
-                continue
+                b_common_data = {}
+                b_instance_data = {}
 
-            doc_instances, common_data, gold_labels, debug_data = test_data
+                # Create a pseudo batch with one instance.
+                for key, value in common_data.items():
+                    vectorized = to_torch([value], self.__data_types[key])
+                    b_common_data[key] = batch_combine(vectorized, self.device)
 
-            b_common_data = {}
-            b_instance_data = {}
+                for key, value in instances.items():
+                    vectorized = to_torch([value], self.__data_types[key])
+                    b_instance_data[key] = batch_combine(vectorized,
+                                                         self.device)
 
-            # Create a pseudo batch with one instance.
-            for key, value in common_data.items():
-                vectorized = to_torch([value], self.__data_types[key])
-                b_common_data[key] = batch_combine(vectorized, self.device)
-
-            for key, value in doc_instances.items():
-                vectorized = to_torch([value], self.__data_types[key])
-                b_instance_data[key] = batch_combine(vectorized, self.device)
-
-            yield (
-                doc_id,
-                b_instance_data,
-                b_common_data,
-                gold_labels,
-                debug_data,
-            )
+                yield (
+                    doc_id,
+                    b_instance_data,
+                    b_common_data,
+                    gold_labels,
+                    debug_data,
+                )
 
     def create_training_data(self, data_line, sampler):
         doc_info = json.loads(data_line)
@@ -488,7 +570,7 @@ class HashedClozeReader:
             sentence_id = event.get('sentence_id', None)
 
             arg_info = {}
-            for slot, fe, arg in self.get_args_anyway(event['args']):
+            for slot, arg in self.get_args_anyway(event['args']):
                 if not arg or arg['entity_id'] == -1:
                     arg_info[slot] = {}
                 else:
@@ -787,7 +869,7 @@ class HashedClozeReader:
         wrong_evm, wrong_id, wrong_text = sample_res
 
         neg_instance = {}
-        for slot, content in args.items():
+        for slot, content in args:
             neg_instance[slot] = {}
             neg_instance[slot].update(content)
 

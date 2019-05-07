@@ -80,7 +80,7 @@ class GoldNullArgDetector(NullArgDetector):
         super(NullArgDetector, self).__init__()
 
     def should_fill(self, event_info, slot, arg):
-        return arg.get('implicit', False)
+        return arg.get('implicit', False) and not arg.get('incorporated', False)
 
 
 class ResolvableArgDetector(NullArgDetector):
@@ -142,10 +142,6 @@ class ArgRunner(Configurable):
                 logging.info(str(self.model))
 
         self.reader = HashedClozeReader(self.resources, self.para)
-        # self.para.batch_size,
-        # multi_context=self.para.multi_context,
-        # max_events=self.para.max_events,
-        # max_cloze=self.para.max_cloze)
 
         # Set up Null Instantiation detector.
         if self.para.nid_method == 'gold':
@@ -263,11 +259,6 @@ class ArgRunner(Configurable):
                 logging.error(name)
                 logging.error("NaN in ", name)
 
-        batch_instance = self.__load_stuff('batch_instance')
-        batch_info = self.__load_stuff('batch_info')
-
-        self._get_loss(batch_instance, batch_info)
-
     def __load_best(self):
         best_model_path = os.path.join(self.model_dir, self.best_model_name)
         logging.info("Loading best model from '{}'".format(best_model_path))
@@ -275,12 +266,16 @@ class ArgRunner(Configurable):
         self.model.load_state_dict(checkpoint['state_dict'])
 
     def __test(self, model, test_lines, nid_detector, auto_test=False,
-               eval_dir=None):
+               gold_field_name=None, eval_dir=None):
         evaluator = ImplicitEval(eval_dir)
         doc_count = 0
 
-        for test_data in self.reader.read_test_docs(test_lines, nid_detector,
-                                                    auto_test):
+        logging.debug(f"Auto test: {auto_test}")
+
+        self.reader.auto_test = auto_test
+        self.reader.gold_role_field = gold_field_name
+
+        for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             doc_id, instances, common_data, gold_labels, debug_data = test_data
 
             coh = model(instances, common_data)
@@ -328,20 +323,24 @@ class ArgRunner(Configurable):
 
         evaluator.run()
 
-    def run_baseline(self, test_in, eval_dir):
+    def run_baseline(self, test_in, eval_dir, gold_field_name):
         logging.info("Test on [%s]." % test_in)
 
         base_model = BaselineEmbeddingModel(self.para, self.resources).to(
             self.device)
         base_model.eval()
-        self.__test(base_model, data_gen(test_in),
-                    nid_detector=self.nid_detector, eval_dir=eval_dir)
+        self.__test(
+            base_model, data_gen(test_in),
+            nid_detector=self.nid_detector, eval_dir=eval_dir,
+            gold_field_name=gold_field_name
+        )
 
-    def test(self, test_in, eval_dir):
+    def test(self, test_in, eval_dir, gold_field_name):
         logging.info("Test on [%s]." % test_in)
         self.__load_best()
         self.model.eval()
-        self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir)
+        self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir,
+                    gold_field_name=gold_field_name)
 
     def train(self, train_in, validation_size=None, validation_in=None,
               model_out_dir=None, resume=False, track_pred=None,
@@ -565,6 +564,10 @@ if __name__ == '__main__':
                        default_value=False).tag(config=True)
         run_baselines = Bool(help='Run baseline.', default_value=False).tag(
             config=True)
+        debug_mode = Bool(help='Debug mode', default_value=False).tag(
+            config=True)
+        gold_field_name = Unicode(help='Field name for the gold standard').tag(
+            config=True)
 
 
     from event.util import load_mixed_configs
@@ -594,7 +597,10 @@ if __name__ == '__main__':
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
 
-    set_basic_log()
+    if basic_para.debug_mode:
+        set_basic_log(logging.DEBUG)
+    else:
+        set_basic_log()
 
     logging.info(
         "Started the runner at " + strftime("%Y-%m-%d_%H-%M-%S", localtime()))
@@ -612,7 +618,7 @@ if __name__ == '__main__':
         os.makedirs(basic_para.debug_dir)
 
     target_predicates = {
-        'bid', 'sell', 'loan', 'cost', 'plan', 'price', 'invest', 'price',
+        'bid', 'sell', 'loan', 'cost', 'plan', 'price', 'invest',
         'lose', 'invest', 'fund',
     }
 
@@ -626,7 +632,11 @@ if __name__ == '__main__':
             os.makedirs(result_dir)
         print("Baseline evaluation results will be saved in: " + result_dir)
 
-        runner.run_baseline(test_in=basic_para.test_in, eval_dir=result_dir)
+        runner.run_baseline(
+            test_in=basic_para.test_in,
+            eval_dir=result_dir,
+            gold_field_name=basic_para.gold_field_name
+        )
 
     if basic_para.do_training:
         runner.train(
@@ -647,4 +657,5 @@ if __name__ == '__main__':
         runner.test(
             test_in=basic_para.test_in,
             eval_dir=result_dir,
+            gold_field_name=basic_para.gold_field_name
         )

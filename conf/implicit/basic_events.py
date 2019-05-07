@@ -64,3 +64,4 @@ c.Basic.test_in = os.path.join(base, 'nombank_with_gc', 'processed',
 c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
 c.Basic.do_training = True
 c.Basic.do_test = True
+c.Basic.gold_field_name = 'propbank_role'
