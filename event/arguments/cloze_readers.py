@@ -8,6 +8,7 @@ import torch
 
 from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
+from pprint import pprint
 
 
 class HashedClozeReader:
@@ -355,10 +356,6 @@ class HashedClozeReader:
 
             this_args = self.get_args_anyway(event['args'])
 
-            # from pprint import pprint
-            # pprint(event)
-            # pprint(this_args)
-
             for target_arg_index, (slot, fe, arg) in enumerate(this_args):
                 is_instance = nid_detector.should_fill(event, slot, arg)
 
@@ -407,6 +404,9 @@ class HashedClozeReader:
                             f"No gold label for {doc_info['docid']},"
                             f"predicate {event['predicate_text']}, slot {slot}"
                         )
+                        pprint()
+
+                        input('check unfound gold.')
         # input(f'Found {len(cloze_event_indices)} instances in'
         #       f' {doc_info["docid"]}')
 
