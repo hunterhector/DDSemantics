@@ -3,6 +3,7 @@ from event.arguments.impicit_arg_params import ArgModelPara
 from event.arguments.arg_models import (
     EventCoherenceModel,
     BaselineEmbeddingModel,
+    MostFrequentModel,
 )
 from traitlets import (
     Unicode,
@@ -13,7 +14,6 @@ import torch
 from torch.nn import functional as F
 
 import logging
-import sys
 
 from event.arguments.cloze_readers import HashedClozeReader
 
@@ -27,10 +27,12 @@ from pprint import pprint
 from itertools import groupby
 from operator import itemgetter
 from event.arguments.evaluation import ImplicitEval
-from event import util
 from collections import Counter
-from event import torch_util
 from event.arguments.util import ClozeSampler
+from event.util import load_mixed_configs
+import json
+from event.util import set_file_log, set_basic_log, ensure_dir
+from time import localtime, strftime
 
 
 def data_gen(data_path, from_line=None, until_line=None):
@@ -323,15 +325,41 @@ class ArgRunner(Configurable):
 
         evaluator.run()
 
-    def run_baseline(self, test_in, eval_dir, gold_field_name):
+    def run_baseline(self, test_in, gold_field_name):
+        w2v_results = os.path.join(
+            basic_para.log_dir, 'w2v_baseline', 'results',
+            basic_para.run_name,
+        )
+
+        if not os.path.exists(w2v_results):
+            os.makedirs(w2v_results)
+
+        print("Word2vec baseline evaluation results will "
+              "be saved in: " + w2v_results)
         logging.info("Test on [%s]." % test_in)
 
-        base_model = BaselineEmbeddingModel(self.para, self.resources).to(
+        w2v_baseline = BaselineEmbeddingModel(self.para, self.resources).to(
             self.device)
-        base_model.eval()
+        w2v_baseline.eval()
         self.__test(
-            base_model, data_gen(test_in),
-            nid_detector=self.nid_detector, eval_dir=eval_dir,
+            w2v_baseline, data_gen(test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=w2v_results,
+            gold_field_name=gold_field_name
+        )
+
+        most_freq_results = os.path.join(
+            basic_para.log_dir, 'most_freq_baseline', 'results',
+            basic_para.run_name
+        )
+        most_freq_baseline = MostFrequentModel(self.para, self.resources).to(
+            self.device
+        )
+        most_freq_baseline.eval()
+        self.__test(
+            w2v_baseline, data_gen(test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=most_freq_results,
             gold_field_name=gold_field_name
         )
 
@@ -540,47 +568,7 @@ class ArgRunner(Configurable):
             logging.info("Overall, %s is observed %d times." % (pred, count))
 
 
-if __name__ == '__main__':
-    class Basic(Configurable):
-        train_in = Unicode(help='Training data directory.').tag(config=True)
-        test_in = Unicode(help='Testing data.').tag(config=True)
-        test_out = Unicode(help='Test res.').tag(config=True)
-        valid_in = Unicode(help='Validation in.').tag(config=True)
-        validation_size = Integer(help='Validation size.').tag(config=True)
-        debug_dir = Unicode(help='Debug output.').tag(config=True)
-        model_name = Unicode(help='Model name.', default_value='basic').tag(
-            config=True)
-        run_name = Unicode(help='Run name.', default_value='default').tag(
-            config=True)
-        model_dir = Unicode(help='Model directory.').tag(config=True)
-        log_dir = Unicode(help='Logging directory.').tag(config=True)
-        cmd_log = Bool(help='Log on command prompt only.',
-                       default_value=False).tag(config=True)
-        pre_val = Bool(help='Pre-validate on the dev set.',
-                       default_value=False).tag(config=True)
-        do_training = Bool(help='Flag for conducting training.',
-                           default_value=False).tag(config=True)
-        do_test = Bool(help='Flag for conducting testing.',
-                       default_value=False).tag(config=True)
-        run_baselines = Bool(help='Run baseline.', default_value=False).tag(
-            config=True)
-        debug_mode = Bool(help='Debug mode', default_value=False).tag(
-            config=True)
-        gold_field_name = Unicode(help='Field name for the gold standard').tag(
-            config=True)
-
-
-    from event.util import load_mixed_configs
-    import json
-
-    conf = load_mixed_configs()
-
-    basic_para = Basic(config=conf)
-
-    from event.util import set_file_log, set_basic_log, ensure_dir
-
-    from time import localtime, strftime
-
+def main():
     if not basic_para.cmd_log and basic_para.log_dir:
         mode = ''
 
@@ -622,19 +610,10 @@ if __name__ == '__main__':
         'lose', 'invest', 'fund',
     }
 
-    result_dir = os.path.join(
-        basic_para.log_dir, basic_para.model_name, 'results',
-        basic_para.run_name,
-    )
-
     if basic_para.run_baselines:
-        if not os.path.exists(result_dir):
-            os.makedirs(result_dir)
-        print("Baseline evaluation results will be saved in: " + result_dir)
-
         runner.run_baseline(
             test_in=basic_para.test_in,
-            eval_dir=result_dir,
+            log_dir=basic_para.log_dir,
             gold_field_name=basic_para.gold_field_name
         )
 
@@ -649,6 +628,11 @@ if __name__ == '__main__':
         )
 
     if basic_para.do_test:
+        result_dir = os.path.join(
+            basic_para.log_dir, basic_para.model_name, 'results',
+            basic_para.run_name,
+        )
+
         if not os.path.exists(result_dir):
             os.makedirs(result_dir)
 
@@ -659,3 +643,38 @@ if __name__ == '__main__':
             eval_dir=result_dir,
             gold_field_name=basic_para.gold_field_name
         )
+
+
+if __name__ == '__main__':
+    class Basic(Configurable):
+        train_in = Unicode(help='Training data directory.').tag(config=True)
+        test_in = Unicode(help='Testing data.').tag(config=True)
+        test_out = Unicode(help='Test res.').tag(config=True)
+        valid_in = Unicode(help='Validation in.').tag(config=True)
+        validation_size = Integer(help='Validation size.').tag(config=True)
+        debug_dir = Unicode(help='Debug output.').tag(config=True)
+        model_name = Unicode(help='Model name.', default_value='basic').tag(
+            config=True)
+        run_name = Unicode(help='Run name.', default_value='default').tag(
+            config=True)
+        model_dir = Unicode(help='Model directory.').tag(config=True)
+        log_dir = Unicode(help='Logging directory.').tag(config=True)
+        cmd_log = Bool(help='Log on command prompt only.',
+                       default_value=False).tag(config=True)
+        pre_val = Bool(help='Pre-validate on the dev set.',
+                       default_value=False).tag(config=True)
+        do_training = Bool(help='Flag for conducting training.',
+                           default_value=False).tag(config=True)
+        do_test = Bool(help='Flag for conducting testing.',
+                       default_value=False).tag(config=True)
+        run_baselines = Bool(help='Run baseline.', default_value=False).tag(
+            config=True)
+        debug_mode = Bool(help='Debug mode', default_value=False).tag(
+            config=True)
+        gold_field_name = Unicode(help='Field name for the gold standard').tag(
+            config=True)
+
+
+    conf = load_mixed_configs()
+
+    basic_para = Basic(config=conf)

@@ -255,108 +255,96 @@ class HashedClozeReader:
     def collect_features(doc_info):
         # Collect all features.
         features_by_eid = {}
-        entity_heads = {}
+        # entity_heads = {}
 
         for eid, content in doc_info['entities'].items():
             features_by_eid[int(eid)] = content['features']
-            entity_heads[int(eid)] = content['entity_head']
+            # entity_heads[int(eid)] = content['entity_head']
 
-        return features_by_eid, entity_heads
+        return features_by_eid
 
-    def __group_by_gold_role(self, args, gold_role_value):
-        grouped_args = defaultdict(list)
-
-        for arg in args:
-            print(arg)
-            arg_role = arg[self.gold_role_field]
-            if arg_role == gold_role_value:
-                grouped_args[arg_role].append(arg)
-        return grouped_args
-
-    def create_actual_test_instance(self, this_args, doc_args,
-                                    abs_target_arg_idx):
-        target_arg_info = doc_args[abs_target_arg_idx]
+    def create_slot_candidates(self, target_arg, doc_args, target_evm_id,
+                               target_slot, pred_sent):
+        # Replace the target slot with other entities in the doc.
+        dist_arg_list = []
 
         for doc_arg in doc_args:
-            # doc_args.append({
-            #     'event_index': evm_index,
-            #     'relative_arg_index': rel_arg_index,
-            #     'eid': eid,
-            #     'arg_phrase': arg['arg_phrase'],
-            #     'represent': arg['represent']
-            # })
-
-            arg_by_role = self.__group_by_gold_role(
-                this_args, target_arg_info[self.gold_role_field]
-            )
-
-            for role, l_arg_info in self.__group_by_gold_role(
-                    this_args, target_arg_info[self.gold_role_field]).items():
-                # Replace the whole role with an candidate doc arg.
-                print(role)
-                print(l_arg_info)
-
-                input('check creating test data')
-
-                pass
-
-    def create_test_instance(self, this_args, doc_args, abs_target_arg_idx,
-                             target_slot):
-        dist_test_rank_list = []
-
-        target_arg_info = doc_args[abs_target_arg_idx]
-
-        target_arg_index = target_arg_info['relative_arg_index']
-        target_evm_id = target_arg_info['event_index']
-        target_eid = target_arg_info['eid']
-
-        # Replace the target slot with other entities for generating this.
-        for evm_id, ent_id, arg_text, arg_represent in doc_args:
-            if (self.auto_test and evm_id == target_evm_id and
-                    ent_id == target_eid):
+            if (self.auto_test and doc_arg['event_index'] == target_evm_id and
+                    doc_arg['eid'] == target_arg['eid']):
                 # During auto test, we will not use the original argument
                 continue
 
-            created_args = []
+            # This is the target argument replaced by another entity.
+            update_arg = self.replace_slot_detail(
+                target_arg,
+                target_slot,
+                doc_arg['eid'],
+                doc_arg['arg_phrase'],
+                doc_arg['represent'],
+            )
 
-            for arg_index, arg_info in enumerate(this_args):
-                if arg_index == target_arg_index:
-                    # Replace the data in the target slot with another entity.
-                    update_arg = self.replace_slot_detail(
-                        arg_info,
-                        target_slot,
-                        ent_id,
-                        arg_text,
-                        arg_represent,
-                    )
-                    created_args.append(update_arg)
+            if self.auto_test:
+                is_correct = doc_arg['eid'] == target_arg['eid']
+            else:
+                if doc_arg[self.gold_role_field] == target_arg[
+                    self.gold_role_field] and \
+                        doc_arg['event_index'] == target_evm_id:
+                    is_correct = True
                 else:
-                    created_args.append(arg_info)
+                    is_correct = False
 
-            dist_test_rank_list.append(
-                (abs(target_evm_id - evm_id), (created_args, ent_id)))
+            dist_arg_list.append((
+                abs(pred_sent - doc_arg['sentence_id']),
+                (update_arg, doc_arg['eid'], is_correct)
+            ))
 
         # Sort the rank list based on the distance to the target evm.
-        dist_test_rank_list.sort(key=itemgetter(0))
+        dist_arg_list.sort(key=itemgetter(0))
+        return [a for (dist, a) in dist_arg_list]
 
-        return [b for (a, b) in dist_test_rank_list]
-
-    def get_args_anyway(self, event_args):
+    def get_args_as_list(self, event_args, ignore_implicit):
+        """
+        Take a argument map and return a list version of it. It will take the
+        first argument when multiple ones are presented at the slot.
+        :param event_args:
+        :param ignore_implicit:
+        :return:
+        """
+        # Take args that are not implicit only.
         args = []
         if self.fix_slot_mode:
-            for slot, l_arg in event_args.items():
-                pprint(slot)
-
-                if len(l_arg) > 0:
-                    args.append((slot, l_arg[0]))
+            for slot in self.slot_names:
+                for arg in event_args[slot]:
+                    if ignore_implicit and arg.get('implicit', False):
+                        continue
+                    else:
+                        args.append((slot, arg))
+                        break
                 else:
                     args.append((slot, {}))
-
-                print()
         else:
             for slot, l_arg in event_args.items():
+                for a in l_arg:
+                    if ignore_implicit and a.get('implicit', False):
+                        continue
+                    else:
+                        args.append((slot, a))
+        return args
+
+    def get_slot_grouped_args(self, event_args):
+        # TODO: the slot should be FE for frame based parsing.
+        args = {}
+        if self.fix_slot_mode:
+            for slot, l_arg in event_args.items():
+                if len(l_arg) > 0:
+                    args[slot] = l_arg[0]
+                else:
+                    args[slot] = {}
+        else:
+            for slot, l_arg in event_args.items():
+                args[slot] = []
                 for arg in l_arg:
-                    args.append((slot, arg))
+                    args[slot].append(arg)
         return args
 
     def get_one_test_doc(self, doc_info, nid_detector):
@@ -367,132 +355,139 @@ class HashedClozeReader:
         :return:
         """
         # Collect information such as features and entity positions.
-        features_by_eid, entity_heads = self.collect_features(doc_info)
+        features_by_eid = self.collect_features(doc_info)
 
+        # The context used for resolving.
         all_event_reps = [
             self._take_fixed_size_event_parts(
-                e['predicate'], e['frame'], self.get_args_anyway(e['args'])) for
+                e['predicate'], e['frame'],
+                self.get_args_as_list(e['args'], True)) for
             e in doc_info['events']]
 
         # Some need to be done in iteration.
         entity_positions = defaultdict(list)
         doc_args = []
-        indexed_data = []
 
         for evm_index, event in enumerate(doc_info['events']):
             sentence_id = event.get('sentence_id', None)
 
-            valid_args = []
+            for slot, l_arg in event['args'].items():
+                # We iterate over all the arguments to collect distance data and
+                # candidate document arguments.
+                for arg in l_arg:
+                    if len(arg) > 0:
+                        # TODO: Empty args will be ignored.
+                        # If one wanted to fill some arguments, make a
+                        # fake argument first.
 
-            for rel_arg_index, (slot, arg) in enumerate(
-                    self.get_args_anyway(event['args'])):
-                if len(arg) > 0:
-                    # TODO: Empty args will be ignored.
-                    # If one wanted to fill some arguments, please make an fake
-                    # argument first.
-                    eid = arg['entity_id']
-                    doc_arg_info = {
-                        'event_index': evm_index,
-                        'relative_arg_index': rel_arg_index,
-                        'eid': eid,
-                        'arg_phrase': arg['arg_phrase'],
-                        'represent': arg['represent'],
-                    }
+                        eid = arg['entity_id']
+                        doc_arg_info = {
+                            'event_index': evm_index,
+                            'slot': slot,
+                            'eid': eid,
+                            'arg_phrase': arg['arg_phrase'],
+                            'sentence_id': arg['sentence_id'],
+                            'represent': arg['represent'],
+                        }
+                        if not self.auto_test:
+                            doc_arg_info[self.gold_role_field] = arg[
+                                self.gold_role_field
+                            ]
+                        doc_args.append(doc_arg_info)
 
-                    if not self.auto_test:
-                        doc_arg_info[self.gold_role_field] = arg[
-                            self.gold_role_field
-                        ]
+                        if not arg.get('implicit', False):
+                            # We do not calculate distance features for implicit
+                            # arguments.
+                            entity_positions[eid].append(
+                                (evm_index, slot, sentence_id)
+                            )
 
-                    doc_args.append(doc_arg_info)
-
-                    entity_positions[eid].append((evm_index, slot, sentence_id))
-                    valid_args.append((slot, arg))
-
-            indexed_data.append(
-                (event, valid_args)
-            )
-
-        absolute_arg_index = 0
-        for evm_index, (event, valid_args) in enumerate(indexed_data):
+        for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
             pred_idx = event['predicate']
             predicate = (
                 pred_idx, self.event_inverted[pred_idx],
                 event['predicate_text']
             )
+            event_args = event['args']
 
-            for target_arg_index, (slot, fe, arg) in enumerate(valid_args):
-                absolute_arg_index += 1
+            for target_slot, target_args in event_args.items():
+                can_fill = False
+                fill_idx = -1
 
-                print(slot)
-                print(fe)
-                pprint(arg)
+                for idx, slot_arg in enumerate(target_args):
+                    if nid_detector.should_fill(event, target_slot, slot_arg):
+                        can_fill = True
+                        fill_idx = idx
+                        break
 
-                is_instance = nid_detector.should_fill(event, slot, arg)
-
-                if is_instance:
-                    if self.auto_test:
-                        test_rank_list = self.create_test_instance(
-                            valid_args, doc_args, absolute_arg_index, slot
-                        )
-                    else:
-                        test_rank_list = self.create_actual_test_instance(
-                            valid_args, doc_args, absolute_arg_index
-                        )
+                if can_fill:
+                    test_rank_list = self.create_slot_candidates(
+                        target_args[fill_idx], doc_args, evm_index, target_slot,
+                        pred_sent
+                    )
 
                     # Prepare instance data for each possible instance.
                     instance_data = {'rep': [], 'distances': [],
                                      'features': [], }
                     debug_data = {'predicate': [], 'entity_text': [],
-                                  'gold_entity': [], }
+                                  'gold_entity': []}
 
                     cloze_event_indices = []
                     cloze_slot_indices = []
                     gold_labels = []
 
-                    has_gold = False
+                    num_golds = len([1 for (_, _, c) in test_rank_list if c])
 
-                    for cand_args, filler_eid in test_rank_list:
+                    for cand_arg, filler_eid, is_correct in test_rank_list:
+                        # Build the arg list from the generated candidate arg.
+                        candidate_args = {}
+                        for s, arg in event_args.items():
+                            if s == target_slot:
+                                candidate_args[s] = [cand_arg]
+                            else:
+                                candidate_args[s] = arg
+
                         self.assemble_instance(
                             instance_data, features_by_eid, entity_positions,
                             evm_index, pred_sent, pred_idx, event['frame'],
-                            cand_args, filler_eid,
+                            candidate_args, filler_eid,
                         )
 
                         cloze_event_indices.append(evm_index)
-                        cloze_slot_indices.append(self.slot_names.index(slot))
+                        cloze_slot_indices.append(
+                            self.slot_names.index(target_slot)
+                        )
 
-                        if filler_eid == arg['entity_id']:
+                        if is_correct:
                             gold_labels.append(1)
-                            has_gold = True
                         else:
                             gold_labels.append(0)
 
                         debug_data['predicate'].append(predicate)
                         debug_data['entity_text'].append(
-                            entity_heads[filler_eid])
-                        debug_data['gold_entity'].append(
-                            (arg['entity_id'],
-                             entity_heads[arg['entity_id']])
+                            cand_arg['represent']
                         )
+                        debug_data['gold_entity'].append(
+                            target_args[fill_idx]['represent'])
 
-                        if len(cloze_event_indices) > 500:
-                            logging.warning(
-                                "Some test instances are ignored due to length")
+                        if len(cloze_event_indices) == 500:
                             break
 
-                    if not has_gold:
+                    num_gold_in_scope = sum(gold_labels)
+
+                    if num_gold_in_scope < num_golds:
                         logging.warning(
-                            f"No gold label for {doc_info['docid']},"
-                            f"predicate {event['predicate_text']}, slot {slot}"
+                            f"{num_golds - num_gold_in_scope} gold label are "
+                            f"out of scope out of {num_golds}, found in "
+                            f"doc: {doc_info['docid']},"
+                            f"predicate: {event['predicate_text']}, "
+                            f"slot: {target_slot}"
                         )
-
-                        pprint(predicate)
-                        print(evm_index)
-                        pprint(valid_args[target_arg_index])
-
-                        input('check unfound gold.')
+                        if num_gold_in_scope == 0:
+                            logging.warning(
+                                f"No gold within scope for "
+                                f"predicate {predicate}")
 
                     common_data = {
                         'context': all_event_reps,
@@ -503,11 +498,6 @@ class HashedClozeReader:
                     if len(cloze_event_indices) > 0:
                         yield (instance_data, common_data, gold_labels,
                                debug_data)
-
-        # if len(cloze_event_indices) == 0:
-        #     return None
-
-        # return instance_data, common_data, gold_labels, debug_data
 
     def read_test_docs(self, test_in, nid_detector):
         """
@@ -547,7 +537,7 @@ class HashedClozeReader:
 
     def create_training_data(self, data_line, sampler):
         doc_info = json.loads(data_line)
-        features_by_eid, entity_heads = self.collect_features(doc_info)
+        features_by_eid = self.collect_features(doc_info)
 
         # Map from: entity id (eid) ->
         # A list of tuples that represent an argument position:
@@ -571,7 +561,7 @@ class HashedClozeReader:
             sentence_id = event.get('sentence_id', None)
 
             arg_info = {}
-            for slot, arg in self.get_args_anyway(event['args']):
+            for slot, arg in self.get_slot_grouped_args(event['args']):
                 if not arg or arg['entity_id'] == -1:
                     arg_info[slot] = {}
                 else:
@@ -580,20 +570,24 @@ class HashedClozeReader:
 
                     # From eid to entity information.
                     entity_positions[eid].append((evm_index, slot, sentence_id))
-                    arg_entities.add((evm_index, eid, arg['text']))
+                    arg_entities.add({
+                        'event_index': evm_index,
+                        'entity_id': eid,
+                        'text': arg['text'],
+                        'represent': arg['represent'],
+                    })
                     eid_count[eid] += 1
 
         all_event_reps = [
             self._take_fixed_size_event_parts(
-                e['predicate'], e['frame'], self.get_args_anyway(e['args'])) for
+                e['predicate'], e['frame'],
+                self.get_args_as_list(e['args'], True)) for
             e in event_subset
         ]
 
         if len(arg_entities) <= 1:
             # There no enough arguments to sample from.
             return None
-
-        arg_entities = sorted(list(arg_entities))
 
         # We current sample the predicate based on unigram distribution.
         # A better learning strategy is to select one
@@ -630,8 +624,8 @@ class HashedClozeReader:
                 correct_id = arg.get('entity_id', -1)
 
                 # unks are not resolvable.
-                if correct_id < 0 or entity_heads[
-                    correct_id] == self.typed_event_vocab.unk_arg_word:
+                if correct_id < 0 or \
+                        arg['represent'] == self.typed_event_vocab.unk_arg_word:
                     continue
 
                 is_singleton = False
@@ -640,8 +634,8 @@ class HashedClozeReader:
                     is_singleton = True
 
                 cross_sample = self.cross_cloze(
-                    sampler, self.get_args_anyway(event['args']),
-                    arg_entities, evm_index, slot, entity_heads
+                    sampler, self.get_slot_grouped_args(event['args']),
+                    arg_entities, evm_index, slot
                 )
 
                 inside_sample = self.inside_cloze(
@@ -718,7 +712,7 @@ class HashedClozeReader:
         # this.
         inf = 30.0
 
-        for current_slot, fe, slot_info in arg_list:
+        for current_slot, slot_info in arg_list:
             entity_id = slot_info.get('entity_id', -1)
 
             if entity_id == -1:
@@ -760,18 +754,20 @@ class HashedClozeReader:
 
     def assemble_instance(self, instance_data, features_by_eid,
                           entity_positions, evm_index, sent_id,
-                          predicate, frame, arg_list, filler_eid):
+                          predicate, frame, grouped_args, filler_eid):
         instance_data['rep'].append(
             self._take_fixed_size_event_parts(
                 predicate,
                 frame,
-                arg_list,
+                self.get_args_as_list(grouped_args, False),
             )
         )
         instance_data['features'].append(features_by_eid[filler_eid])
+
         instance_data['distances'].append(
             self.get_distance_signature(
-                evm_index, entity_positions, arg_list, sent_id
+                evm_index, entity_positions,
+                self.get_args_as_list(grouped_args, False), sent_id
             ))
 
     def add_ghost_instance(self, instance_data):
@@ -821,11 +817,9 @@ class HashedClozeReader:
                 }
         return full_info
 
-    def replace_slot_detail(self, slot_instance, new_slot, new_eid, new_text,
+    def replace_slot_detail(self, slot_info, new_slot, new_eid, new_text,
                             new_entity_rep, new_fe=None):
         # Make a copy of the slot.
-        slot_name, slot_fe, slot_info = slot_instance
-
         updated_slot_info = dict((k, v) for k, v in slot_info.items())
 
         # Replace the slot info with the new information.
@@ -841,20 +835,18 @@ class HashedClozeReader:
         # Some training instance also change the frame element name.
         if new_fe is not None:
             updated_slot_info['fe'] = new_fe
-            slot_fe = new_fe
 
-        return slot_name, slot_fe, updated_slot_info
+        return updated_slot_info
 
     def cross_cloze(self, sampler, args, arg_entities, target_evm_id,
-                    target_slot, entity_heads):
+                    target_slot):
         """
         A negative cloze instance that use arguments from other events.
         :param sampler: A random sampler.
         :param args: Dict of origin event arguments.
-        :param arg_entities: List of arguments (event id, entity id, text).
+        :param arg_entities: List of arguments (event id, entity id, represent).
         :param target_evm_id: The target event id.
         :param target_slot: The target slot name.
-        :param entity_heads: A map from entity id to its represnet.
         :return:
         """
         target_arg = args[target_slot]
@@ -867,7 +859,7 @@ class HashedClozeReader:
         if not sample_res:
             return None
 
-        wrong_evm, wrong_id, wrong_text = sample_res
+        # wrong_evm, wrong_id, wrong_represent = sample_res
 
         neg_instance = {}
         for slot, content in args:
@@ -876,9 +868,12 @@ class HashedClozeReader:
 
         # When taking entity from another slot, we don't take its FE,
         # because the FE from another sentence will not make sense here.
-        self.replace_slot_detail(neg_instance, target_slot, wrong_id,
-                                 wrong_text, entity_heads[wrong_id])
-        return neg_instance, wrong_id
+        self.replace_slot_detail(neg_instance, target_slot,
+                                 sample_res['event_index'],
+                                 sample_res['text'],
+                                 sample_res['represent']
+                                 )
+        return neg_instance, sample_res['entity_id']
 
     def inside_cloze(self, sampler, origin_event_args, target_slot):
         """

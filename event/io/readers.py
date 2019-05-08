@@ -207,7 +207,7 @@ class EventReader:
                     if eid_count[arg['entity_id']] > 1:
                         arg['resolvable'] = True
 
-            yield docid, events, entities
+            yield docid, events, entities, doc['sentences']
 
     def _same_entity(self, ent1, ent2):
         return any([ent1[f] == ent2[f] for f in self.entity_equal_fields])

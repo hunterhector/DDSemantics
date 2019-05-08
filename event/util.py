@@ -100,21 +100,23 @@ def load_multi_configs(file_args, cmd_args):
     :param cmd_args:
     :return:
     """
-    base_conf = file_args[0]
-
-    loader = PyFileConfigLoader(base_conf)
-    loader.load_config()
-
-    for conf in file_args[1:]:
-        # Since subconfig will be merged to and override the base.
-        loader.load_subconfig(conf)
-
-    all_conf = loader.config
-
     cl_conf = load_command_line_config(cmd_args)
-    all_conf.merge(cl_conf)
 
-    return all_conf
+    if len(file_args) > 0:
+        base_conf = file_args[0]
+
+        loader = PyFileConfigLoader(base_conf)
+        loader.load_config()
+
+        for conf in file_args[1:]:
+            # Since subconfig will be merged to and override the base.
+            loader.load_subconfig(conf)
+
+        all_conf = loader.config
+        all_conf.merge(cl_conf)
+        return all_conf
+    else:
+        return cl_conf
 
 
 def file_md5(file):

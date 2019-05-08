@@ -63,13 +63,22 @@ class ArgCompatibleModel(nn.Module):
             )
 
 
+class MostFrequentModel(ArgCompatibleModel):
+    def __init__(self, para, resources):
+        super(MostFrequentModel, self).__init__(para, resources)
+        self.para = para
+
+    def forward(self, batch_event_data, batch_info):
+        batch_features = batch_event_data['features']
+
+
 class BaselineEmbeddingModel(ArgCompatibleModel):
     def __init__(self, para, resources):
         super(BaselineEmbeddingModel, self).__init__(para, resources)
         self.para = para
 
-        self._baseline_method = para.baseline_method
-        self._avg_topk = para.baseline_avg_topk
+        self._score_method = para.w2v_baseline_method
+        self._avg_topk = para.w2v_baseline_avg_topk
 
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
@@ -89,6 +98,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         # Add embedding dimension at the end.
         # batch x context_size x event_component x embedding
         context_emb = self.event_embedding(batch_context)
+
         # batch x instance_size x event_component x embedding
         event_emb = self.event_embedding(batch_event_rep)
 
@@ -113,11 +123,11 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
 
         # batch x instance_size
-        if self._baseline_method == 'max_sim':
+        if self._score_method == 'max_sim':
             pooled, _ = trans.max(2, keepdim=False)
-        elif self._baseline_method == 'average':
+        elif self._score_method == 'average':
             pooled, _ = trans.mean(2, keepdim=False)
-        elif self._baseline_method == 'topk_average':
+        elif self._score_method == 'topk_average':
             topk_pooled = torch_util.topk_with_fill(
                 trans, self.baseline_avg_topk, 2, largest=True)
             pooled = topk_pooled.mean(2, keepdim=False)

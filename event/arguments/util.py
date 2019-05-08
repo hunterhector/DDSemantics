@@ -1,4 +1,4 @@
-from time import gmtime, strftime
+from time import localtime, strftime
 import torch
 import numpy as np
 import random
@@ -16,9 +16,10 @@ class ClozeSampler:
 
     def sample_cross(self, arg_entities, evm_id, ent_id):
         remaining = []
-        for evm, ent, text in arg_entities:
-            if not (evm == evm_id or ent == ent_id):
-                remaining.append((evm, ent, text))
+        for arg_entity_info in arg_entities:
+            if not (arg_entity_info['event_index'] == evm_id
+                    or arg_entity_info['entity_id'] == ent_id):
+                remaining.append(arg_entity_info)
 
         if len(remaining) > 0:
             return random.choice(remaining)
@@ -72,4 +73,4 @@ def remove_neg(raw_predicate):
 
 
 def get_time():
-    return strftime("%Y-%m-%d %H:%M:%S", gmtime())
+    return strftime("%Y-%m-%d %H:%M:%S", localtime())

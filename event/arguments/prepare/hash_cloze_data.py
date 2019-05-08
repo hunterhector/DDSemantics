@@ -66,7 +66,7 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
 
 
 def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
-                 typed_event_vocab, slot_handler):
+                 typed_event_vocab, slot_handler, sent_starts):
     hashed_doc = {
         'docid': docid,
         'events': [],
@@ -91,15 +91,31 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         fid = event_emb_vocab.get_index(event.get('frame'), None)
         mapped_args = slot_handler.organize_args(event)
 
+        sent_offset = sent_starts[event['sentence_id']]
+
         full_args = {}
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
             for arg_info in arg_info_list:
                 dep, full_fe, arg = arg_info
-                hashed_arg_list.append(hash_arg(
+                hashed_arg = hash_arg(
                     arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents
-                ))
+                )
+
+                abs_arg_start = hashed_arg['arg_start'] + sent_offset
+
+                hashed_arg['abs_arg_start'] = abs_arg_start
+                hashed_arg['abs_arg_end'] = hashed_arg['arg_end'] + sent_offset
+
+                for sid, s_off in enumerate(sent_starts):
+                    if abs_arg_start < s_off:
+                        hashed_arg['sentence_id'] = sid - 1
+                        break
+                    else:
+                        hashed_arg['sentence_id'] = len(sent_starts) - 1
+
+                hashed_arg_list.append(hashed_arg)
             full_args[slot] = hashed_arg_list
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
@@ -132,10 +148,19 @@ def hash_data(params):
     print("{}: Start hashing".format(util.get_time()))
     with gzip.open(params.raw_data) as data_in, gzip.open(
             params.output_path, 'w') as data_out:
-        for docid, events, entities in reader.read_events(data_in):
+        for docid, events, entities, sentences in reader.read_events(data_in):
+
+            offset = 0
+            sent_starts = []
+            for sent in sentences:
+                sent_starts.append(offset)
+                offset += len(sent) + 1
+
             hashed_doc = hash_one_doc(
                 docid, events, entities, event_emb_vocab, word_emb_vocab,
-                typed_event_vocab, slot_handler)
+                typed_event_vocab, slot_handler, sent_starts)
+            # hashed_doc['sentence_offsets'] = sent_starts
+
             data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
             doc_count += 1
@@ -173,14 +198,9 @@ if __name__ == '__main__':
             help='Output path of the hashed data.').tag(config=True)
 
 
-    from event.util import load_command_line_config, set_basic_log
+    from event.util import load_mixed_configs, set_basic_log
 
     set_basic_log()
-
-    cl_conf = load_command_line_config(sys.argv[2:])
-    conf = PyFileConfigLoader(sys.argv[1]).load_config()
-    conf.merge(cl_conf)
-
-    hash_params = HashParam(config=conf)
+    hash_params = HashParam(config=load_mixed_configs())
 
     hash_data(hash_params)

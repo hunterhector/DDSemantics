@@ -87,7 +87,7 @@ class ArgModelPara(Configurable):
     ).tag(config=True)
 
     # Baseline parameters.
-    baseline_method = Unicode(help='Baseline method type.',
-                              default_value='').tag(config=True)
-    baseline_avg_topk = Int(help='Average top K', default_value=3).tag(
+    w2v_baseline_method = Unicode(help='Baseline method type.',
+                                  default_value='').tag(config=True)
+    w2v_baseline_avg_topk = Int(help='Average top K', default_value=3).tag(
         config=True)
