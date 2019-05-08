@@ -176,9 +176,6 @@ class EventReader:
                         'arg_context': arg_context,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
-                        'implicit': arg_info['isImplicit'],
-                        'succeeding': arg_info['isSucceeding'],
-                        'incorporated': arg_info['isIncorporated'],
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
                         'role': arg_info.get('argument_role', 'NA'),
@@ -187,6 +184,13 @@ class EventReader:
                         'text': arg_info['text'],
                         'represent': represent,
                     }
+
+                    if 'isImplicit' in arg_info:
+                        arg['implicit'] = arg_info['isImplicit']
+                    if 'isSucceeding' in arg_info:
+                        arg['succeeding'] = arg_info['isSucceeding']
+                    if 'isIncorporated' in arg_info:
+                        arg['incorporated'] = arg_info['isIncorporated']
 
                     if 'ner' in arg_info:
                         arg['ner'] = arg_info['ner']
