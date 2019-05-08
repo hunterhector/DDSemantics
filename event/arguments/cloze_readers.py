@@ -267,6 +267,7 @@ class HashedClozeReader:
         grouped_args = defaultdict(list)
 
         for arg in args:
+            print(arg)
             arg_role = arg[self.gold_role_field]
             if arg_role == gold_role_value:
                 grouped_args[arg_role].append(arg)
@@ -406,7 +407,7 @@ class HashedClozeReader:
                     doc_args.append(doc_arg_info)
 
                     entity_positions[eid].append((evm_index, slot, sentence_id))
-                    valid_args.append((slot, arg['fe'], arg))
+                    valid_args.append((slot, arg))
 
             indexed_data.append(
                 (event, valid_args)
