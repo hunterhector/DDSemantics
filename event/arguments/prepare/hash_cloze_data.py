@@ -98,6 +98,12 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
             hashed_arg_list = []
             for arg_info in arg_info_list:
                 dep, full_fe, arg = arg_info
+
+                if fid == -1:
+                    # Even if we get a mapping from the predicate, it is still
+                    # noisy to say there is a valid frame element here.
+                    full_fe = None
+
                 hashed_arg = hash_arg(
                     arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents
@@ -128,6 +134,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
             'sentence_id': event['sentence_id'],
             'args': full_args,
         })
+
     return hashed_doc
 
 

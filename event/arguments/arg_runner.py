@@ -301,7 +301,7 @@ class ArgRunner(Configurable):
                 slot_name = self.reader.slot_names[slot_idx]
 
                 evaluator.add_result(
-                    doc_id, event_idx, slot_name, score_labels,meta,
+                    doc_id, event_idx, slot_name, score_labels, meta,
                     {
                         'predicate': debug_preds[0],
                         'entity_text': debug_entities,
@@ -366,11 +366,7 @@ class ArgRunner(Configurable):
                     gold_field_name=gold_field_name)
 
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, resume=False, track_pred=None,
-              pre_validation=False):
-        if track_pred is None:
-            track_pred = {}
-
+              model_out_dir=None, resume=False, pre_validation=False):
         target_pred_count = Counter()
 
         train_sampler = ClozeSampler()
@@ -453,14 +449,6 @@ class ArgRunner(Configurable):
                     train_sampler):
 
                 batch_instance, batch_info, b_size, mask = batch_data
-
-                # Count predicates for debugging.
-                for batch_preds in debug_data['predicate']:
-                    for pred in batch_preds:
-                        pred_text = pred.replace('-pred', '')
-                        target_pred_count['_overall_'] += 1
-                        if pred_text in track_pred:
-                            target_pred_count[pred_text] += 1
 
                 loss = self._get_loss(batch_instance, batch_info, mask)
 
@@ -614,7 +602,6 @@ def main():
             validation_size=basic_para.validation_size,
             validation_in=basic_para.valid_in,
             resume=True,
-            track_pred=target_predicates,
             pre_validation=basic_para.pre_val,
         )
 

@@ -21,14 +21,6 @@ class HashedClozeReader:
         """
         self.para = para
 
-        # self.batch_size = para.batch_size
-        # self.multi_context = para.multi_context
-        # self.max_events = para.max_events
-        # self.max_instance = para.max_cloze
-        # self.num_event_component = para.num_event_components
-        # self.num_distance_features = para.num_distance_features
-        # self.num_extracted_features = para.num_extracted_features
-
         self.event_emb_vocab = resources.event_embed_vocab
         self.word_emb_vocab = resources.word_embed_vocab
 
@@ -48,27 +40,44 @@ class HashedClozeReader:
         self.slot_names = ['subj', 'obj', 'prep', ]
 
         # In fix slot mode we assume there is a fixed number of slots.
-        self.fix_slot_mode = True
+        if para.arg_representation_method == 'fix_slots':
+            self.fix_slot_mode = True
+        elif para.arg_representation_method == 'role_dynamic':
+            self.fix_slot_mode = False
 
         self.gold_role_field = None
         self.auto_test = False
 
         self.__data_types = {
-            'context': np.int64,
+            # 'context': np.int64,
+            'context_events': np.int64,
+            'context_slots': np.int64,
+            'context_slot_values': np.int64,
+            'context_predicates': np.int64,
             'event_indices': np.int64,
             # The slot index is considered as a feature as well, so it has the
             # same type as the features.
             'slot_indices': np.int64,
-            'rep': np.int64,
+            'event': np.int64,
+            'slots': np.int64,
+            'slot_values': np.int64,
+            'predicates': np.int64,
             'distances': np.float32,
             'features': np.float32,
         }
 
         self.__data_dim = {
             'context': 2,
+            'context_events': 2,
+            'context_slots': 2,
+            'context_slot_values': 2,
+            'context_predicates': 2,
             'event_indices': 1,
             'slot_indices': 1,
-            'rep': 2,
+            'event': 2,
+            'slots': 2,
+            'slot_values': 2,
+            'predicates': 2,
             'distances': 2,
             'features': 2,
         }
@@ -102,7 +111,7 @@ class HashedClozeReader:
         sizes = {}
 
         for key, value in b_common_data.items():
-            if key == 'context':
+            if key.startswith('context_'):
                 padded = self.__batch_pad(key, value, max_context_size)
                 vectorized = to_torch(padded, self.__data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
@@ -139,7 +148,6 @@ class HashedClozeReader:
                          until_line=None):
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
-        batch_predicates = []
 
         max_context_size = 0
         max_instance_size = 0
@@ -148,10 +156,9 @@ class HashedClozeReader:
         def _clear():
             # Clear batch data.
             nonlocal b_common_data, b_instance_data, max_context_size
-            nonlocal max_instance_size, doc_count, batch_predicates
+            nonlocal max_instance_size, doc_count
 
             # Reset counts.
-            batch_predicates.clear()
             b_common_data.clear()
             b_instance_data.clear()
 
@@ -160,20 +167,9 @@ class HashedClozeReader:
 
         for instance_data, common_data in self.parse_docs(
                 data_in, sampler, from_line, until_line):
-            gold_event_data = instance_data['gold']
-
-            # Take a look at the predicates for debug purpose only.
-            predicate_text = []
-            for gold_rep in gold_event_data['rep']:
-                eid = gold_rep[0]
-                if not eid == len(self.event_inverted):
-                    text = self.event_inverted[eid]
-                    predicate_text.append(text)
-            batch_predicates.append(predicate_text)
-
             for key, value in common_data.items():
                 b_common_data[key].append(value)
-                if key == 'context':
+                if key.startswith('context_'):
                     if len(value) > max_context_size:
                         max_context_size = len(value)
 
@@ -190,7 +186,7 @@ class HashedClozeReader:
             # Each document is computed as a whole.
             if doc_count % self.para.batch_size == 0:
                 debug_data = {
-                    'predicate': batch_predicates,
+                    # 'predicate': batch_predicates,
                 }
 
                 train_batch = self.create_batch(
@@ -203,15 +199,48 @@ class HashedClozeReader:
 
         # Yield the remaining data.
         if len(b_common_data) > 0:
-            debug_data = {
-                'predicate': batch_predicates,
-            }
-
+            debug_data = {}
             train_batch = self.create_batch(b_common_data, b_instance_data,
                                             max_context_size, max_instance_size)
 
             yield train_batch, debug_data
             _clear()
+
+    def _take_event_repr(self, predicate, frame_id, args):
+        if self.fix_slot_mode:
+            return self._take_fixed_size_event_parts(predicate, frame_id, args)
+        else:
+            return self._take_dynamic_event_parts(predicate, frame_id, args)
+
+    def _take_dynamic_event_parts(self, predicate, frame_id, args):
+        """
+        Take event information, with unknown number of slots.
+        :param predicate:
+        :param frame_id:
+        :param args:
+        :return:
+        """
+        pred_components = [
+            predicate,
+            self.event_emb_vocab.get_index(
+                self.typed_event_vocab.unk_frame, None
+            ) if frame_id == -1 else frame_id,
+        ]
+
+        slot_comps = []
+        slot_value_comps = []
+
+        # The slot will need to be indexed vocabularies, i.e. frame elements.
+        # And they need to be hashed to number first.
+        for slot, arg in args:
+            slot_comps.append(slot)
+            slot_value_comps.append(arg)
+
+        return {
+            'predicates': pred_components,
+            'slots': slot_comps,
+            'slot_values': slot_value_comps,
+        }
 
     def _take_fixed_size_event_parts(self, predicate, frame_id, args):
         """
@@ -242,8 +271,9 @@ class HashedClozeReader:
             print(event_components)
             input('not positive')
 
-        # TODO do not use c>0 here, explicitly handle it.
-        return [c if c > 0 else self.unobserved_fe for c in event_components]
+        return {
+            'events': event_components,
+        }
 
     def parse_hashed(self):
         pass
@@ -333,23 +363,8 @@ class HashedClozeReader:
                     if ignore_implicit and a.get('implicit', False):
                         continue
                     else:
-                        args.append((slot, a))
-        return args
-
-    def get_slot_grouped_args(self, event_args):
-        # TODO: the slot should be FE for frame based parsing.
-        args = {}
-        if self.fix_slot_mode:
-            for slot, l_arg in event_args.items():
-                if len(l_arg) > 0:
-                    args[slot] = l_arg[0]
-                else:
-                    args[slot] = {}
-        else:
-            for slot, l_arg in event_args.items():
-                args[slot] = []
-                for arg in l_arg:
-                    args[slot].append(arg)
+                        # Reading dynamic slots using FEs.
+                        args.append((a['fe'], a))
         return args
 
     def get_one_test_doc(self, doc_info, nid_detector):
@@ -364,10 +379,11 @@ class HashedClozeReader:
 
         # The context used for resolving.
         all_event_reps = [
-            self._take_fixed_size_event_parts(
+            self._take_event_repr(
                 e['predicate'], e['frame'],
                 self.get_args_as_list(e['args'], True)) for
-            e in doc_info['events']]
+            e in doc_info['events']
+        ]
 
         # Some need to be done in iteration.
         entity_positions = defaultdict(list)
@@ -433,8 +449,18 @@ class HashedClozeReader:
                     )
 
                     # Prepare instance data for each possible instance.
-                    instance_data = {'rep': [], 'distances': [],
-                                     'features': [], }
+                    if self.fix_slot_mode:
+                        instance_data = {'events': [], 'distances': [],
+                                         'features': [], }
+                    else:
+                        instance_data = {
+                            'predicates': [],
+                            'slots': [],
+                            'slot_values': [],
+                            'distances': [],
+                            'features': [],
+                        }
+
                     candidate_meta = {'predicate': [], 'entity_text': [], }
                     instance_meta = []
 
@@ -501,10 +527,12 @@ class HashedClozeReader:
                     )
 
                     common_data = {
-                        'context': all_event_reps,
                         'event_indices': cloze_event_indices,
                         'slot_indices': cloze_slot_indices,
                     }
+
+                    for key, value in all_event_reps:
+                        common_data['context_' + key] = value
 
                     if len(cloze_event_indices) > 0:
                         yield (instance_data, common_data, gold_labels,
@@ -557,11 +585,12 @@ class HashedClozeReader:
         # [(evm_index, slot, sentence_id)]
         entity_positions = defaultdict(list)
 
-        # Unique set of (evm_index, slot, sentence_id) tuples.
-        # This is used to sample a slot to create clozes.
-        arg_entities = set()
-        eid_count = Counter()
+        # A set that contains some minimum argument entity information, used
+        # for sampling a slot to create clozes.
+        t_doc_args = []
 
+        # Count the occurrences of the entity.
+        eid_count = Counter()
         event_subset = []
 
         for evm_index, event in enumerate(doc_info['events']):
@@ -569,46 +598,45 @@ class HashedClozeReader:
                 # Ignore documents that are too long.
                 break
 
+            # Only a subset in a long document will be used for generating.
             event_subset.append(event)
 
             sentence_id = event.get('sentence_id', None)
 
-            arg_info = {}
-            for slot, arg in self.get_slot_grouped_args(event['args']):
-                if not arg or arg['entity_id'] == -1:
-                    arg_info[slot] = {}
-                else:
+            for slot, arg in self.get_args_as_list(event['args'], False):
+                if len(arg) > 0:
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
 
                     # From eid to entity information.
                     entity_positions[eid].append((evm_index, slot, sentence_id))
-                    arg_entities.add({
+                    t_doc_args.append({
                         'event_index': evm_index,
-                        'entity_id': eid,
-                        'text': arg['text'],
+                        'slot': slot,
+                        'eid': eid,
+                        'arg_phrase': arg['arg_phrase'],
                         'represent': arg['represent'],
                     })
                     eid_count[eid] += 1
 
         all_event_reps = [
-            self._take_fixed_size_event_parts(
+            self._take_event_repr(
                 e['predicate'], e['frame'],
                 self.get_args_as_list(e['args'], True)) for
             e in event_subset
         ]
 
-        if len(arg_entities) <= 1:
+        if len(t_doc_args) <= 1:
             # There no enough arguments to sample from.
             return None
 
         # We current sample the predicate based on unigram distribution.
-        # A better learning strategy is to select one
-        # cross instance that is difficult. We can have two
-        # strategies here:
-        # 1. Again use unigram distribution to sample items.
+        # The other learning strategy is to select one difficult cross instance,
+        # the options are:
+        # 1. Unigram distribution to sample items.
         # 2. Select items based on classifier output.
 
+        # Maybe these 3 list can be merged together.
         gold_event_data = {'rep': [], 'distances': [], 'features': []}
         cross_event_data = {'rep': [], 'distances': [], 'features': []}
         inside_event_data = {'rep': [], 'distances': [], 'features': []}
@@ -623,23 +651,27 @@ class HashedClozeReader:
 
             pred_tf = self.event_emb_vocab.get_term_freq(pred)
             freq = 1.0 * pred_tf / self.pred_count
-            keep_pred = sampler.subsample_pred(pred_tf, freq)
 
-            if not keep_pred:
+            if not sampler.subsample_pred(pred_tf, freq):
                 # Too frequent word will be down-sampled.
                 continue
 
             current_sent = event['sentence_id']
 
-            for slot_index, slot in enumerate(self.slot_names):
-                arg = event['args'][slot]
+            event_args = event['args']
 
-                correct_id = arg.get('entity_id', -1)
-
-                # unks are not resolvable.
-                if correct_id < 0 or \
-                        arg['represent'] == self.typed_event_vocab.unk_arg_word:
+            for slot, arg in self.get_args_as_list(event_args, False):
+                # unks are not very resolvable.
+                if arg['represent'] == self.typed_event_vocab.unk_arg_word:
                     continue
+
+                # unk fe is not a purpose here.
+                if slot == self.event_emb_vocab.get_index(
+                        self.typed_event_vocab.unk_fe,
+                        self.typed_event_vocab.unk_fe):
+                    continue
+
+                correct_id = arg['entity_id']
 
                 is_singleton = False
                 if eid_count[correct_id] <= 1:
@@ -647,15 +679,20 @@ class HashedClozeReader:
                     is_singleton = True
 
                 cross_sample = self.cross_cloze(
-                    sampler, self.get_slot_grouped_args(event['args']),
-                    arg_entities, evm_index, slot
+                    sampler, self.get_args_as_list(event['args'], True),
+                    t_doc_args, evm_index, slot
                 )
 
-                inside_sample = self.inside_cloze(
-                    sampler, event['args'], slot
-                )
+                #TODO need to pass the target in a different way.
+                inside_sample = self.inside_cloze(sampler, event['args'], slot)
+
+                print(cross_sample)
+                print(inside_sample)
+                input('what samples.')
 
                 # TODO: Can the samples of different sizes?
+                # Yes: but we need to make sure the gold and the corresponding
+                # samples are the same size. Do it.
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
 
@@ -767,13 +804,10 @@ class HashedClozeReader:
     def assemble_instance(self, instance_data, features_by_eid,
                           entity_positions, evm_index, sent_id,
                           predicate, frame, grouped_args, filler_eid):
-        instance_data['rep'].append(
-            self._take_fixed_size_event_parts(
-                predicate,
-                frame,
-                self.get_args_as_list(grouped_args, False),
-            )
-        )
+        for key, value in self._take_event_repr(
+                predicate, frame, self.get_args_as_list(grouped_args, False)):
+            instance_data[key].append(value)
+
         instance_data['features'].append(features_by_eid[filler_eid])
 
         instance_data['distances'].append(
@@ -783,8 +817,20 @@ class HashedClozeReader:
             ))
 
     def add_ghost_instance(self, instance_data):
-        instance_data['rep'].append(
-            [self.ghost_component] * self.para.num_event_component)
+        if self.fix_slot_mode:
+            instance_data['event'].append(
+                [self.ghost_component] * self.para.num_event_component)
+        else:
+            instance_data['predicates'].append(
+                self.ghost_component
+            )
+            instance_data['slot'].append(
+                self.ghost_component
+            )
+            instance_data['slot_values'].append(
+                self.ghost_component
+            )
+
         instance_data['features'].append(
             [0.0] * self.para.num_extracted_features)
         instance_data['distances'].append(

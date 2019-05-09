@@ -20,7 +20,13 @@
     - Different vocab for different slot
 1. Design core experiments: pooling, attention, distance, empty embedding
 
-Past TODO List:
+# Advanced thoughts
+
+1. Removing singleton can help learn INI.
+1. Removing entity and its corresponding context can help learning DNI that are 
+not resolvable.
+
+# Past TODO List:
 1. ~~Reprocess dataset~~
     - ~~Use more lexicon units to enrich the FrameNet output~~
         - ~~Will do if the novel contains unseen frames and stuff~~

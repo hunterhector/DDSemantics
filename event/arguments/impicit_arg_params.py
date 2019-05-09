@@ -42,11 +42,26 @@ class ArgModelPara(Configurable):
         help='Maximum number of cloze to extract per document',
         default_value=150).tag(config=True)
 
-    # Model architecture related parameters.
+    ## Model architecture related parameters.
     loss = Unicode(
         help='Loss type for implicit argument training',
         default_value='cross_entropy'
     ).tag(config=True)
+
+    # The way to represent an event
+    # Choices:
+    # 1. fix_slots, when we have only predefined slots for an event
+    # 2. role_dynamic, there are unknown number of slots, but each slot is
+    # associated with a slot type.
+    arg_representation_method = Unicode(
+        help='The method used to represent the argument slots.').tag(
+        config=True)
+
+    # If we use role_dynamic, then what's the attention method?
+    # Choices:
+    # 1. biaffine
+    # 2. dot product
+    role_compose_attention_method = 'biaffine'
 
     arg_composition_layer_sizes = List(
         Int, default_value=[600, 300],
@@ -57,8 +72,10 @@ class ArgModelPara(Configurable):
         help='Output size of the event composition layers.'
     ).tag(config=True)
     num_slots = Int(help='Number of slots in the model.').tag(config=True)
-    num_event_components = Int(
-        help='Number of components per event').tag(config=True)
+
+    # num_event_components = Int(
+    #     help='Number of components per event').tag(config=True)
+    use_frame = Bool(help='Whether to use frame in the model.').tag(config=True)
     num_extracted_features = Int(help='Feature size').tag(config=True)
 
     encode_distance = Unicode(

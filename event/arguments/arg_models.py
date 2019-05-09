@@ -152,33 +152,76 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
 class ArgCompositionModel(nn.Module):
     def __init__(self, para, resources, gpu=True):
         super(ArgCompositionModel, self).__init__()
-        self.compose_method = para.compose_method
+        self.arg_representation_method = para.arg_representation_method
 
-        if self.compose_method == 'fix_slot_mlp':
-            self.arg_compositions_layers = self._setup_fix_slot_mlp(para)
-
-        elif self.compose_method == 'role_based_attention':
-            self.attention_model = self._setup_role_based_attention()
+        if self.arg_representation_method == 'fix_slots':
+            self._setup_fix_slot_mlp(para)
+        elif self.arg_representation_method == 'role_dynamic':
+            self._setup_role_based_attention(para)
+        else:
+            raise ValueError(f"Unknown role type {self.arg_representation_method}")
 
     def _setup_fix_slot_mlp(self, para):
-        emb_size = self.para.num_event_components * \
-                   self.para.event_embedding_dim
-        self.arg_comp_layers = _config_mlp(emb_size,
-                                           para.arg_composition_layer_sizes)
+        component_per = 2 if para.use_frame else 1
+        num_event_components = (1 + para.num_slots) * component_per
+        emb_size = num_event_components * para.event_embedding_dim
+        self.arg_comp_layers = _config_mlp(
+            emb_size, para.arg_composition_layer_sizes)
 
-    def _setup_role_based_attention(self):
-        pass
+    def _setup_role_based_attention(self, para):
+        self.attention_method = para.role_compose_attention_method
+
+        if self.attention_method == 'biaffine':
+            self.role_attention_biaffine = nn.Linear(
+                para.event_embedding_dim,
+                para.event_embedding_dim
+            )
+        elif self.attention_method == 'dotproduct':
+            pass
+        else:
+            raise NotImplementedError(
+                f"Not implemented role compose "
+                f"method {para.role_compose_attention_method}")
+
+        # 3 components: predicate, frame, and the combined arguments.
+        num_components = 3
+        emb_size = num_components * para.event_embedding_dim
+
+        self.arg_comp_layers = _config_mlp(
+            emb_size, para.arg_composition_layer_sizes
+        )
 
     def forward(self, *input):
-        if self.compose_method == 'fix_slot_mlp':
+        if self.arg_representation_method == 'fix_slots':
             event_emb = input[0]
-            full_evm_embedding_size = event_emb.size()[-1] * event_emb.size()[
-                -2]
+            flatten_embedding_size = event_emb.size()[-1] * event_emb.size()[-2]
             flatten_event_emb = event_emb.view(
-                event_emb.size()[0], -1, full_evm_embedding_size)
-            return _mlp(self.arg_compositions_layers, flatten_event_emb)
-        elif self.compose_method == 'role_based_attention':
-            return
+                event_emb.size()[0], -1, flatten_embedding_size)
+            return _mlp(self.arg_comp_layers, flatten_event_emb)
+        elif self.arg_representation_method == 'role_dynamic':
+            event_data = input[0]
+            pred_emb = event_data['predicates']
+            flatten_embedding_size = pred_emb.size()[-1] * pred_emb.size()[-2]
+            flatten_event_emb = pred_emb.view(
+                pred_emb.size()[0], -1, flatten_embedding_size)
+
+            slot_emb = event_data['slots']
+            slot_values = event_data['slot_values']
+
+            if self.attention_method == 'biaffine':
+                att_slot_emb = torch.bmm(self.role_attention_biaffine(slot_emb),
+                                         slot_values)
+            elif self.attention_method == 'dotproduct':
+                att_slot_emb = torch.bmm(slot_emb, slot_values)
+            else:
+                raise NotImplementedError(
+                    f"Unknown attention method {self.attention_method}")
+
+            combined_event_emb = torch.cat(
+                (flatten_event_emb, att_slot_emb), -1
+            )
+
+            return _mlp(self.arg_comp_layers, combined_event_emb)
 
 
 def _config_mlp(input_hidden_size, output_sizes):
@@ -271,25 +314,13 @@ class EventCoherenceModel(ArgCompatibleModel):
     def debug(self):
         self.__debug_show_shapes = True
 
-    def _full_event_embedding_size(self):
-        return self.para.num_event_components * self.para.event_embedding_dim
-
-    def _encode_distance(self, event_emb, distances):
+    def _encode_distance(self, predicates, distances):
         """
         Encode distance into event dependent kernels.
         :param event_emb:
         :param distances:
         :return:
         """
-
-        if self.__debug_show_shapes:
-            print("Event embedding size")
-            print(event_emb.shape)
-
-        # Encode with a event dependent kernel
-        # May be we should not update the predicates embedding here.
-        predicates = event_emb[:, :, 1, :]
-
         if self.__debug_show_shapes:
             print("Predicate size")
             print(predicates.shape)
@@ -413,62 +444,66 @@ class EventCoherenceModel(ArgCompatibleModel):
 
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
-        batch_event_rep = batch_event_data['rep']
         # batch x instance_size x n_distance_features
         batch_distances = batch_event_data['distances']
         # batch x instance_size x n_features
         batch_features = batch_event_data['features']
 
         # batch x context_size x event_component
-        batch_context = batch_info['context']
         # batch x instance_size
         batch_slots = batch_info['slot_indices']
         # batch x instance_size
         batch_event_indices = batch_info['event_indices']
 
-        if self.__debug_show_shapes:
-            print("context shape")
-            print(batch_context.shape)
-
-            print("input batched event shape")
-            print(batch_event_rep.shape)
-            print(batch_distances.shape)
-            print(batch_features.shape)
-            print(batch_slots.shape)
-            print(batch_event_indices.shape)
-
-        # Add embedding dimension at the end.
-        context_emb = self.event_embedding(batch_context)
-        event_emb = self.event_embedding(batch_event_rep)
-
         # Create one hot features from index.
         # batch x instance_size x num_slots
-        one_hot = torch.zeros(
+        slot_indicator = torch.zeros(
             batch_slots.shape[0], batch_slots.shape[1], self.num_slots
         ).to(self.device)
+        slot_indicator.scatter_(2, batch_slots.unsqueeze(2), 1)
+        l_extracted = [batch_features, slot_indicator]
 
-        one_hot.scatter_(2, batch_slots.unsqueeze(2), 1)
+        # Add embedding dimension at the end.
+        if self.para.arg_representation_method == 'fix_slots':
+            batch_event_rep = batch_event_data['events']
+            batch_context = batch_info['context']
+            context_emb = self.event_embedding(batch_context)
+            event_emb = self.event_embedding(batch_event_rep)
+            pred_emb = event_emb[:, :, 1, 1]
+            event_repr = self.arg_composition_model(event_emb)
+            context_repr = self.arg_composition_model(context_emb)
+        elif self.para.arg_representation_method == 'role_dynamic':
+            d_keys = 'predicates', 'slots', 'slot_values'
 
-        l_extracted = [batch_features, one_hot]
+            batch_embedded_event_data = {}
+            batch_embedded_context_event_data = {}
+            for k in d_keys:
+                batch_embedded_event_data[k] = self.event_embedding(
+                    batch_event_data[k])
+                batch_embedded_context_event_data[k] = self.event_embedding(
+                    batch_info["context_" + k]
+                )
+            pred_emb = batch_embedded_event_data['predicates']
+            event_repr = self.arg_composition_model(batch_embedded_event_data)
+            context_repr = self.arg_composition_model(
+                batch_embedded_context_event_data)
+        else:
+            raise ValueError(
+                f"Unknown compose method {self.para.arg_representation_method}")
 
         if self._use_distance:
-            distance_emb = self._encode_distance(event_emb, batch_distances)
+            # Adding distance features
+            distance_emb = self._encode_distance(pred_emb, batch_distances)
             l_extracted.append(distance_emb)
+
+            if self._use_distance:
+                print(distance_emb.shape)
 
         # batch x instance_size x feature_size_1
         extracted_features = torch.cat(l_extracted, -1)
 
         if self.__debug_show_shapes:
-            print("Embedded shapes")
-            print(context_emb.shape)
-            print(event_emb.shape)
-
-            if self._use_distance:
-                print(distance_emb.shape)
             print(extracted_features.shape)
-
-        event_repr = self.arg_composition_model(event_emb)
-        context_repr = self.arg_composition_model(context_emb)
 
         if self.__debug_show_shapes:
             print("Event and context repr")

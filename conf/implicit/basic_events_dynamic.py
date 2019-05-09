@@ -22,7 +22,7 @@ c.ArgModelPara.vote_method = 'cosine'
 c.ArgModelPara.vote_pooling = 'kernel'
 # c.ArgModelPara.encode_distance = 'gaussian'
 c.ArgModelPara.num_distance_features = 9
-c.ArgModelPara.arg_representation_method = 'fix_slots'
+c.ArgModelPara.arg_representation_method = 'role_dynamic'
 
 # How to detect Null Instantiation.
 c.ArgModelPara.nid_method = 'gold'
