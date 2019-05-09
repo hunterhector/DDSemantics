@@ -268,6 +268,7 @@ class HashedClozeReader:
         # Replace the target slot with other entities in the doc.
         dist_arg_list = []
 
+        has_true_arg = False
         for doc_arg in doc_args:
             if (self.auto_test and doc_arg['event_index'] == target_evm_id and
                     doc_arg['eid'] == target_arg['eid']):
@@ -293,6 +294,10 @@ class HashedClozeReader:
                 else:
                     is_correct = False
 
+            if is_correct:
+                # Indicte whether there is a possible true arg here.
+                has_true_arg = True
+
             dist_arg_list.append((
                 abs(pred_sent - doc_arg['sentence_id']),
                 (update_arg, doc_arg['eid'], is_correct)
@@ -300,7 +305,7 @@ class HashedClozeReader:
 
         # Sort the rank list based on the distance to the target evm.
         dist_arg_list.sort(key=itemgetter(0))
-        return [a for (dist, a) in dist_arg_list]
+        return [a for (dist, a) in dist_arg_list], has_true_arg
 
     def get_args_as_list(self, event_args, ignore_implicit):
         """
@@ -422,7 +427,7 @@ class HashedClozeReader:
                         break
 
                 if can_fill:
-                    test_rank_list = self.create_slot_candidates(
+                    test_rank_list, has_true = self.create_slot_candidates(
                         target_args[fill_idx], doc_args, evm_index, target_slot,
                         pred_sent
                     )
@@ -430,8 +435,8 @@ class HashedClozeReader:
                     # Prepare instance data for each possible instance.
                     instance_data = {'rep': [], 'distances': [],
                                      'features': [], }
-                    debug_data = {'predicate': [], 'entity_text': [],
-                                  'gold_entity': []}
+                    candidate_meta = {'predicate': [], 'entity_text': [], }
+                    instance_meta = []
 
                     cloze_event_indices = []
                     cloze_slot_indices = []
@@ -464,12 +469,10 @@ class HashedClozeReader:
                         else:
                             gold_labels.append(0)
 
-                        debug_data['predicate'].append(predicate)
-                        debug_data['entity_text'].append(
+                        candidate_meta['predicate'].append(predicate)
+                        candidate_meta['entity_text'].append(
                             cand_arg['represent']
                         )
-                        debug_data['gold_entity'].append(
-                            target_args[fill_idx]['represent'])
 
                         if len(cloze_event_indices) == 500:
                             break
@@ -477,17 +480,25 @@ class HashedClozeReader:
                     num_gold_in_scope = sum(gold_labels)
 
                     if num_gold_in_scope < num_golds:
-                        logging.warning(
+                        logging.debug(
                             f"{num_golds - num_gold_in_scope} gold label are "
                             f"out of scope out of {num_golds}, found in "
                             f"doc: {doc_info['docid']},"
                             f"predicate: {event['predicate_text']}, "
                             f"slot: {target_slot}"
                         )
-                        if num_gold_in_scope == 0:
-                            logging.warning(
-                                f"No gold within scope for "
-                                f"predicate {predicate}")
+
+                    if num_gold_in_scope == 0 and has_true:
+                        logging.warning(
+                            f"No gold within scope for "
+                            f"predicate {predicate}")
+
+                    instance_meta.append(
+                        {
+                            'gold_entity': target_args[fill_idx]['text'],
+                            'has_true': has_true,
+                        }
+                    )
 
                     common_data = {
                         'context': all_event_reps,
@@ -497,7 +508,7 @@ class HashedClozeReader:
 
                     if len(cloze_event_indices) > 0:
                         yield (instance_data, common_data, gold_labels,
-                               debug_data)
+                               candidate_meta, instance_meta)
 
     def read_test_docs(self, test_in, nid_detector):
         """
@@ -512,7 +523,8 @@ class HashedClozeReader:
             doc_id = doc_info['docid']
 
             for test_data in self.get_one_test_doc(doc_info, nid_detector):
-                instances, common_data, gold_labels, debug_data = test_data
+                (instances, common_data, gold_labels, candidate_meta,
+                 instance_meta,) = test_data
 
                 b_common_data = {}
                 b_instance_data = {}
@@ -532,7 +544,8 @@ class HashedClozeReader:
                     b_instance_data,
                     b_common_data,
                     gold_labels,
-                    debug_data,
+                    candidate_meta,
+                    instance_meta,
                 )
 
     def create_training_data(self, data_line, sampler):
@@ -643,7 +656,6 @@ class HashedClozeReader:
                 )
 
                 # TODO: Can the samples of different sizes?
-
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
 

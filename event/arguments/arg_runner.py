@@ -278,7 +278,8 @@ class ArgRunner(Configurable):
         self.reader.gold_role_field = gold_field_name
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
-            doc_id, instances, common_data, gold_labels, debug_data = test_data
+            (doc_id, instances, common_data, gold_labels, candidate_meta,
+             all_instance_meta,) = test_data
 
             coh = model(instances, common_data)
 
@@ -288,27 +289,22 @@ class ArgRunner(Configurable):
                 0].tolist()
             coh_scores = coh.data.cpu().numpy()[0].tolist()
 
-            for (event_idx, slot_idx), result in groupby(
+            for (((event_idx, slot_idx), result), meta) in zip(groupby(
                     zip(zip(event_idxes, slot_idxes),
                         zip(coh_scores, gold_labels),
-                        debug_data['predicate'],
-                        debug_data['entity_text'],
-                        debug_data['gold_entity'],
+                        candidate_meta['predicate'],
+                        candidate_meta['entity_text'],
                         ),
-                    key=itemgetter(0)):
-                _, score_labels, debug_preds, debug_entities, golds = zip(
-                    *result)
-
-                # print(score_labels)
+                    key=itemgetter(0)), all_instance_meta):
+                _, score_labels, debug_preds, debug_entities = zip(*result)
 
                 slot_name = self.reader.slot_names[slot_idx]
 
                 evaluator.add_result(
-                    doc_id, event_idx, slot_name, score_labels,
+                    doc_id, event_idx, slot_name, score_labels,meta,
                     {
                         'predicate': debug_preds[0],
                         'entity_text': debug_entities,
-                        'gold_entity': golds[0],
                     }
                 )
 
@@ -325,43 +321,42 @@ class ArgRunner(Configurable):
 
         evaluator.run()
 
-    def run_baseline(self, test_in, gold_field_name):
-        w2v_results = os.path.join(
-            basic_para.log_dir, 'w2v_baseline', 'results',
+    def run_baseline(self):
+        logging.info(f"Test baseline models on {basic_para.test_in}.")
+
+        test_results = os.path.join(
+            basic_para.log_dir, basic_para.model_name, 'results',
             basic_para.run_name,
         )
 
-        if not os.path.exists(w2v_results):
-            os.makedirs(w2v_results)
+        logging.info(f"{basic_para.model_name}  evaluation results will "
+                     f"be saved in: {test_results} ")
 
-        print("Word2vec baseline evaluation results will "
-              "be saved in: " + w2v_results)
-        logging.info("Test on [%s]." % test_in)
+        if not os.path.exists(test_results):
+            os.makedirs(test_results)
 
-        w2v_baseline = BaselineEmbeddingModel(self.para, self.resources).to(
-            self.device)
-        w2v_baseline.eval()
-        self.__test(
-            w2v_baseline, data_gen(test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=w2v_results,
-            gold_field_name=gold_field_name
-        )
-
-        most_freq_results = os.path.join(
-            basic_para.log_dir, 'most_freq_baseline', 'results',
-            basic_para.run_name
-        )
-        most_freq_baseline = MostFrequentModel(self.para, self.resources).to(
-            self.device
-        )
-        most_freq_baseline.eval()
-        self.__test(
-            w2v_baseline, data_gen(test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=most_freq_results,
-            gold_field_name=gold_field_name
-        )
+        if basic_para.model_name == 'w2v_baseline':
+            # W2v baseline.
+            w2v_baseline = BaselineEmbeddingModel(self.para, self.resources).to(
+                self.device)
+            w2v_baseline.eval()
+            self.__test(
+                w2v_baseline, data_gen(basic_para.test_in),
+                nid_detector=self.nid_detector,
+                eval_dir=test_results,
+                gold_field_name=basic_para.gold_field_name
+            )
+        elif basic_para.model_name == 'most_freq_baseline':
+            # Frequency baseline.
+            most_freq_baseline = MostFrequentModel(
+                self.para, self.resources).to(self.device)
+            most_freq_baseline.eval()
+            self.__test(
+                most_freq_baseline, data_gen(basic_para.test_in),
+                nid_detector=self.nid_detector,
+                eval_dir=test_results,
+                gold_field_name=basic_para.gold_field_name
+            )
 
     def test(self, test_in, eval_dir, gold_field_name):
         logging.info("Test on [%s]." % test_in)
@@ -580,7 +575,7 @@ def main():
         log_path = os.path.join(
             basic_para.log_dir,
             basic_para.model_name,
-            basic_para.run_name + "_" + mode + '.log')
+            basic_para.run_name + mode + '.log')
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
@@ -611,11 +606,7 @@ def main():
     }
 
     if basic_para.run_baselines:
-        runner.run_baseline(
-            test_in=basic_para.test_in,
-            log_dir=basic_para.log_dir,
-            gold_field_name=basic_para.gold_field_name
-        )
+        runner.run_baseline()
 
     if basic_para.do_training:
         runner.train(
@@ -678,3 +669,5 @@ if __name__ == '__main__':
     conf = load_mixed_configs()
 
     basic_para = Basic(config=conf)
+
+    main()

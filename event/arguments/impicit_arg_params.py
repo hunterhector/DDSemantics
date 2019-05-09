@@ -91,3 +91,5 @@ class ArgModelPara(Configurable):
                                   default_value='').tag(config=True)
     w2v_baseline_avg_topk = Int(help='Average top K', default_value=3).tag(
         config=True)
+    w2v_event_repr = Unicode(help='Methods for creating the embedding.',
+                             default_value='').tag(config=True)

@@ -1,8 +1,9 @@
 # List of TODOs 
 
-1. Gold standard reading problem to fix
-1. Embedding baseline result too high
-    - Check after removing unk
+1. Richer output in evaluation
+1. Study w2v baseline carefully
+1. Make sure training reader works properly
+1. Get the slot classifier to work
 1. Distance features
     - Distance cutoff baseline
     - Fix the distance embedding error, should deal with infinity much better
@@ -19,8 +20,7 @@
     - Different vocab for different slot
 1. Design core experiments: pooling, attention, distance, empty embedding
 
-
-Last TODO List:
+Past TODO List:
 1. ~~Reprocess dataset~~
     - ~~Use more lexicon units to enrich the FrameNet output~~
         - ~~Will do if the novel contains unseen frames and stuff~~
@@ -69,3 +69,6 @@ Last TODO List:
     - ~~try put the gold argument in the ranking~~
     - ~~all other arguments~~
     - ~~all named entities~~
+1. ~~Gold standard reading problem to fix~~
+1. ~~Embedding baseline result too high~~
+    - ~~Check after removing unk~~

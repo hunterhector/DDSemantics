@@ -18,16 +18,21 @@ class ImplicitEval:
         if os.path.exists(self.detail_path):
             os.remove(self.detail_path)
 
-    def add_result(self, doc_id, event_idx, slot, score_labels, debug_data):
+    def add_result(self, doc_id, event_idx, slot, score_labels, meta,
+                   debug_data):
         self.results.append(
-            (doc_id, event_idx, slot, score_labels, debug_data,)
+            (doc_id, event_idx, slot, score_labels, meta, debug_data,)
         )
 
     def run(self):
         overall_res = {
             'num_docs': 0,
             'num_instances': 0,
-            'scores': {},
+            'scores': {
+                'tp': 0,
+                'fp': 0,
+                'fn': 0,
+            },
             'gold': {},
         }
 
@@ -46,7 +51,7 @@ class ImplicitEval:
 
             overall_res['num_docs'] += 1
 
-            for _, event_idx, slot, score_labels, debug_data in ref:
+            for _, event_idx, slot, score_labels, meta, debug_data in ref:
                 gold_rank = []
                 top_k = []
 
@@ -57,40 +62,43 @@ class ImplicitEval:
                     if label == 1:
                         gold_rank.append(r + 1)
                     if r < 5:
-                        top_k.append(
-                            (score, label, entity_text, r)
-                        )
+                        top_k.append((score, label, entity_text, r))
 
-                num_correct = len(gold_rank)
+                num_gold = len(gold_rank)
 
-                if num_correct == 0:
-                    # No correct answer possible for this instance.
+                if not meta['has_true']:
+                    # No correct answer for this instance.
                     continue
 
                 instance_res = {
                     'event_index': event_idx,
                     'slot': slot,
-                    'num_gold': num_correct,
+                    'num_gold': num_gold,
                     'gold_ranks': gold_rank,
                     'top_k': top_k,
                     'predicate': debug_data['predicate'],
-                    'gold_entity': debug_data['gold_entity'],
+                    'gold_entity': meta['gold_entity'],
                     'scores': {},
                     'gold': {},
                 }
 
                 overall_res['num_instances'] += 1
 
+                bingo = any([r == 1 for r in gold_rank])
+
+                if bingo:
+                    tp
+
                 for c in self.cutoffs:
-                    tp = sum([1 if v <= c else 0 for v in gold_rank])
-                    p = 1.0 * tp / c
-                    r = 1.0 * tp / num_correct
+                    tp_at_c = sum([1 if v <= c else 0 for v in gold_rank])
+                    p = 1.0 * tp_at_c / c
+                    r = 1.0 * tp_at_c / num_gold
                     instance_res['scores']['p@%d' % c] = p
                     instance_res['scores']['r@%d' % c] = r
 
-                    gold_tp = min(num_correct, c)
+                    gold_tp = min(num_gold, c)
                     gold_p = 1.0 * gold_tp / c
-                    gold_r = gold_tp / num_correct
+                    gold_r = gold_tp / num_gold
 
                     instance_res['gold']['p@%d' % c] = gold_p
                     instance_res['gold']['r@%d' % c] = gold_r

@@ -69,7 +69,9 @@ class MostFrequentModel(ArgCompatibleModel):
         self.para = para
 
     def forward(self, batch_event_data, batch_info):
+        # batch x instance_size x n_features
         batch_features = batch_event_data['features']
+        return batch_features[:, :, 7]
 
 
 class BaselineEmbeddingModel(ArgCompatibleModel):
@@ -102,17 +104,27 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         # batch x instance_size x event_component x embedding
         event_emb = self.event_embedding(batch_event_rep)
 
+        # This is the concat way:
         # batch x context_size x embedding_x_component
-        flat_context_emb = context_emb.view(
-            context_emb.size()[0], -1,
-            context_emb.size()[-1] * context_emb.size()[-2]
-        )
+        if self.para.w2v_event_repr == 'concat':
+            flat_context_emb = context_emb.view(
+                context_emb.size()[0], -1,
+                context_emb.size()[-1] * context_emb.size()[-2]
+            )
 
-        # batch x instance_size x embedding_x_component
-        flat_event_emb = event_emb.view(
-            event_emb.size()[0], -1,
-            event_emb.size()[-1] * event_emb.size()[-2]
-        )
+            # batch x instance_size x embedding_x_component
+            flat_event_emb = event_emb.view(
+                event_emb.size()[0], -1,
+                event_emb.size()[-1] * event_emb.size()[-2]
+            )
+        elif self.para.w2v_event_repr == 'sum':
+            # Sum all the components together.
+            # batch x instance_size x embedding
+            flat_context_emb = context_emb.sum(-2)
+            flat_event_emb = event_emb.sum(-2)
+        else:
+            raise ValueError(f"Unknown event representation method: "
+                             f"[{self.para.w2v_event_repr}]")
 
         # Compute cosine.
         nom_event_emb = F.normalize(flat_event_emb, 2, -1)
@@ -129,7 +141,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
             pooled, _ = trans.mean(2, keepdim=False)
         elif self._score_method == 'topk_average':
             topk_pooled = torch_util.topk_with_fill(
-                trans, self.baseline_avg_topk, 2, largest=True)
+                trans, self.para.w2v_baseline_avg_topk, 2, largest=True)
             pooled = topk_pooled.mean(2, keepdim=False)
         else:
             raise ValueError("Unknown method.")
