@@ -14,7 +14,7 @@ c.ArgModelPara.use_frame = True
 # c.ArgModelPara.num_event_components = 8
 c.ArgModelPara.num_extracted_features = 11
 c.ArgModelPara.multi_context = True
-c.ArgModelPara.max_events = 200
+c.ArgModelPara.max_events = 150
 c.ArgModelPara.batch_size = 100
 # Model parameters that changes the architectures
 c.ArgModelPara.loss = 'cross_entropy'

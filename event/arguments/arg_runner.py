@@ -116,6 +116,10 @@ class ArgRunner(Configurable):
         self.para = ArgModelPara(**kwargs)
         self.resources = ImplicitArgResources(**kwargs)
 
+        # Important, reader should be initialized earlier, because reader config
+        # may change the embedding size (adding some extra words)
+        self.reader = HashedClozeReader(self.resources, self.para)
+
         self.model_dir = self.para.model_dir
         self.debug_dir = self.para.debug_dir
 
@@ -139,11 +143,10 @@ class ArgRunner(Configurable):
         if self.para.model_type:
             if self.para.model_type == 'EventPairComposition':
                 self.model = EventCoherenceModel(
-                    self.para, self.resources).to(self.device)
+                    self.para, self.resources, self.device
+                ).to(self.device)
                 logging.info("Initialize model")
                 logging.info(str(self.model))
-
-        self.reader = HashedClozeReader(self.resources, self.para)
 
         # Set up Null Instantiation detector.
         if self.para.nid_method == 'gold':
@@ -190,19 +193,25 @@ class ArgRunner(Configurable):
         elif self.para.loss == 'pairwise_letor':
             raise NotImplementedError
 
-    def _compute_coh(self, batch_instance, batch_common):
-        correct_coh = self.model(batch_instance['gold'], batch_common)
-        cross_coh = self.model(batch_instance['cross'], batch_common)
-        inside_coh = self.model(batch_instance['inside'], batch_common)
-        return correct_coh, cross_coh, inside_coh
-
-    def _get_accuracy(self, cross_coh, inside_coh):
-        pass
-
     def _get_loss(self, batch_instance, batch_common, mask):
-        outputs = self._compute_coh(batch_instance, batch_common)
-        labels = [1, 0, 0]
-        loss = self.__loss(labels, outputs, mask)
+        cross_common = {'context_events': batch_common['context_events']}
+        inside_common = {'context_events': batch_common['context_events']}
+        for k, v in batch_common.items():
+            if k.startswith('cross_'):
+                cross_common[k.replace('cross_', '')] = v
+            elif k.startswith('inside_'):
+                inside_common[k.replace('inside_', '')] = v
+
+        cross_gold_coh = self.model(batch_instance['cross_gold'], cross_common)
+        cross_coh = self.model(batch_instance['cross'], cross_common)
+
+        inside_gold_coh = self.model(batch_instance['inside_gold'],
+                                     inside_common)
+        inside_coh = self.model(batch_instance['inside'], inside_common)
+
+        labels = [1, 0]
+        loss = self.__loss(labels, (cross_gold_coh, cross_coh), mask)
+        loss += self.__loss(labels, (inside_gold_coh, inside_coh), mask)
         return loss
 
     def __dump_stuff(self, key, obj):
@@ -309,7 +318,6 @@ class ArgRunner(Configurable):
                 )
 
             doc_count += 1
-            # input(f'processed {doc_id}')
 
             if doc_count % 1000 == 0:
                 logging.info("Tested %d documents." % doc_count)
@@ -337,8 +345,8 @@ class ArgRunner(Configurable):
 
         if basic_para.model_name == 'w2v_baseline':
             # W2v baseline.
-            w2v_baseline = BaselineEmbeddingModel(self.para, self.resources).to(
-                self.device)
+            w2v_baseline = BaselineEmbeddingModel(
+                self.para, self.resources, self.device).to(self.device)
             w2v_baseline.eval()
             self.__test(
                 w2v_baseline, data_gen(basic_para.test_in),
@@ -349,7 +357,7 @@ class ArgRunner(Configurable):
         elif basic_para.model_name == 'most_freq_baseline':
             # Frequency baseline.
             most_freq_baseline = MostFrequentModel(
-                self.para, self.resources).to(self.device)
+                self.para, self.resources, self.device).to(self.device)
             most_freq_baseline.eval()
             self.__test(
                 most_freq_baseline, data_gen(basic_para.test_in),
@@ -587,11 +595,6 @@ def main():
 
     if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
         os.makedirs(basic_para.debug_dir)
-
-    target_predicates = {
-        'bid', 'sell', 'loan', 'cost', 'plan', 'price', 'invest',
-        'lose', 'invest', 'fund',
-    }
 
     if basic_para.run_baselines:
         runner.run_baseline()

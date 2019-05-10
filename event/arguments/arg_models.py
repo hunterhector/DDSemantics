@@ -7,7 +7,7 @@ from event import torch_util
 
 
 class ArgCompatibleModel(nn.Module):
-    def __init__(self, para, resources):
+    def __init__(self, para, resources, device):
         super(ArgCompatibleModel, self).__init__()
         self.para = para
 
@@ -16,6 +16,8 @@ class ArgCompatibleModel(nn.Module):
 
         self.event_embedding = None
         self.word_embedding = None
+
+        self.device = device
 
         self.__load_embeddings(resources)
 
@@ -64,8 +66,8 @@ class ArgCompatibleModel(nn.Module):
 
 
 class MostFrequentModel(ArgCompatibleModel):
-    def __init__(self, para, resources):
-        super(MostFrequentModel, self).__init__(para, resources)
+    def __init__(self, para, resources, device):
+        super(MostFrequentModel, self).__init__(para, resources, device)
         self.para = para
 
     def forward(self, batch_event_data, batch_info):
@@ -75,8 +77,8 @@ class MostFrequentModel(ArgCompatibleModel):
 
 
 class BaselineEmbeddingModel(ArgCompatibleModel):
-    def __init__(self, para, resources):
-        super(BaselineEmbeddingModel, self).__init__(para, resources)
+    def __init__(self, para, resources, device):
+        super(BaselineEmbeddingModel, self).__init__(para, resources, device)
         self.para = para
 
         self._score_method = para.w2v_baseline_method
@@ -91,7 +93,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         batch_features = batch_event_data['features']
 
         # batch x context_size x event_component
-        batch_context = batch_info['context']
+        batch_context = batch_info['context_events']
         # batch x instance_size
         batch_slots = batch_info['slot_indices']
         # batch x instance_size
@@ -150,7 +152,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
 
 
 class ArgCompositionModel(nn.Module):
-    def __init__(self, para, resources, gpu=True):
+    def __init__(self, para, resources):
         super(ArgCompositionModel, self).__init__()
         self.arg_representation_method = para.arg_representation_method
 
@@ -159,7 +161,8 @@ class ArgCompositionModel(nn.Module):
         elif self.arg_representation_method == 'role_dynamic':
             self._setup_role_based_attention(para)
         else:
-            raise ValueError(f"Unknown role type {self.arg_representation_method}")
+            raise ValueError(f"Unknown arg representation method"
+                             f" {self.arg_representation_method}")
 
     def _setup_fix_slot_mlp(self, para):
         component_per = 2 if para.use_frame else 1
@@ -247,15 +250,15 @@ def _mlp(layers, input_data, activation=F.relu):
 
 
 class EventCoherenceModel(ArgCompatibleModel):
-    def __init__(self, para, resources, gpu=True):
-        super(EventCoherenceModel, self).__init__(para, resources)
+    def __init__(self, para, resources, device):
+        super(EventCoherenceModel, self).__init__(para, resources, device)
         logging.info("Pair composition network started, with %d "
                      "extracted features and %d distance features." % (
                          self.para.num_extracted_features,
                          self.para.num_distance_features
                      ))
 
-        self.arg_composition_model = ArgCompositionModel(para, resources, gpu)
+        self.arg_composition_model = ArgCompositionModel(para, resources)
 
         composed_event_dim = para.arg_composition_layer_sizes[-1]
 
@@ -304,10 +307,6 @@ class EventCoherenceModel(ArgCompatibleModel):
             self.normalize_score = True
         else:
             self.normalize_score = False
-
-        self.device = torch.device(
-            "cuda" if gpu and torch.cuda.is_available() else "cpu"
-        )
 
         self.__debug_show_shapes = False
 
@@ -433,8 +432,9 @@ class EventCoherenceModel(ArgCompatibleModel):
             if trans.shape[2] >= self._pool_topk:
                 pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
             else:
-                added = torch.zeros((trans.shape[0], trans.shape[1],
-                                     self._pool_topk - trans.shape[2]))
+                added = torch.zeros(
+                    (trans.shape[0], trans.shape[1],
+                     self._pool_topk - trans.shape[2])).to(self.device)
                 pooled_value = torch.cat((trans, added), -1)
         else:
             raise ValueError(
@@ -460,13 +460,14 @@ class EventCoherenceModel(ArgCompatibleModel):
         slot_indicator = torch.zeros(
             batch_slots.shape[0], batch_slots.shape[1], self.num_slots
         ).to(self.device)
+
         slot_indicator.scatter_(2, batch_slots.unsqueeze(2), 1)
         l_extracted = [batch_features, slot_indicator]
 
         # Add embedding dimension at the end.
         if self.para.arg_representation_method == 'fix_slots':
             batch_event_rep = batch_event_data['events']
-            batch_context = batch_info['context']
+            batch_context = batch_info['context_events']
             context_emb = self.event_embedding(batch_context)
             event_emb = self.event_embedding(batch_event_rep)
             pred_emb = event_emb[:, :, 1, 1]
@@ -474,7 +475,6 @@ class EventCoherenceModel(ArgCompatibleModel):
             context_repr = self.arg_composition_model(context_emb)
         elif self.para.arg_representation_method == 'role_dynamic':
             d_keys = 'predicates', 'slots', 'slot_values'
-
             batch_embedded_event_data = {}
             batch_embedded_context_event_data = {}
             for k in d_keys:
@@ -496,7 +496,7 @@ class EventCoherenceModel(ArgCompatibleModel):
             distance_emb = self._encode_distance(pred_emb, batch_distances)
             l_extracted.append(distance_emb)
 
-            if self._use_distance:
+            if self._use_distance and self.__debug_show_shapes:
                 print(distance_emb.shape)
 
         # batch x instance_size x feature_size_1

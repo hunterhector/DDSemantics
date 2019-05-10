@@ -1,13 +1,13 @@
 # List of TODOs 
 
 1. Richer output in evaluation
+1. Design core experiments: pooling, attention, distance
 1. Study w2v baseline carefully
-1. Make sure training reader works properly
-1. Get the slot classifier to work
 1. Distance features
     - Distance cutoff baseline
     - Fix the distance embedding error, should deal with infinity much better
-1. Classifier for DNI and INI for both datasets.
+1. Setup google platform
+1. Get the slot classifier to work
     - Rule based like Ruppenhofer
     - Classifier like Erk
 1. Bad idea to use fixed size slots for frame assemble
@@ -18,7 +18,6 @@
     - One empty slot vocab
     - Different vocab for different predicate
     - Different vocab for different slot
-1. Design core experiments: pooling, attention, distance, empty embedding
 
 # Advanced thoughts
 
@@ -78,3 +77,4 @@ not resolvable.
 1. ~~Gold standard reading problem to fix~~
 1. ~~Embedding baseline result too high~~
     - ~~Check after removing unk~~
+1. ~~Make sure training reader works properly~~

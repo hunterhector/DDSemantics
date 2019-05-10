@@ -232,6 +232,8 @@ class SlotHandler:
 
             arg_candidates[position].append((dep, full_fe, arg, source))
 
+        # TODO: still some hairy stuff like duplicate FE slots.
+
         # Final step, organize all the args.
         final_args = {}
         unsure_args = []
@@ -241,6 +243,14 @@ class SlotHandler:
                 event['predicate_start'],
                 event['predicate_end']
             )
+
+            if predicate == 'leak':
+                from pprint import pprint
+                pprint(arg_candidates)
+
+                pprint(p_arg_info)
+                input('check the sorted list')
+
             if position == 'NA':
                 unsure_args = [p[1] for p in p_arg_info]
             else:
@@ -250,4 +260,3 @@ class SlotHandler:
         final_args['prep'].extend(unsure_args)
 
         return final_args
-
