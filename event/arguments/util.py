@@ -14,17 +14,20 @@ class ClozeSampler:
     def reset(self):
         random.seed(self.provided_seed)
 
-    def sample_cross(self, arg_entities, evm_id, ent_id):
+    def sample_cross(self, arg_pool, evm_id, ent_id):
         remaining = []
-        for arg_entity_info in arg_entities:
-            if not (arg_entity_info['event_index'] == evm_id
-                    or arg_entity_info['entity_id'] == ent_id):
-                remaining.append(arg_entity_info)
+        for arg_info in arg_pool:
+            if not (arg_info['event_index'] == evm_id
+                    or arg_info['entity_id'] == ent_id):
+                remaining.append(arg_info)
 
         if len(remaining) > 0:
             return random.choice(remaining)
         else:
             return None
+
+    def sample_list(self, l):
+        return random.choice(l)
 
     def sample_ignore_item(self, data, ignored_item):
         """
@@ -36,6 +39,7 @@ class ClozeSampler:
         """
         if len(data) <= 1:
             return None
+
         while True:
             sampled_item = random.choice(data)
             if not sampled_item == ignored_item:
