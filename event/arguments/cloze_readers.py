@@ -13,6 +13,13 @@ from operator import itemgetter
 from event.arguments.prepare.slot_processor import get_dep_position
 
 
+def __inverse_vocab(vocab):
+    inverted = [0] * vocab.get_size()
+    for w, index in vocab.vocab_items():
+        inverted[index] = w
+    return inverted
+
+
 class HashedClozeReader:
     def __init__(self, resources, para, gpu=True):
         """
@@ -29,7 +36,7 @@ class HashedClozeReader:
         self.typed_event_vocab = resources.typed_event_vocab
 
         # Inverted vocab for debug purpose.
-        self.event_inverted = self.__inverse_vocab(self.event_emb_vocab)
+        self.event_inverted = __inverse_vocab(self.event_emb_vocab)
 
         # Some extra embeddings.
         self.unobserved_fe = self.event_emb_vocab.add_extra('__unobserved_fe__')
@@ -86,12 +93,6 @@ class HashedClozeReader:
         self.device = torch.device(
             "cuda" if gpu and torch.cuda.is_available() else "cpu"
         )
-
-    def __inverse_vocab(self, vocab):
-        inverted = [0] * vocab.get_size()
-        for w, index in vocab.vocab_items():
-            inverted[index] = w
-        return inverted
 
     def __batch_pad(self, key, data, pad_size):
         dim = self.__data_dim[key]
@@ -395,7 +396,7 @@ class HashedClozeReader:
                 # candidate document arguments.
                 for arg in l_arg:
                     if len(arg) > 0:
-                        # TODO: Empty args will be ignored.
+                        # Empty args will be ignored.
                         # If one wanted to fill some arguments, make a
                         # fake argument first.
 
@@ -629,6 +630,14 @@ class HashedClozeReader:
             e in event_subset
         ]
 
+        common_data = {
+            'context_events': all_event_reps,
+            'cross_event_indices': [],
+            'cross_slot_indices': [],
+            'inside_event_indices': [],
+            'inside_slot_indices': [],
+        }
+
         if len(t_doc_args) <= 1:
             # There no enough arguments to sample from.
             return None
@@ -640,11 +649,11 @@ class HashedClozeReader:
         # 2. Select items based on classifier output.
 
         # Maybe these 3 list can be merged together.
-        gold_event_data = {'rep': [], 'distances': [], 'features': []}
-        cross_event_data = {'rep': [], 'distances': [], 'features': []}
-        inside_event_data = {'rep': [], 'distances': [], 'features': []}
-        cloze_event_indices = []
-        cloze_slot_indices = []
+        cross_gold_standard = {'events': [], 'distances': [], 'features': []}
+        cross_event_data = {'events': [], 'distances': [], 'features': []}
+
+        inside_gold_standard = {'events': [], 'distances': [], 'features': []}
+        inside_event_data = {'events': [], 'distances': [], 'features': []}
 
         for evm_index, event in enumerate(event_subset):
             pred = event['predicate']
@@ -669,7 +678,8 @@ class HashedClozeReader:
                     continue
 
                 # unk fe is not a purpose here.
-                if slot == self.event_emb_vocab.get_index(
+                if not self.fix_slot_mode and \
+                        slot == self.event_emb_vocab.get_index(
                         self.typed_event_vocab.unk_fe,
                         self.typed_event_vocab.unk_fe):
                     continue
@@ -698,59 +708,68 @@ class HashedClozeReader:
 
                     input('what samples.')
 
-                # TODO: Can the samples of different sizes?
-                # Yes: but we need to make sure the gold and the corresponding
-                # samples are the same size. Do it.
+                slot_index = self.slot_names.index(slot) if \
+                    self.fix_slot_mode else slot
+
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
-
                     self.assemble_instance(
                         cross_event_data, features_by_eid, entity_positions,
                         evm_index, current_sent, pred, event['frame'],
                         cross_args, cross_filler_id
                     )
+                    if is_singleton:
+                        # If it is a singleton, than the ghost instance should
+                        # be higher than randomly placing any entity here.
+                        self.add_ghost_instance(cross_gold_standard)
+                    else:
+                        self.assemble_instance(
+                            cross_gold_standard, features_by_eid,
+                            entity_positions,
+                            evm_index, current_sent, pred, event['frame'],
+                            arg_list,
+                            correct_id
+                        )
+                    # These two list indicate where the target argument is.
+                    # When we use fix slot mode, the index is a indicator of
+                    # the slot position. Otherwise, the slot_index is a way to
+                    # represent the open-set slot types (such as FEs)
+                    common_data['cross_event_indices'].append(evm_index)
+                    common_data['cross_slot_indices'].append(slot_index)
 
                 if inside_sample:
                     inside_args, inside_filler_id = inside_sample
-
                     self.assemble_instance(
                         inside_event_data, features_by_eid, entity_positions,
                         evm_index, current_sent, pred, event['frame'],
                         inside_args, inside_filler_id
                     )
 
-                if is_singleton:
-                    # If it is a singleton, than the ghost instance should be
-                    # higher than randomly placing any entity here.
-                    self.add_ghost_instance(gold_event_data)
-                else:
+                    # Inside sample can be used on singletons.
                     self.assemble_instance(
-                        gold_event_data, features_by_eid, entity_positions,
+                        inside_gold_standard, features_by_eid,
+                        entity_positions,
                         evm_index, current_sent, pred, event['frame'],
+                        arg_list,
                         correct_id
                     )
+                    common_data['inside_event_indices'].append(evm_index)
+                    common_data['inside_slot_indices'].append(slot_index)
 
-                # These two list indicate where the target argument is.
-                cloze_event_indices.append(evm_index)
-                cloze_slot_indices.append(slot_index)
-
-        if len(cloze_slot_indices) == 0:
-            # This document do not contains training instance.
+        if common_data['cross_slot_indices'] == 0 or \
+                common_data['inside_slot_indices'] == 0:
+            # Too few training instance.
             return None
 
         instance_data = {
-            'gold': gold_event_data,
+            'cross_gold': cross_gold_standard,
             'cross': cross_event_data,
+            'inside_gold': inside_gold_standard,
             'inside': inside_event_data,
         }
 
-        common_data = {
-            'context': all_event_reps,
-            'event_indices': cloze_event_indices,
-            'slot_indices': cloze_slot_indices,
-        }
-
         return instance_data, common_data
+
 
     def get_distance_signature(
             self, current_evm_id, entity_mentions, arg_list, sent_id):
