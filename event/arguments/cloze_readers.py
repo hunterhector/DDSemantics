@@ -20,6 +20,9 @@ def inverse_vocab(vocab):
     return inverted
 
 
+ghost_entity_text = '__ghost_component__'
+
+
 class HashedClozeReader:
     def __init__(self, resources, para):
         """
@@ -44,7 +47,7 @@ class HashedClozeReader:
         self.unobserved_arg = self.event_emb_vocab.add_extra(
             '__unobserved_arg__')
         self.ghost_component = self.event_emb_vocab.add_extra(
-            '__ghost_component__')
+            ghost_entity_text)
 
         self.unk_frame_idx = self.event_emb_vocab.get_index(
             self.typed_event_vocab.unk_frame, None)
@@ -78,8 +81,10 @@ class HashedClozeReader:
             'context_slots': np.int64,
             'context_slot_values': np.int64,
             'context_predicates': np.int64,
+            'event_indices': np.int64,
             'cross_event_indices': np.int64,
             'inside_event_indices': np.int64,
+            'slot_indices': np.int64,
             'cross_slot_indices': np.int64,
             'inside_slot_indices': np.int64,
             'events': np.int64,
@@ -96,8 +101,10 @@ class HashedClozeReader:
             'context_slots': 2,
             'context_slot_values': 2,
             'context_predicates': 2,
+            'event_indices': 1,
             'cross_event_indices': 1,
             'inside_event_indices': 1,
+            'slot_indices': 1,
             'cross_slot_indices': 1,
             'inside_slot_indices': 1,
             'events': 2,
@@ -292,6 +299,7 @@ class HashedClozeReader:
                     event_components.append(self.unk_fe_idx)
                 else:
                     event_components.append(fe)
+
                 event_components.append(arg['arg_role'])
 
         if any([c < 0 for c in event_components]):
@@ -335,11 +343,7 @@ class HashedClozeReader:
                 continue
 
             # This is the target argument replaced by another entity.
-            update_arg = self.replace_slot_detail(
-                target_slot,
-                target_arg,
-                doc_arg,
-            )
+            update_arg = self.replace_slot_detail(target_arg, doc_arg)
 
             if self.auto_test:
                 is_correct = doc_arg['entity_id'] == target_arg['entity_id']
@@ -352,7 +356,7 @@ class HashedClozeReader:
                     is_correct = False
 
             if is_correct:
-                # Indicte whether there is a possible true arg here.
+                # Indicate whether there is a possible true arg here.
                 has_true_arg = True
 
             dist_arg_list.append((
@@ -467,20 +471,12 @@ class HashedClozeReader:
                 event['predicate_text']
             )
             event_args = event['args']
+            arg_list = self.get_args_as_list(event_args, False)
 
-            for target_slot, target_args in event_args.items():
-                can_fill = False
-                fill_idx = -1
-
-                for idx, slot_arg in enumerate(target_args):
-                    if nid_detector.should_fill(event, target_slot, slot_arg):
-                        can_fill = True
-                        fill_idx = idx
-                        break
-
-                if can_fill:
+            for t_arg_index, (target_slot, target_arg) in enumerate(arg_list):
+                if nid_detector.should_fill(event, target_slot, target_arg):
                     test_rank_list, has_true = self.create_slot_candidates(
-                        target_slot, target_args[fill_idx], doc_args, evm_index,
+                        target_slot, target_arg, doc_args, evm_index,
                         pred_sent
                     )
 
@@ -497,7 +493,7 @@ class HashedClozeReader:
                             'features': [],
                         }
 
-                    candidate_meta = {'predicate': [], 'entity_text': [], }
+                    candidate_meta = []
                     instance_meta = []
 
                     cloze_event_indices = []
@@ -507,10 +503,10 @@ class HashedClozeReader:
                     num_golds = len([1 for (_, _, c) in test_rank_list if c])
 
                     for cand_arg, filler_eid, is_correct in test_rank_list:
-                        # Build the arg list from the generated candidate arg.
+                        # Generate candidate arguments.
                         candidate_args = []
-                        for s, arg in event_args.items():
-                            if s == target_slot:
+                        for c_arg_index, (s, arg) in enumerate(arg_list):
+                            if c_arg_index == t_arg_index:
                                 candidate_args.append((s, cand_arg))
                             else:
                                 candidate_args.append((s, arg))
@@ -531,10 +527,9 @@ class HashedClozeReader:
                         else:
                             gold_labels.append(0)
 
-                        candidate_meta['predicate'].append(predicate)
-                        candidate_meta['entity_text'].append(
-                            cand_arg['represent']
-                        )
+                        candidate_meta.append({
+                            'entity': cand_arg['represent'],
+                        })
 
                         if len(cloze_event_indices) == 500:
                             break
@@ -555,12 +550,21 @@ class HashedClozeReader:
                             f"No gold within scope for "
                             f"predicate {predicate}")
 
-                    instance_meta.append(
-                        {
-                            'gold_entity': target_args[fill_idx]['text'],
-                            'has_true': has_true,
-                        }
-                    )
+                    if self.para.use_ghost:
+                        self.add_ghost_instance(instance_data)
+                        if num_gold_in_scope == 0:
+                            # When there is no better instance,
+                            # the ghost should rank high.
+                            gold_labels.append(1)
+                            candidate_meta.append({'entity': ghost_entity_text})
+                        else:
+                            gold_labels.append(0)
+
+                    instance_meta.append({
+                        'predicate': predicate,
+                        'gold_entity': target_arg['text'],
+                        'has_true': has_true,
+                    })
 
                     common_data = {
                         'event_indices': cloze_event_indices,
@@ -744,8 +748,8 @@ class HashedClozeReader:
                     # Only one mention for this one.
                     is_singleton = True
 
-                # If we do not train on singletons, we skip
-                if is_singleton and not self.para.use_singleton:
+                # If we do not train on singletons, we skip now.
+                if is_singleton and not self.para.use_ghost:
                     continue
 
                 cross_sample = self.cross_cloze(
@@ -764,6 +768,7 @@ class HashedClozeReader:
                         evm_index, current_sent, pred, event['frame'],
                         cross_args, cross_filler_id
                     )
+
                     if is_singleton:
                         # If it is a singleton, than the ghost instance should
                         # be higher than randomly placing any entity here.
@@ -948,27 +953,21 @@ class HashedClozeReader:
                 }
         return full_info
 
-    def replace_slot_detail(self, slot, original_slot_info, new_slot_info,
-                            replace_fe=False):
-        if len(new_slot_info) == 0:
+    def replace_slot_detail(self, base_slot, swap_slot, replace_fe=False):
+        if len(swap_slot) == 0:
             updated_slot_info = {}
         else:
             # Make a copy of the slot.
-            updated_slot_info = dict(
-                (k, v) for k, v in original_slot_info.items())
+            updated_slot_info = dict((k, v) for k, v in base_slot.items())
 
             # Replace with the new information.
-            updated_slot_info['entity_id'] = new_slot_info['entity_id']
-            updated_slot_info['represent'] = new_slot_info['represent']
-            updated_slot_info['arg_phrase'] = new_slot_info['arg_phrase']
+            updated_slot_info['entity_id'] = swap_slot['entity_id']
+            updated_slot_info['represent'] = swap_slot['represent']
+            updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
 
-            if self.fix_slot_mode:
-                origin_dep = slot
-            else:
-                origin_dep = get_dep_position(original_slot_info['dep'])
-
+            # TODO: now using the full dependency label here.
             new_arg_rep = self.typed_event_vocab.get_arg_rep(
-                origin_dep, new_slot_info['represent']
+                base_slot['dep'], swap_slot['represent']
             )
 
             updated_slot_info['arg_role'] = self.event_emb_vocab.get_index(
@@ -976,7 +975,8 @@ class HashedClozeReader:
             )
 
             if replace_fe:
-                updated_slot_info['fe'] = new_slot_info['fe']
+                updated_slot_info['fe'] = swap_slot['fe']
+
         return updated_slot_info
 
     def cross_cloze(self, sampler, arg_list, doc_args, target_evm_id,
@@ -1005,7 +1005,7 @@ class HashedClozeReader:
             if idx == target_arg_idx:
                 neg_instance.append(
                     (slot,
-                     self.replace_slot_detail(slot, content, sample_res))
+                     self.replace_slot_detail(content, sample_res))
                 )
             else:
                 neg_instance.append((slot, content))
@@ -1039,21 +1039,25 @@ class HashedClozeReader:
         for idx, (slot, content) in enumerate(arg_list):
             if idx == arg_index:
                 # Replace the swap one here.
+                if len(content) == 0 and self.fix_slot_mode:
+                    base_slot = {'dep': slot}
+                else:
+                    base_slot = content
+
                 neg_instance.append((
                     slot,
-                    self.replace_slot_detail(slot, content, swap_slot_info,
-                                             True)
+                    self.replace_slot_detail(base_slot, swap_slot_info, True)
                 ))
             elif idx == swap_index:
                 # Replace the original one here
+                if len(content) == 0 and self.fix_slot_mode:
+                    base_slot = {'dep': slot}
+                else:
+                    base_slot = content
+
                 neg_instance.append((
                     slot,
-                    self.replace_slot_detail(
-                        slot,
-                        content,
-                        origin_slot_info,
-                        True
-                    )
+                    self.replace_slot_detail(base_slot, origin_slot_info, True)
                 ))
             else:
                 neg_instance.append((slot, content))

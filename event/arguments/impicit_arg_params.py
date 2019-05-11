@@ -42,10 +42,6 @@ class ArgModelPara(Configurable):
         help='Maximum number of cloze to extract per document',
         default_value=150).tag(config=True)
 
-    use_singleton = Bool(
-        help='Whether to include singleton when generating training data'
-    ).tag(config=True)
-
     ## Model architecture related parameters.
     loss = Unicode(
         help='Loss type for implicit argument training',
@@ -105,6 +101,9 @@ class ArgModelPara(Configurable):
     nid_method = Unicode(
         help='The method for Null Instantiation Detector',
         default_value='logistic'
+    ).tag(config=True)
+    use_ghost = Bool(
+        help='Use ghost instance as decision boundary', default_value=False
     ).tag(config=True)
 
     # Baseline parameters.

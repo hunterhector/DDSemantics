@@ -31,7 +31,9 @@ from collections import Counter
 from event.arguments.util import ClozeSampler
 from event.util import load_mixed_configs
 import json
-from event.util import set_file_log, set_basic_log, ensure_dir
+from event.util import (
+    set_file_log, set_basic_log, ensure_dir, append_num_to_path
+)
 from time import localtime, strftime
 
 
@@ -278,7 +280,7 @@ class ArgRunner(Configurable):
 
     def __test(self, model, test_lines, nid_detector, auto_test=False,
                gold_field_name=None, eval_dir=None):
-        evaluator = ImplicitEval(eval_dir)
+        evaluator = ImplicitEval(self.reader.slot_names, eval_dir)
         doc_count = 0
 
         logging.debug(f"Auto test: {auto_test}")
@@ -288,7 +290,7 @@ class ArgRunner(Configurable):
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             (doc_id, instances, common_data, gold_labels, candidate_meta,
-             all_instance_meta,) = test_data
+             instance_meta,) = test_data
 
             coh = model(instances, common_data)
 
@@ -298,24 +300,9 @@ class ArgRunner(Configurable):
                 0].tolist()
             coh_scores = coh.data.cpu().numpy()[0].tolist()
 
-            for (((event_idx, slot_idx), result), meta) in zip(groupby(
-                    zip(zip(event_idxes, slot_idxes),
-                        zip(coh_scores, gold_labels),
-                        candidate_meta['predicate'],
-                        candidate_meta['entity_text'],
-                        ),
-                    key=itemgetter(0)), all_instance_meta):
-                _, score_labels, debug_preds, debug_entities = zip(*result)
-
-                slot_name = self.reader.slot_names[slot_idx]
-
-                evaluator.add_result(
-                    doc_id, event_idx, slot_name, score_labels, meta,
-                    {
-                        'predicate': debug_preds[0],
-                        'entity_text': debug_entities,
-                    }
-                )
+            evaluator.add_prediction(
+                doc_id, event_idxes, slot_idxes, coh_scores, gold_labels,
+                candidate_meta, instance_meta)
 
             doc_count += 1
 
@@ -574,6 +561,7 @@ def main():
             basic_para.run_name + mode + '.log')
         ensure_dir(log_path)
         set_file_log(log_path)
+        append_num_to_path(log_path)
         print("Logging is set at: " + log_path)
 
     if basic_para.debug_mode:
@@ -592,9 +580,6 @@ def main():
         ),
         debug_dir=basic_para.debug_dir,
     )
-
-    if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
-        os.makedirs(basic_para.debug_dir)
 
     if basic_para.run_baselines:
         runner.run_baseline()

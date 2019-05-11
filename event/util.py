@@ -139,3 +139,12 @@ def get_env(var_name):
                        "variable: {}".format(var_name))
     else:
         return os.environ[var_name]
+
+
+def append_num_to_path(file_path, suffix=0):
+    if os.path.exists(file_path):
+        new_path = f'{file_path}_{suffix}'
+        if os.path.exists(new_path):
+            append_num_to_path(file_path, suffix + 1)
+        else:
+            os.rename(file_path, new_path)

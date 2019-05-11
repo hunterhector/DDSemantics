@@ -86,7 +86,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
 
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
-        batch_event_rep = batch_event_data['rep']
+        batch_event_rep = batch_event_data['events']
         # batch x instance_size x n_distance_features
         batch_distances = batch_event_data['distances']
         # batch x instance_size x n_features
