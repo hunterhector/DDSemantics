@@ -1,6 +1,9 @@
 # List of TODOs 
 
-1. ~~Richer output in evaluation~~
+1. Richer output in evaluation
+    - Add F1
+    - Add Dice (partial argument overlap)
+    - Add a score with gold candidates
 1. Design core experiments: pooling, attention, distance
 1. Study w2v baseline carefully
 1. We are using the detailed dependency labels

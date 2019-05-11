@@ -10,7 +10,7 @@ from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
 from pprint import pprint
 from operator import itemgetter
-from event.arguments.prepare.slot_processor import get_dep_position
+from event.arguments.prepare.slot_processor import get_simple_dep
 
 
 def inverse_vocab(vocab):

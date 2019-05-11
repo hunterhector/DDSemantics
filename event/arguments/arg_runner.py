@@ -559,9 +559,10 @@ def main():
             basic_para.log_dir,
             basic_para.model_name,
             basic_para.run_name + mode + '.log')
+
+        append_num_to_path(log_path)
         ensure_dir(log_path)
         set_file_log(log_path)
-        append_num_to_path(log_path)
         print("Logging is set at: " + log_path)
 
     if basic_para.debug_mode:
