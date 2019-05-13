@@ -15,13 +15,15 @@ from traitlets import (
     List,
     Unicode,
 )
-from event.util import load_mixed_configs, set_basic_log, ensure_dir
+from event.util import load_mixed_configs, set_basic_log
 
 import logging
 import numpy as np
 from collections import defaultdict
 import pprint
 from scipy.spatial.distance import cosine
+from event.mention import aida_maps
+
 
 class ZeroShotEventResources(Configurable):
     """
@@ -45,7 +47,12 @@ class ZeroShotEventResources(Configurable):
         self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path)
 
         with open(self.target_ontology) as onto_file:
+            self.onto_set = set()
+
             self.ontology = json.load(onto_file)
+
+            for frame in self.ontology['frames']:
+                self.onto_set.add(frame['@id'])
 
         logging.info(
             f"{len(self.event_embed_vocab.vocab)} events in embedding.")
@@ -70,26 +77,8 @@ def camel_split(s, lower=True):
 
 
 def event_type_split(s):
-    split_map = {
-        'Transferownership': ['transfer', 'ownership'],
-        'Transfermoney': ['transfer', 'money'],
-        'Transportperson': ['transport', 'person'],
-        'TransportArtifact': ['transport'],
-        'Startposition': ['employ'],
-        'Endposition': ['resign'],
-        'Arrestjail': ['arrest', 'jail'],
-        'Chargeindict': ['charge', 'indict'],
-        'Trialhearing': ['trial', 'hearing'],
-        'ReleaseParole': ['release', 'parole'],
-        'Declarebankruptcy': ['bankruptcy'],
-        'StartOrg': ['start'],
-        'EndOrg': ['end'],
-        'MergeOrg': ['merge'],
-        'BeBorn': ['born'],
-    }
-
-    if s in split_map:
-        return split_map[s]
+    if s in aida_maps.kbp_type_split_map:
+        return aida_maps.kbp_type_split_map[s]
     else:
         return camel_split(s)
 
@@ -111,28 +100,6 @@ class ZeroShotTypeMapper:
         self.tokenize_ontology()
 
     def tokenize_ontology(self):
-        skips = {
-            'artifact',
-            'in',
-            'person',
-            'start',
-            'end',
-            'life',
-            'Existence',
-        }
-
-        nom_map = {
-            'correspondence': 'correspond',
-            'prevarication': 'prevaricate',
-            'gathering': 'gather',
-            'agreements': 'agreement',
-            'degradation': 'degrade',
-            'movement': 'move',
-            'hiring': 'hire',
-            'injury': 'injure',
-            'stabbing': 'stab',
-        }
-
         for frame in self.resources.ontology['frames']:
             onto_category = frame['@type']
             if onto_category == 'event_type':
@@ -145,10 +112,10 @@ class ZeroShotTypeMapper:
                 for lt in level_types:
                     tokenized_types.append([])
                     for t in camel_split(lt):
-                        if t not in skips:
-                            if t in nom_map:
-                                t = nom_map[t]
-                            pred_id = self.resources.event_embed_vocab\
+                        if t not in aida_maps.ldc_ontology_skips:
+                            if t in aida_maps.onto_token_nom_map:
+                                t = aida_maps.onto_token_nom_map[t]
+                            pred_id = self.resources.event_embed_vocab \
                                 .get_index(t + '-pred', None)
                             if pred_id >= 0:
                                 tokenized_types[-1].append(t)
@@ -161,8 +128,10 @@ class ZeroShotTypeMapper:
 
                 self.onto_event_tokens[event_type]['top'] = tokenized_types[0]
                 if len(level_types) > 2:
-                    self.onto_event_tokens[event_type]['middle'] = tokenized_types[1]
-                    self.onto_event_tokens[event_type]['low'] = tokenized_types[2]
+                    self.onto_event_tokens[event_type]['middle'] = \
+                        tokenized_types[1]
+                    self.onto_event_tokens[event_type]['low'] = tokenized_types[
+                        2]
 
                     if not frame['subClassOf'] == 'aidaDC:EventType':
                         self.type_parent[event_type] = frame['subClassOf']
@@ -173,44 +142,7 @@ class ZeroShotTypeMapper:
                 self.onto_arg_role_tokens[role_type] = [role_token.lower()]
                 self.onto_arg_domain[frame['domain']].append(role_type)
 
-    # def map_arg_role_from_sim(self, event_type, arg_types, arg_lemma):
-    #     arg_candidates = self.onto_arg_domain[event_type]
-    #
-    #     lemma_idx = self.resources.word_embed_vocab.get_index(arg_lemma, None)
-    #     if lemma_idx >= 0:
-    #         lemma_emd = self.resources.word_embedding[lemma_idx]
-    #
-    #     max_type_score = 0
-    #     max_lemma_score = 0
-    #
-    #     best_arg_from_type = None
-    #     best_arg_from_lemma = None
-    #
-    #     for full_arg in arg_candidates:
-    #         for arg_token in self.onto_arg_role_tokens[full_arg]:
-    #             a = self.resources.word_embed_vocab.get_index(arg_token, None)
-    #             if a >= 0:
-    #                 arg_token_word_embed = self.resources.word_embedding[a]
-    #
-    #             for arg_type in arg_types:
-    #                 if arg_type.startswith('fn:'):
-    #                     t = self.resources.word_embed_vocab.get_index(
-    #                         arg_type.split(':')[1], None)
-    #                     if t >= 0:
-    #                         t_word_embed = self.resources.word_embedding[t]
-    #                         if a >= 0:
-    #                             s = 1 - cosine(arg_token_word_embed,
-    #                                            t_word_embed)
-    #                             if s > max_type_score:
-    #                                 max_type_score = s
-    #                                 best_arg_from_type = full_arg
-    #                         if lemma_idx >= 0:
-    #                             s = 1 - cosine(lemma_emd, t_word_embed)
-    #                             if s > max_lemma_score:
-    #                                 max_lemma_score = s
-    #                                 best_arg_from_lemma = full_arg
-
-    def token_direct(self, lemma):
+    def head_token_direct(self, lemma):
         token_direct_map = {
             'seize': 'ldcOnt:Transaction.Transaction.TransferControl',
             'casualty': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',
@@ -219,8 +151,11 @@ class ZeroShotTypeMapper:
         if lemma in token_direct_map:
             return token_direct_map[lemma]
 
-    def arg_direct(self, content):
-        pass
+    def arg_direct(self, content, entities):
+        for arg in content['arguments']:
+            arg_lemma = entities[arg['entityId']]['lemma']
+            if arg_lemma in aida_maps.arg_direct_map:
+                return aida_maps.arg_direct_map['arg_lemma'][0]
 
     def map_from_event_type(self, event_type, lemma):
         level1, level2 = event_type.split('_')
@@ -250,21 +185,12 @@ class ZeroShotTypeMapper:
                     return full_type
 
     def map_from_frame(self, frame, lemma):
-        frame_direct = {
-            'Arriving': 'ldcOnt:Movement.TransportPerson',
-            'Employing': 'ldcOnt:Personnel.StartPosition',
-            'Shoot_projectiles': 'ldcOnt:Conflict.Attack.AirstrikeMissileStrike',
-            'Communication_response': 'ldcOnt:Contact.Discussion',
-            'Chatting': 'ldcOnt:Contact.Discussion',
-            'Hostile_encounter': 'ldcOnt:Conflict.Attack',
-        }
-
-        if frame in frame_direct:
-            return frame_direct[frame]
+        if frame in aida_maps.frame_direct_map:
+            return aida_maps.frame_direct_map[frame]
 
         lemma_pred = lemma + '_pred'
         l_score, m_score, full_type = self.map_by_pred_match(
-            [frame],[frame, lemma_pred]
+            [frame], [frame, lemma_pred]
         )
 
         if m_score > 0.7 or l_score > 0.7:
@@ -319,19 +245,19 @@ class ZeroShotTypeMapper:
         scored_pairs.sort(reverse=True)
         return scored_pairs[0]
 
-    def map_event_type(self, event):
-        direct_type = self.token_direct(event['headLemma'])
-        if direct_type:
-            return direct_type
-
-        arg_type = self.arg_direct(event)
-        if arg_type:
-            return arg_type
+    def map_event_type(self, event, entities):
+        head_direct_type = self.head_token_direct(event['headLemma'])
+        if head_direct_type:
+            return head_direct_type
 
         if event['component'] == 'CrfMentionTypeAnnotator':
             r = self.map_from_event_type(event['type'], event['headLemma'])
             if r:
                 return r
+
+        arg_direct_type = self.arg_direct(event, entities)
+        if arg_direct_type:
+            return arg_direct_type
 
         if 'frame' in event:
             r = self.map_from_frame(event['frame'], event['headLemma'])
@@ -343,6 +269,18 @@ class ZeroShotTypeMapper:
             if r:
                 return r
 
+    def map_arg_role(self, event_type, arg_roles, arg_lemma):
+        if arg_lemma in aida_maps.arg_direct_map:
+            if event_type == aida_maps.arg_direct_map[0]:
+                return aida_maps.arg_direct_map[1]
+        else:
+            for role in arg_roles:
+                prefix, r = role.split(':')
+
+                if r in aida_maps.srl_ldc_arg_map[event_type]:
+                    return aida_maps.srl_ldc_arg_map[event_type][r]
+                else:
+                    print(f'Cannot determine role of {r} for {event_type}')
 
 
 def main(para, resources):
@@ -370,14 +308,15 @@ def main(para, resources):
                 }
 
             for evm in rich_doc['eventMentions']:
-                mapped_type = type_mapper.map_event_type(evm)
-                if mapped_type:
+                mapped_type = type_mapper.map_event_type(evm, entities)
+                if mapped_type and mapped_type in resources.onto_set:
                     evm['type'] = mapped_type
-                    # for arg in evm['arguments']:
-                    #     arg_lemma = entities[arg['entityId']]['lemma']
-                    #     type_mapper.map_arg_role_from_sim(
-                    #         evm['type'], arg['roles'], arg_lemma)
-
+                    for arg in evm['arguments']:
+                        arg_lemma = entities[arg['entityId']]['lemma']
+                        mapped_role = type_mapper.map_arg_role(
+                            evm['type'], arg['roles'], arg_lemma)
+                        if mapped_role and mapped_role in resources.onto_set:
+                            arg['roles'].insert(0, mapped_role)
             json.dump(rich_doc, fout)
 
 

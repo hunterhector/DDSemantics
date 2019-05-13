@@ -423,10 +423,15 @@ class ArgRunner(Configurable):
         if pre_validation:
             logging.info("Conduct a pre-validation, this will overwrite best "
                          "loss with the most recent loss.")
-            for i in range(5):
-                dev_loss, n_batches, n_instances = self.validation(
-                    dev_lines, dev_sampler)
-                input('tried validation once')
+
+            self.model.eval()
+            self.__test(self.model, test_lines=dev_lines,
+                        nid_detector=self.all_detector,
+                        auto_test=True)
+
+            dev_loss, n_batches, n_instances = self.validation(
+                dev_lines, dev_sampler)
+
             best_loss = dev_loss
             previous_dev_loss = dev_loss
 
