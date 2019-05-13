@@ -14,7 +14,7 @@ c.ArgModelPara.use_frame = True
 # c.ArgModelPara.num_event_components = 8
 c.ArgModelPara.num_extracted_features = 11
 c.ArgModelPara.multi_context = True
-c.ArgModelPara.max_events = 200
+c.ArgModelPara.max_events = 150
 c.ArgModelPara.batch_size = 100
 # Model parameters that changes the architectures
 c.ArgModelPara.loss = 'cross_entropy'
@@ -23,10 +23,10 @@ c.ArgModelPara.vote_pooling = 'kernel'
 # c.ArgModelPara.encode_distance = 'gaussian'
 c.ArgModelPara.num_distance_features = 9
 c.ArgModelPara.arg_representation_method = 'fix_slots'
-c.ArgModelPara.use_singleton = False
 
 # How to detect Null Instantiation.
 c.ArgModelPara.nid_method = 'gold'
+c.ArgModelPara.use_ghost = False
 
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "

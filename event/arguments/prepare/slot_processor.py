@@ -13,7 +13,7 @@ def remove_slot_info(arg_info):
     return content
 
 
-def get_dep_position(dep):
+def get_simple_dep(dep):
     if dep == 'nsubj' or dep == 'agent' or dep == 'subj':
         return 'subj'
     elif dep == 'dobj' or dep == 'nsubjpass' or dep == 'obj':
@@ -23,7 +23,11 @@ def get_dep_position(dep):
         return 'prep'
     elif dep.startswith('prep'):
         return 'prep'
-    return 'NA'
+    elif dep == 'NA':
+        return 'NA'
+    else:
+        # A generic "other" dependency
+        return 'dep'
 
 
 def sort_arg_priority(args, pred_start, pred_end):
@@ -226,11 +230,17 @@ class SlotHandler:
                     nombank_special_dep = this_nom_map[prop_role]
 
             if nombank_special_dep is None:
-                position = get_dep_position(dep)
+                position = get_simple_dep(dep)
             else:
-                position = get_dep_position(nombank_special_dep)
+                position = get_simple_dep(nombank_special_dep)
 
-            arg_candidates[position].append((dep, full_fe, arg, source))
+            if position == 'dep':
+                # Put other dependency to the prepositional slot in the fixed
+                # mode.
+                position = 'prep'
+                arg_candidates[position].append((dep, full_fe, arg, source))
+
+        # TODO: still some hairy stuff like duplicate FE slots.
 
         # Final step, organize all the args.
         final_args = {}
@@ -241,6 +251,14 @@ class SlotHandler:
                 event['predicate_start'],
                 event['predicate_end']
             )
+
+            if predicate == 'leak':
+                from pprint import pprint
+                pprint(arg_candidates)
+
+                pprint(p_arg_info)
+                input('check the sorted list')
+
             if position == 'NA':
                 unsure_args = [p[1] for p in p_arg_info]
             else:
@@ -250,4 +268,3 @@ class SlotHandler:
         final_args['prep'].extend(unsure_args)
 
         return final_args
-

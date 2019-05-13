@@ -31,7 +31,9 @@ from collections import Counter
 from event.arguments.util import ClozeSampler
 from event.util import load_mixed_configs
 import json
-from event.util import set_file_log, set_basic_log, ensure_dir
+from event.util import (
+    set_file_log, set_basic_log, ensure_dir, append_num_to_path
+)
 from time import localtime, strftime
 
 
@@ -116,6 +118,10 @@ class ArgRunner(Configurable):
         self.para = ArgModelPara(**kwargs)
         self.resources = ImplicitArgResources(**kwargs)
 
+        # Important, reader should be initialized earlier, because reader config
+        # may change the embedding size (adding some extra words)
+        self.reader = HashedClozeReader(self.resources, self.para)
+
         self.model_dir = self.para.model_dir
         self.debug_dir = self.para.debug_dir
 
@@ -139,11 +145,10 @@ class ArgRunner(Configurable):
         if self.para.model_type:
             if self.para.model_type == 'EventPairComposition':
                 self.model = EventCoherenceModel(
-                    self.para, self.resources).to(self.device)
+                    self.para, self.resources, self.device
+                ).to(self.device)
                 logging.info("Initialize model")
                 logging.info(str(self.model))
-
-        self.reader = HashedClozeReader(self.resources, self.para)
 
         # Set up Null Instantiation detector.
         if self.para.nid_method == 'gold':
@@ -190,19 +195,25 @@ class ArgRunner(Configurable):
         elif self.para.loss == 'pairwise_letor':
             raise NotImplementedError
 
-    def _compute_coh(self, batch_instance, batch_common):
-        correct_coh = self.model(batch_instance['gold'], batch_common)
-        cross_coh = self.model(batch_instance['cross'], batch_common)
-        inside_coh = self.model(batch_instance['inside'], batch_common)
-        return correct_coh, cross_coh, inside_coh
-
-    def _get_accuracy(self, cross_coh, inside_coh):
-        pass
-
     def _get_loss(self, batch_instance, batch_common, mask):
-        outputs = self._compute_coh(batch_instance, batch_common)
-        labels = [1, 0, 0]
-        loss = self.__loss(labels, outputs, mask)
+        cross_common = {'context_events': batch_common['context_events']}
+        inside_common = {'context_events': batch_common['context_events']}
+        for k, v in batch_common.items():
+            if k.startswith('cross_'):
+                cross_common[k.replace('cross_', '')] = v
+            elif k.startswith('inside_'):
+                inside_common[k.replace('inside_', '')] = v
+
+        cross_gold_coh = self.model(batch_instance['cross_gold'], cross_common)
+        cross_coh = self.model(batch_instance['cross'], cross_common)
+
+        inside_gold_coh = self.model(batch_instance['inside_gold'],
+                                     inside_common)
+        inside_coh = self.model(batch_instance['inside'], inside_common)
+
+        labels = [1, 0]
+        loss = self.__loss(labels, (cross_gold_coh, cross_coh), mask)
+        loss += self.__loss(labels, (inside_gold_coh, inside_coh), mask)
         return loss
 
     def __dump_stuff(self, key, obj):
@@ -269,7 +280,7 @@ class ArgRunner(Configurable):
 
     def __test(self, model, test_lines, nid_detector, auto_test=False,
                gold_field_name=None, eval_dir=None):
-        evaluator = ImplicitEval(eval_dir)
+        evaluator = ImplicitEval(self.reader.slot_names, eval_dir)
         doc_count = 0
 
         logging.debug(f"Auto test: {auto_test}")
@@ -279,7 +290,7 @@ class ArgRunner(Configurable):
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             (doc_id, instances, common_data, gold_labels, candidate_meta,
-             all_instance_meta,) = test_data
+             instance_meta,) = test_data
 
             coh = model(instances, common_data)
 
@@ -289,27 +300,11 @@ class ArgRunner(Configurable):
                 0].tolist()
             coh_scores = coh.data.cpu().numpy()[0].tolist()
 
-            for (((event_idx, slot_idx), result), meta) in zip(groupby(
-                    zip(zip(event_idxes, slot_idxes),
-                        zip(coh_scores, gold_labels),
-                        candidate_meta['predicate'],
-                        candidate_meta['entity_text'],
-                        ),
-                    key=itemgetter(0)), all_instance_meta):
-                _, score_labels, debug_preds, debug_entities = zip(*result)
-
-                slot_name = self.reader.slot_names[slot_idx]
-
-                evaluator.add_result(
-                    doc_id, event_idx, slot_name, score_labels, meta,
-                    {
-                        'predicate': debug_preds[0],
-                        'entity_text': debug_entities,
-                    }
-                )
+            evaluator.add_prediction(
+                doc_id, event_idxes, slot_idxes, coh_scores, gold_labels,
+                candidate_meta, instance_meta)
 
             doc_count += 1
-            # input(f'processed {doc_id}')
 
             if doc_count % 1000 == 0:
                 logging.info("Tested %d documents." % doc_count)
@@ -337,8 +332,8 @@ class ArgRunner(Configurable):
 
         if basic_para.model_name == 'w2v_baseline':
             # W2v baseline.
-            w2v_baseline = BaselineEmbeddingModel(self.para, self.resources).to(
-                self.device)
+            w2v_baseline = BaselineEmbeddingModel(
+                self.para, self.resources, self.device).to(self.device)
             w2v_baseline.eval()
             self.__test(
                 w2v_baseline, data_gen(basic_para.test_in),
@@ -349,7 +344,7 @@ class ArgRunner(Configurable):
         elif basic_para.model_name == 'most_freq_baseline':
             # Frequency baseline.
             most_freq_baseline = MostFrequentModel(
-                self.para, self.resources).to(self.device)
+                self.para, self.resources, self.device).to(self.device)
             most_freq_baseline.eval()
             self.__test(
                 most_freq_baseline, data_gen(basic_para.test_in),
@@ -564,6 +559,8 @@ def main():
             basic_para.log_dir,
             basic_para.model_name,
             basic_para.run_name + mode + '.log')
+
+        append_num_to_path(log_path)
         ensure_dir(log_path)
         set_file_log(log_path)
         print("Logging is set at: " + log_path)
@@ -584,14 +581,6 @@ def main():
         ),
         debug_dir=basic_para.debug_dir,
     )
-
-    if basic_para.debug_dir and not os.path.exists(basic_para.debug_dir):
-        os.makedirs(basic_para.debug_dir)
-
-    target_predicates = {
-        'bid', 'sell', 'loan', 'cost', 'plan', 'price', 'invest',
-        'lose', 'invest', 'fund',
-    }
 
     if basic_para.run_baselines:
         runner.run_baseline()

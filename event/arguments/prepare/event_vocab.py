@@ -6,6 +6,7 @@ import pickle
 from json.decoder import JSONDecodeError
 import logging
 from event import util
+from event.arguments.prepare.slot_processor import get_simple_dep
 
 
 class TypedEventVocab:
@@ -298,7 +299,8 @@ class EmbbedingVocab:
                 index += 1
 
 
-def create_sentences(doc, event_vocab, output_path, include_frame=False):
+def create_sentences(doc, event_vocab, output_path, include_frame=False,
+                     simple_dep=False):
     if include_frame:
         print("Adding frames to sentences.")
 
@@ -331,6 +333,10 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False):
 
                 for arg in event['arguments']:
                     dep = arg['dep']
+
+                    if simple_dep:
+                        dep = get_simple_dep(dep)
+
                     if (not include_frame) and dep == 'NA':
                         continue
 
@@ -368,21 +374,43 @@ def main(event_data, vocab_dir, sent_out):
     logging.info("Done loading vocabulary.")
 
     logging.info("Creating event sentences")
-    util.ensure_dir(sent_out)
-    sent_out_pred_only = sent_out + '_pred_only.gz'
-    sent_out_with_frame = sent_out + '_with_frames.gz'
+    sent_out_simple = sent_out + '_simple'
 
+    if not os.path.exists(sent_out):
+        os.makedirs(sent_out)
+
+    if not os.path.exists(sent_out_simple):
+        os.makedirs(sent_out_simple)
+
+    sent_out_pred_only = os.path.join(sent_out, 'sent_pred_only.gz')
     if not os.path.exists(sent_out_pred_only):
         create_sentences(event_data, event_vocab, sent_out_pred_only,
                          include_frame=False)
     else:
         logging.info(f"Will not overwrite {sent_out_pred_only}")
 
+    sent_out_with_frame = os.path.join(sent_out, 'sent_with_frames.gz')
     if not os.path.exists(sent_out_with_frame):
         create_sentences(event_data, event_vocab, sent_out_with_frame,
                          include_frame=True)
     else:
         logging.info(f"Will not overwrite {sent_out_with_frame}")
+
+    sent_out_pred_only_simple = os.path.join(sent_out_simple,
+                                             'sent_pred_only.gz')
+    if not os.path.exists(sent_out_pred_only_simple):
+        create_sentences(event_data, event_vocab, sent_out_pred_only_simple,
+                         include_frame=False, simple_dep=True)
+    else:
+        logging.info(f"Will not overwrite {sent_out_pred_only_simple}")
+
+    sent_out_with_frame_simple = os.path.join(sent_out_simple,
+                                              'sent_with_frames.gz')
+    if not os.path.exists(sent_out_with_frame_simple):
+        create_sentences(event_data, event_vocab, sent_out_with_frame_simple,
+                         include_frame=True, simple_dep=True)
+    else:
+        logging.info(f"Will not overwrite {sent_out_with_frame_simple}")
 
 
 if __name__ == '__main__':
@@ -390,7 +418,7 @@ if __name__ == '__main__':
                                       fromfile_prefix_chars='@')
     parser.add_argument('--vocab_dir', type=str, help='Vocabulary directory.')
     parser.add_argument('--input_data', type=str, help='Input data.')
-    parser.add_argument('--sent_out', type=str, help='Sentence out file.')
+    parser.add_argument('--sent_out', type=str, help='Sentence out dir.')
 
     util.set_basic_log()
 
