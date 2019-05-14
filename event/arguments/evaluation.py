@@ -151,14 +151,29 @@ class ImplicitEval:
 
     def collect(self):
         for k, v in self.overall_res['scores'].items():
-            self.overall_res['scores'][k] = v / self.overall_res[
-                'num_instances']
+            if self.overall_res['num_instances'] > 0:
+                self.overall_res['scores'][k] = v / self.overall_res[
+                    'num_instances']
+            else:
+                self.overall_res['scores'][k] = 0
 
         for k, v in self.overall_res['gold'].items():
-            self.overall_res['gold'][k] = v / self.overall_res['num_instances']
+            if self.overall_res['num_instances'] > 0:
+                self.overall_res['gold'][k] = v / self.overall_res[
+                    'num_instances']
+            else:
+                self.overall_res['gold'][k] = 0
 
-        prec = self.overall_res['tp'] / self.overall_res['num_fillable']
-        recall = self.overall_res['tp'] / self.overall_res['num_fill_attempts']
+        if self.overall_res['num_fillable'] > 0:
+            prec = self.overall_res['tp'] / self.overall_res['num_fillable']
+        else:
+            prec = 0
+
+        if self.overall_res['num_fill_attempts'] > 0:
+            recall = self.overall_res['tp'] / self.overall_res[
+                'num_fill_attempts']
+        else:
+            recall = 0
 
         self.overall_res['scores']['precision'] = prec
         self.overall_res['scores']['recall'] = recall

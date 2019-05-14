@@ -329,6 +329,8 @@ class ArgRunner(Configurable):
             basic_para.run_name,
         )
 
+        os.makedirs(test_results)
+
         # W2v baseline.
         logging.info("Run self study with w2v baseline.")
         w2v_baseline = BaselineEmbeddingModel(
@@ -406,8 +408,7 @@ class ArgRunner(Configurable):
                     gold_field_name=gold_field_name)
 
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, resume=False, pre_validation=False,
-              self_test_size=None):
+              model_out_dir=None, resume=False, pre_validation=False):
         target_pred_count = Counter()
 
         train_sampler = ClozeSampler()
@@ -473,19 +474,9 @@ class ArgRunner(Configurable):
             dev_lines = [l for l in
                          data_gen(train_in, until_line=validation_size)]
 
-        self_test_lines = None
-        if self_test_size:
-            self_test_lines = [l for l in
-                               data_gen(train_in, until_line=self_test_size)]
-
         if pre_validation:
             logging.info("Conduct a pre-validation, this will overwrite best "
                          "loss with the most recent loss.")
-
-            if self_test_lines:
-                self.__test(self.model, test_lines=self_test_lines,
-                            nid_detector=self.resolvable_detector,
-                            auto_test=True)
 
             dev_loss, n_batches, n_instances = self.validation(
                 dev_lines, dev_sampler
@@ -655,7 +646,6 @@ def main():
             validation_in=basic_para.valid_in,
             resume=True,
             pre_validation=basic_para.pre_val,
-            self_test_size=basic_para.self_test_size,
         )
 
     if basic_para.do_self_test:
