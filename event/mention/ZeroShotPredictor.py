@@ -302,16 +302,21 @@ class ZeroShotTypeMapper:
             for role in l_roles:
                 # Go through the event type hierarchy, then go up.
                 for t in l_types:
+                    if role in aida_maps.srl_ldc_arg_map.get(t, {}):
+                        return event_type + '_' + \
+                               aida_maps.srl_ldc_arg_map[t][role]
                     if role == 'ARGM-LOC' or role == 'Place':
                         return f'{event_type}_Place'
-                    if role in aida_maps.srl_ldc_arg_map.get(t, {}):
-                        return aida_maps.srl_ldc_arg_map[t][role]
                 else:
                     if role == 'ARGM-TMP' or role == 'Time':
                         continue
-                    print(evm.get('frame', 'no_frame'), event_head, arg_lemma)
-                    print(f'Cannot determine role of {role} for {event_type}')
-                    input('hey')
+                    debug_file.write(
+                        f"frame: {evm.get('frame', 'no_frame')} , "
+                        f"head: {event_head} , "
+                        f"arg: {arg_lemma} , "
+                        f"role: {role} , "
+                        f"event type: {event_type}\n"
+                    )
 
 
 def main(para, resources):
@@ -326,7 +331,7 @@ def main(para, resources):
         with open(os.path.join(para.input_path, p)) as fin, \
                 open(os.path.join(para.output_path, p), 'w') as fout:
             rich_doc = json.load(fin)
-            text = rich_doc['text']
+            # text = rich_doc['text']
 
             entities = {}
             for ent in rich_doc['entityMentions']:
@@ -342,12 +347,24 @@ def main(para, resources):
                 mapped_type = type_mapper.map_event_type(evm, entities)
                 if mapped_type and mapped_type in resources.onto_set:
                     evm['type'] = mapped_type
+
                     for arg in evm['arguments']:
+                        roles = []
                         mapped_role = type_mapper.map_arg_role(
                             evm, arg, entities)
-                        if mapped_role and mapped_role in resources.onto_set:
-                            arg['roles'].insert(0, mapped_role)
+
+                        if mapped_role:
+                            if mapped_role in resources.onto_set:
+                                roles.append(mapped_role)
+                            else:
+                                debug_file.write(f'Mapped role not valid: '
+                                                 f'{mapped_role}\n')
+
+                        roles.extend(arg['roles'])
+                        arg['roles'] = roles
+
             json.dump(rich_doc, fout)
+
 
 
 if __name__ == '__main__':
@@ -355,6 +372,7 @@ if __name__ == '__main__':
         input_path = Unicode(help='Input path.').tag(config=True)
         output_path = Unicode(help='Output path.').tag(config=True)
 
+    debug_file = open('debug.txt', 'w')
 
     set_basic_log()
     conf = load_mixed_configs()
@@ -362,3 +380,6 @@ if __name__ == '__main__':
     res = ZeroShotEventResources(config=conf)
 
     main(basic_para, res)
+
+    debug_file.close()
+

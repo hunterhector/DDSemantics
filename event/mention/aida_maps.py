@@ -146,6 +146,8 @@ srl_ldc_arg_map = {
     'ldcOnt:Movement.TransportArtifact.SendSupplyExport': {
         'Effect': 'Artifact',
         'ARG2': 'Transporter',
+        'ARGM-LOC': 'Destination',
+        'Place': 'Destination',
     },
     'ldcOnt:Personnel.StartPosition': {
         'Employee': 'Employee',
@@ -170,8 +172,12 @@ srl_ldc_arg_map = {
         'Speaker': 'Communicator',
     },
     'ldcOnt:Contact.Discussion': {
+        'Speaker': 'Participant',
+        'ARG0': 'Participant',
+        'ARG2': 'Participant',
+    },
+    'ldcOnt:Contact.MediaStatement': {
         'Speaker': 'Communicator',
-        'ARG2': 'Communicator'
     },
     'ldcOnt:Transaction.TransferMoney.BorrowLend': {
         'ARG2': 'Recipient',
@@ -186,11 +192,6 @@ srl_ldc_arg_map = {
         'Agent': 'Transporter',
     },
 }
-
-# Everyone can have a place now. We will double check with the ontology to see
-# if this role does not exist.
-for etype, e_args in srl_ldc_arg_map.items():
-    e_args['ARGM-LOC'] = f'{etype}_Place'
 
 arg_direct_map = {
     'missile': ('ldcOnt:Conflict.Attack.AirstrikeMissileStrike',
