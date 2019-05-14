@@ -26,6 +26,11 @@ ldc_ontology_skips = {
     'Existence',
 }
 
+kbp_frame_correction = {
+    ('Justice_Arrestjail', 'Conquering'):
+        'ldcOnt:Transaction.Transaction.TransferControl',
+}
+
 token_direct_map = {
     'seize': 'ldcOnt:Transaction.Transaction.TransferControl',
     'casualty': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',

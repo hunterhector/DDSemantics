@@ -143,13 +143,8 @@ class ZeroShotTypeMapper:
                 self.onto_arg_domain[frame['domain']].append(role_type)
 
     def head_token_direct(self, lemma):
-        token_direct_map = {
-            'seize': 'ldcOnt:Transaction.Transaction.TransferControl',
-            'casualty': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',
-        }
-
-        if lemma in token_direct_map:
-            return token_direct_map[lemma]
+        if lemma in aida_maps.token_direct_map:
+            return aida_maps.token_direct_map[lemma]
 
     def arg_direct(self, content, entities):
         for arg in content['arguments']:
@@ -253,7 +248,11 @@ class ZeroShotTypeMapper:
             return head_direct_type
 
         if event['component'] == 'CrfMentionTypeAnnotator':
-            r = self.map_from_event_type(event['type'], event['headLemma'])
+            t = event['type']
+            if (t, event.get('frame', 'NA')) in aida_maps.kbp_frame_correction:
+                t = aida_maps.kbp_frame_correction(t, event['frame'])
+
+            r = self.map_from_event_type(t, event['headLemma'])
             if r:
                 return r
 
@@ -366,13 +365,13 @@ def main(para, resources):
             json.dump(rich_doc, fout)
 
 
-
 if __name__ == '__main__':
     class Basic(Configurable):
         input_path = Unicode(help='Input path.').tag(config=True)
         output_path = Unicode(help='Output path.').tag(config=True)
 
-    debug_file = open('debug.txt', 'w')
+
+    debug_file = open('zero_shot_event_debug.txt', 'w')
 
     set_basic_log()
     conf = load_mixed_configs()
@@ -382,4 +381,3 @@ if __name__ == '__main__':
     main(basic_para, res)
 
     debug_file.close()
-
