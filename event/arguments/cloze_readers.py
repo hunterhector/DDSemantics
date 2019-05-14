@@ -422,7 +422,7 @@ class HashedClozeReader:
         ]
 
         # Some need to be done in iteration.
-        entity_positions = defaultdict(list)
+        explicit_entity_positions = defaultdict(list)
         doc_args = []
 
         for evm_index, event in enumerate(doc_info['events']):
@@ -459,7 +459,7 @@ class HashedClozeReader:
                         if not arg.get('implicit', False):
                             # We do not calculate distance features for implicit
                             # arguments.
-                            entity_positions[eid].append(
+                            explicit_entity_positions[eid].append(
                                 (evm_index, slot, sentence_id)
                             )
 
@@ -474,6 +474,16 @@ class HashedClozeReader:
             arg_list = self.get_args_as_list(event_args, False)
 
             for t_arg_index, (target_slot, target_arg) in enumerate(arg_list):
+                if len(target_arg) == 0:
+                    continue
+
+                arg_entity_id = target_arg['entity_id']
+                if len(explicit_entity_positions.get(arg_entity_id, [])) > 1:
+                    # Fix the resolvable label.
+                    target_arg['resolvable'] = True
+                else:
+                    target_arg['resolvable'] = False
+
                 if nid_detector.should_fill(event, target_slot, target_arg):
                     test_rank_list, has_true = self.create_slot_candidates(
                         target_slot, target_arg, doc_args, evm_index,
@@ -512,7 +522,8 @@ class HashedClozeReader:
                                 candidate_args.append((s, arg))
 
                         self.assemble_instance(
-                            instance_data, features_by_eid, entity_positions,
+                            instance_data, features_by_eid,
+                            explicit_entity_positions,
                             evm_index, pred_sent, pred_idx, event['frame'],
                             candidate_args, filler_eid,
                         )

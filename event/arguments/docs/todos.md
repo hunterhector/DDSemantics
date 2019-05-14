@@ -1,12 +1,10 @@
 # List of TODOs 
 
 1. Richer output in evaluation
-    - Add F1
+    - ~~Add F1~~
     - Add Dice (partial argument overlap)
     - Add a score with gold candidates
 1. Design core experiments: pooling, attention, distance
-1. Study w2v baseline carefully
-1. We are using the detailed dependency labels
 1. Distance features
     - Distance cutoff baseline
     - Fix the distance embedding error, should deal with infinity much better
@@ -82,3 +80,5 @@ not resolvable.
 1. ~~Embedding baseline result too high~~
     - ~~Check after removing unk~~
 1. ~~Make sure training reader works properly~~
+1. ~~Study w2v baseline carefully~~
+1. ~~We are using the detailed dependency labels~~

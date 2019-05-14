@@ -54,6 +54,7 @@ c.ImplicitArgResources.word_vocab_path = os.path.join(
 c.Basic.train_in = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
                                 'hashed')
 c.Basic.validation_size = 10000
+c.Basic.self_test_size = 100
 c.Basic.debug_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
                                  'debug')
 c.Basic.log_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,

@@ -156,7 +156,7 @@ class ArgRunner(Configurable):
         elif self.para.nid_method == 'train':
             self.nid_detector = TrainableNullArgDetector()
 
-        self.all_detector = ResolvableArgDetector()
+        self.resolvable_detector = ResolvableArgDetector()
 
     def _assert(self):
         if self.resources.word_embedding:
@@ -280,6 +280,8 @@ class ArgRunner(Configurable):
 
     def __test(self, model, test_lines, nid_detector, auto_test=False,
                gold_field_name=None, eval_dir=None):
+        self.model.eval()
+
         evaluator = ImplicitEval(self.reader.slot_names, eval_dir)
         doc_count = 0
 
@@ -292,29 +294,76 @@ class ArgRunner(Configurable):
             (doc_id, instances, common_data, gold_labels, candidate_meta,
              instance_meta,) = test_data
 
-            coh = model(instances, common_data)
+            with torch.no_grad():
+                coh = model(instances, common_data)
 
-            event_idxes = common_data['event_indices'].data.cpu().numpy()[
-                0].tolist()
-            slot_idxes = common_data['slot_indices'].data.cpu().numpy()[
-                0].tolist()
-            coh_scores = coh.data.cpu().numpy()[0].tolist()
+                event_idxes = common_data['event_indices'].data.cpu().numpy()[
+                    0].tolist()
+                slot_idxes = common_data['slot_indices'].data.cpu().numpy()[
+                    0].tolist()
+                coh_scores = coh.data.cpu().numpy()[0].tolist()
 
-            evaluator.add_prediction(
-                doc_id, event_idxes, slot_idxes, coh_scores, gold_labels,
-                candidate_meta, instance_meta)
+                evaluator.add_prediction(
+                    doc_id, event_idxes, slot_idxes, coh_scores, gold_labels,
+                    candidate_meta, instance_meta)
 
-            doc_count += 1
+                doc_count += 1
 
-            if doc_count % 1000 == 0:
-                logging.info("Tested %d documents." % doc_count)
+                if doc_count % 1000 == 0:
+                    logging.info("Tested %d instances." % doc_count)
 
-        logging.info("Finish testing %d documents." % doc_count)
+        logging.info("Finish testing %d instances." % doc_count)
 
         if eval_dir:
             logging.info("Writing evaluation output to %s." % eval_dir)
 
-        evaluator.run()
+        evaluator.collect()
+
+        self.model.train()
+
+    def self_study(self, train_in, self_test_size):
+        dev_lines = [l for l in data_gen(train_in, until_line=self_test_size)]
+
+        test_results = os.path.join(
+            basic_para.log_dir, basic_para.model_name, 'self_test_results',
+            basic_para.run_name,
+        )
+
+        # W2v baseline.
+        logging.info("Run self study with w2v baseline.")
+        w2v_baseline = BaselineEmbeddingModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            w2v_baseline, dev_lines,
+            nid_detector=self.nid_detector,
+            eval_dir=test_results,
+            gold_field_name=basic_para.gold_field_name,
+        )
+
+        # Frequency baseline.
+        logging.info("Run self study with frequency baseline.")
+        most_freq_baseline = MostFrequentModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            most_freq_baseline, dev_lines,
+            nid_detector=self.nid_detector,
+            eval_dir=test_results,
+            gold_field_name=basic_para.gold_field_name,
+        )
+
+        # Checkpoint test.
+        logging.info("Run self study with the checkpoint.")
+        checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
+        if os.path.isfile(checkpoint_path):
+            logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+            checkpoint = torch.load(checkpoint_path)
+            self.model.load_state_dict(checkpoint['state_dict'])
+            self.__test(
+                self.model, test_lines=dev_lines,
+                nid_detector=self.resolvable_detector,
+                eval_dir=test_results,
+                auto_test=True,
+            )
 
     def run_baseline(self):
         logging.info(f"Test baseline models on {basic_para.test_in}.")
@@ -330,38 +379,35 @@ class ArgRunner(Configurable):
         if not os.path.exists(test_results):
             os.makedirs(test_results)
 
-        if basic_para.model_name == 'w2v_baseline':
-            # W2v baseline.
-            w2v_baseline = BaselineEmbeddingModel(
-                self.para, self.resources, self.device).to(self.device)
-            w2v_baseline.eval()
-            self.__test(
-                w2v_baseline, data_gen(basic_para.test_in),
-                nid_detector=self.nid_detector,
-                eval_dir=test_results,
-                gold_field_name=basic_para.gold_field_name
-            )
-        elif basic_para.model_name == 'most_freq_baseline':
-            # Frequency baseline.
-            most_freq_baseline = MostFrequentModel(
-                self.para, self.resources, self.device).to(self.device)
-            most_freq_baseline.eval()
-            self.__test(
-                most_freq_baseline, data_gen(basic_para.test_in),
-                nid_detector=self.nid_detector,
-                eval_dir=test_results,
-                gold_field_name=basic_para.gold_field_name
-            )
+        # W2v baseline.
+        w2v_baseline = BaselineEmbeddingModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            w2v_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=test_results,
+            gold_field_name=basic_para.gold_field_name
+        )
+
+        # Frequency baseline.
+        most_freq_baseline = MostFrequentModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            most_freq_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=test_results,
+            gold_field_name=basic_para.gold_field_name
+        )
 
     def test(self, test_in, eval_dir, gold_field_name):
         logging.info("Test on [%s]." % test_in)
         self.__load_best()
-        self.model.eval()
         self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir,
                     gold_field_name=gold_field_name)
 
     def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, resume=False, pre_validation=False):
+              model_out_dir=None, resume=False, pre_validation=False,
+              self_test_size=None):
         target_pred_count = Counter()
 
         train_sampler = ClozeSampler()
@@ -406,6 +452,13 @@ class ArgRunner(Configurable):
                 best_loss = checkpoint['best_loss']
                 previous_dev_loss = checkpoint['previous_dev_loss']
                 worse = checkpoint['worse']
+
+                logging.info(
+                    f"Loaded check point, epoch {checkpoint['epoch']}, "
+                    f"best loss {checkpoint['best_loss']}, "
+                    f"previous dev loss {checkpoint['previous_dev_loss']}, "
+                    f"worse {checkpoint['worse']} times."
+                )
             else:
                 logging.info(
                     "No model to resume at '{}', starting from scratch.".format(
@@ -420,20 +473,28 @@ class ArgRunner(Configurable):
             dev_lines = [l for l in
                          data_gen(train_in, until_line=validation_size)]
 
+        self_test_lines = None
+        if self_test_size:
+            self_test_lines = [l for l in
+                               data_gen(train_in, until_line=self_test_size)]
+
         if pre_validation:
             logging.info("Conduct a pre-validation, this will overwrite best "
                          "loss with the most recent loss.")
 
-            self.model.eval()
-            self.__test(self.model, test_lines=dev_lines,
-                        nid_detector=self.all_detector,
-                        auto_test=True)
+            if self_test_lines:
+                self.__test(self.model, test_lines=self_test_lines,
+                            nid_detector=self.resolvable_detector,
+                            auto_test=True)
 
             dev_loss, n_batches, n_instances = self.validation(
-                dev_lines, dev_sampler)
+                dev_lines, dev_sampler
+            )
 
             best_loss = dev_loss
             previous_dev_loss = dev_loss
+
+            input('wait here')
 
         # Training stats.
         total_loss = 0
@@ -452,6 +513,7 @@ class ArgRunner(Configurable):
 
                 loss = self._get_loss(batch_instance, batch_info, mask)
 
+                # Case of a bug.
                 if not loss:
                     self.__save_checkpoint({
                         'epoch': epoch + 1,
@@ -505,13 +567,6 @@ class ArgRunner(Configurable):
             dev_loss, n_batches, n_instances = self.validation(
                 dev_lines, dev_sampler)
 
-            logging.info("Computing test result on dev set.")
-            self.model.eval()
-            self.__test(self.model, test_lines=dev_lines,
-                        nid_detector=self.all_detector,
-                        auto_test=True)
-            self.model.train()
-
             logging.info(
                 "Finished epoch {epoch:d}, avg. loss {loss:.4f}, "
                 "validation loss {dev_loss:.4f}".format(
@@ -527,11 +582,14 @@ class ArgRunner(Configurable):
 
             logging.info("Best loss is %.4f." % best_loss)
 
-            for pred, count in target_pred_count.items():
-                logging.info(
-                    "Epoch %d: %s is observed %d times." % (epoch, pred, count)
-                )
+            # A small test.
+            if self_test_lines is not None:
+                logging.info("Computing test result on a small dev set.")
+                self.__test(self.model, test_lines=self_test_lines,
+                            nid_detector=self.resolvable_detector,
+                            auto_test=True)
 
+            # Whether stop now.
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
                 worse = 0
@@ -597,6 +655,14 @@ def main():
             validation_in=basic_para.valid_in,
             resume=True,
             pre_validation=basic_para.pre_val,
+            self_test_size=basic_para.self_test_size,
+        )
+
+    if basic_para.do_self_test:
+        # runner.
+        runner.self_study(
+            basic_para.train_in,
+            self_test_size=basic_para.self_test_size,
         )
 
     if basic_para.do_test:
@@ -624,6 +690,8 @@ if __name__ == '__main__':
         test_out = Unicode(help='Test res.').tag(config=True)
         valid_in = Unicode(help='Validation in.').tag(config=True)
         validation_size = Integer(help='Validation size.').tag(config=True)
+        self_test_size = Integer(help='Self test document size.').tag(
+            config=True)
         debug_dir = Unicode(help='Debug output.').tag(config=True)
         model_name = Unicode(help='Model name.', default_value='basic').tag(
             config=True)
@@ -637,6 +705,8 @@ if __name__ == '__main__':
                        default_value=False).tag(config=True)
         do_training = Bool(help='Flag for conducting training.',
                            default_value=False).tag(config=True)
+        do_self_test = Bool(help='Flag for a self test study.',
+                            default_value=False).tag(config=True)
         do_test = Bool(help='Flag for conducting testing.',
                        default_value=False).tag(config=True)
         run_baselines = Bool(help='Run baseline.', default_value=False).tag(
