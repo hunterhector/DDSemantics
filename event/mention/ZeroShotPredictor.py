@@ -246,6 +246,8 @@ class ZeroShotTypeMapper:
         return scored_pairs[0]
 
     def map_event_type(self, event, entities):
+        # TODO: ThreatenCoerce?
+
         head_direct_type = self.head_token_direct(event['headLemma'])
         if head_direct_type:
             return head_direct_type
@@ -269,18 +271,47 @@ class ZeroShotTypeMapper:
             if r:
                 return r
 
-    def map_arg_role(self, event_type, arg_roles, arg_lemma):
+    def map_arg_role(self, evm, arg, entities):
+        arg_lemma = entities[arg['entityId']]['lemma']
+        event_type = evm['type']
+        event_head = evm['headLemma']
+
+        # List the event types in a hierarchy, with the specific one first. In
+        # such cases, we will look for the low ontology items first.
+        l_types = [event_type]
+        t_parts = event_type.split('.')
+        if len(t_parts) > 2:
+            l_types.append('.'.join(t_parts[:2]))
+        if len(t_parts) > 1:
+            l_types.append('.'.join(t_parts[:1]))
+        l_types.append(t_parts[0])
+
+        # List the roles, with frame element first. We trust frame more.
+        l_roles = []
+        for role in arg['roles']:
+            prefix, r = role.split(':')
+            if prefix == 'fn':
+                l_roles.insert(0, r)
+            else:
+                l_roles.append(r)
+
         if arg_lemma in aida_maps.arg_direct_map:
             if event_type == aida_maps.arg_direct_map[0]:
                 return aida_maps.arg_direct_map[1]
         else:
-            for role in arg_roles:
-                prefix, r = role.split(':')
-
-                if r in aida_maps.srl_ldc_arg_map[event_type]:
-                    return aida_maps.srl_ldc_arg_map[event_type][r]
+            for role in l_roles:
+                # Go through the event type hierarchy, then go up.
+                for t in l_types:
+                    if role == 'ARGM-LOC' or role == 'Place':
+                        return f'{event_type}_Place'
+                    if role in aida_maps.srl_ldc_arg_map.get(t, {}):
+                        return aida_maps.srl_ldc_arg_map[t][role]
                 else:
-                    print(f'Cannot determine role of {r} for {event_type}')
+                    if role == 'ARGM-TMP' or role == 'Time':
+                        continue
+                    print(evm.get('frame', 'no_frame'), event_head, arg_lemma)
+                    print(f'Cannot determine role of {role} for {event_type}')
+                    input('hey')
 
 
 def main(para, resources):
@@ -312,9 +343,8 @@ def main(para, resources):
                 if mapped_type and mapped_type in resources.onto_set:
                     evm['type'] = mapped_type
                     for arg in evm['arguments']:
-                        arg_lemma = entities[arg['entityId']]['lemma']
                         mapped_role = type_mapper.map_arg_role(
-                            evm['type'], arg['roles'], arg_lemma)
+                            evm, arg, entities)
                         if mapped_role and mapped_role in resources.onto_set:
                             arg['roles'].insert(0, mapped_role)
             json.dump(rich_doc, fout)
