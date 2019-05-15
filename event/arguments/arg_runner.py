@@ -44,18 +44,19 @@ def data_gen(data_path, from_line=None, until_line=None):
     if os.path.isdir(data_path):
         last_file = None
         for f in sorted(os.listdir(data_path)):
-            with open(os.path.join(data_path, f)) as fin:
-                for line in fin:
-                    line_num += 1
-                    if from_line and line_num <= from_line:
-                        continue
-                    if until_line and line_num > until_line:
-                        break
+            if not f.startswith('.') and f.endswith('.gz'):
+                with open(os.path.join(data_path, f)) as fin:
+                    for line in fin:
+                        line_num += 1
+                        if from_line and line_num <= from_line:
+                            continue
+                        if until_line and line_num > until_line:
+                            break
 
-                    if not last_file == f:
-                        logging.info("Reading from {}".format(f))
-                        last_file = f
-                    yield line
+                        if not last_file == f:
+                            logging.info("Reading from {}".format(f))
+                            last_file = f
+                        yield line
     else:
         with open(data_path) as fin:
             logging.info("Reading from {}".format(data_path))

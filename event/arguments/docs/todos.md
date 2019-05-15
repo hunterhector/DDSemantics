@@ -4,6 +4,7 @@
     - ~~Add F1~~
     - Add Dice (partial argument overlap)
     - Add a score with gold candidates
+    - Only score candidates with in 2 sentence back and 1 sentence forward
 1. Design core experiments: pooling, attention, distance
 1. Distance features
     - Distance cutoff baseline
