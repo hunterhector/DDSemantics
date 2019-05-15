@@ -579,9 +579,9 @@ class ArgRunner(Configurable):
 
                 if not batch_count % log_freq:
                     logging.info(
-                        "Epoch {}, Batch {} ({} instances); Recent (100) avg. "
+                        "Epoch {}, Batch {} ({} instances); Recent ({}) avg. "
                         "loss {:.5f}; Overall avg. loss {:.5f}".format(
-                            epoch, batch_count, instance_count,
+                            epoch, batch_count, instance_count, log_freq,
                             recent_loss / log_freq,
                             total_loss / batch_count)
                     )
