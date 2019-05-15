@@ -28,6 +28,11 @@ c.ArgModelPara.arg_representation_method = 'fix_slots'
 c.ArgModelPara.nid_method = 'gold'
 c.ArgModelPara.use_ghost = False
 
+# Baseline stuff.
+c.ArgModelPara.w2v_baseline_method = 'max_sim'  # max_sim, topk_average, average
+c.ArgModelPara.w2v_event_repr = 'concat'  # concat, sum
+c.ArgModelPara.w2v_baseline_avg_topk = 3  # only when topk_average
+
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "
                    "variable: 'implicit_corpus'")
@@ -54,7 +59,6 @@ c.ImplicitArgResources.word_vocab_path = os.path.join(
 c.Basic.train_in = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
                                 'hashed')
 c.Basic.validation_size = 10000
-c.Basic.self_test_size = 100
 c.Basic.debug_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,
                                  'debug')
 c.Basic.log_dir = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,

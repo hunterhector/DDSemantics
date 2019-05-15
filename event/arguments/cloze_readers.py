@@ -330,7 +330,7 @@ class HashedClozeReader:
 
         return features_by_eid
 
-    def create_slot_candidates(self, target_slot, target_arg, doc_args,
+    def create_slot_candidates(self, target_arg, doc_args,
                                target_evm_id, pred_sent):
         # Replace the target slot with other entities in the doc.
         dist_arg_list = []
@@ -486,8 +486,7 @@ class HashedClozeReader:
 
                 if nid_detector.should_fill(event, target_slot, target_arg):
                     test_rank_list, has_true = self.create_slot_candidates(
-                        target_slot, target_arg, doc_args, evm_index,
-                        pred_sent
+                        target_arg, doc_args, evm_index, pred_sent
                     )
 
                     # Prepare instance data for each possible instance.
@@ -582,7 +581,7 @@ class HashedClozeReader:
                         'slot_indices': cloze_slot_indices,
                     }
 
-                    for event_rep in all_event_reps:
+                    for context_eid, event_rep in enumerate(all_event_reps):
                         for key, value in event_rep.items():
                             try:
                                 common_data['context_' + key].append(value)

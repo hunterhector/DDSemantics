@@ -7,7 +7,7 @@ from event import torch_util
 
 
 class ArgCompatibleModel(nn.Module):
-    def __init__(self, para, resources, device):
+    def __init__(self, para, resources, device, model_name):
         super(ArgCompatibleModel, self).__init__()
         self.para = para
 
@@ -19,7 +19,26 @@ class ArgCompatibleModel(nn.Module):
 
         self.device = device
 
+        self.name = model_name
+
         self.__load_embeddings(resources)
+
+    def self_event_mask(self, batch_event_indices, batch_size, event_size,
+                        context_size):
+        """
+        Return a matrix to mask out the scores from the current event.
+        :param batch_event_indices:
+        :param batch_size:
+        :param event_size:
+        :param context_size:
+        :return:
+        """
+        selector = batch_event_indices.unsqueeze(-1)
+        one_zeros = torch.ones(
+            batch_size, event_size, context_size, dtype=torch.float32,
+        ).to(self.device)
+        one_zeros.scatter_(-1, selector, 0)
+        return one_zeros
 
     def __load_embeddings(self, resources):
         logging.info("Loading %d x %d event embedding." % (
@@ -65,9 +84,21 @@ class ArgCompatibleModel(nn.Module):
             )
 
 
+class RandomBaseline(ArgCompatibleModel):
+    def __init__(self, para, resources, device):
+        super(RandomBaseline, self).__init__(para, resources, device,
+                                             'random_baseline')
+
+    def forward(self, batch_event_data, batch_info):
+        batch_features = batch_event_data['features']
+        a, b, c = batch_features.shape
+        return torch.rand(a, b, c)
+
+
 class MostFrequentModel(ArgCompatibleModel):
     def __init__(self, para, resources, device):
-        super(MostFrequentModel, self).__init__(para, resources, device)
+        super(MostFrequentModel, self).__init__(para, resources, device,
+                                                'most_freq_baseline')
         self.para = para
 
     def forward(self, batch_event_data, batch_info):
@@ -78,7 +109,8 @@ class MostFrequentModel(ArgCompatibleModel):
 
 class BaselineEmbeddingModel(ArgCompatibleModel):
     def __init__(self, para, resources, device):
-        super(BaselineEmbeddingModel, self).__init__(para, resources, device)
+        super(BaselineEmbeddingModel, self).__init__(para, resources, device,
+                                                     'w2v_baseline')
         self.para = para
 
         self._score_method = para.w2v_baseline_method
@@ -87,16 +119,10 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
         batch_event_rep = batch_event_data['events']
-        # batch x instance_size x n_distance_features
-        batch_distances = batch_event_data['distances']
-        # batch x instance_size x n_features
-        batch_features = batch_event_data['features']
 
         # batch x context_size x event_component
         batch_context = batch_info['context_events']
-        # batch x instance_size
-        batch_slots = batch_info['slot_indices']
-        # batch x instance_size
+
         batch_event_indices = batch_info['event_indices']
 
         # Add embedding dimension at the end.
@@ -132,9 +158,15 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         nom_event_emb = F.normalize(flat_event_emb, 2, -1)
         nom_context_emb = F.normalize(flat_context_emb, 2, -1)
 
+        bs, event_size, _ = batch_event_rep.shape
+        bs, context_size, _ = batch_context.shape
+        self_mask = self.self_event_mask(batch_event_indices, bs, event_size,
+                                         context_size)
+
         # Cosine similarities to the context.
         # batch x instance_size x context_size
         trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
+        trans *= self_mask
 
         # batch x instance_size
         if self._score_method == 'max_sim':
@@ -250,13 +282,13 @@ def _mlp(layers, input_data, activation=F.relu):
 
 
 class EventCoherenceModel(ArgCompatibleModel):
-    def __init__(self, para, resources, device):
-        super(EventCoherenceModel, self).__init__(para, resources, device)
-        logging.info("Pair composition network started, with %d "
-                     "extracted features and %d distance features." % (
-                         self.para.num_extracted_features,
-                         self.para.num_distance_features
-                     ))
+    def __init__(self, para, resources, device, model_name):
+        super(EventCoherenceModel, self).__init__(para, resources, device,
+                                                  model_name)
+        logging.info(f"Pair composition network {model_name} started, "
+                     f"with {self.para.num_extracted_features} extracted"
+                     f" features and {self.para.num_distance_features} "
+                     f"distance features.")
 
         self.arg_composition_model = ArgCompositionModel(para, resources)
 
@@ -502,41 +534,16 @@ class EventCoherenceModel(ArgCompatibleModel):
         # batch x instance_size x feature_size_1
         extracted_features = torch.cat(l_extracted, -1)
 
-        if self.__debug_show_shapes:
-            print(extracted_features.shape)
-
-        if self.__debug_show_shapes:
-            print("Event and context repr")
-            print(event_repr.shape)
-            print(context_repr.shape)
-
-        bs, event_size, event_repr_dim = event_repr.shape
-        bs, context_size, event_repr_dim = context_repr.shape
-
-        selector = batch_event_indices.unsqueeze(-1)
-
-        if self.__debug_show_shapes:
-            print("Create the selecting matrix")
-            print(selector.shape)
-
-        one_zeros = torch.ones(
-            bs, event_size, context_size, dtype=torch.float32,
-        ).to(self.device)
-        one_zeros.scatter_(-1, selector, 0)
+        bs, event_size, _ = event_repr.shape
+        bs, context_size, _ = context_repr.shape
+        self_mask = self.self_event_mask(batch_event_indices, bs, event_size,
+                                         context_size)
 
         # Now compute the coherent features with all context events.
-        coh_features = self.coh(event_repr, context_repr, one_zeros)
+        coh_features = self.coh(event_repr, context_repr, self_mask)
 
         # batch x instance_size x feature_size_2
         all_features = torch.cat((extracted_features, coh_features), -1)
-
-        if self.__debug_show_shapes:
-            print("One zero")
-            print(one_zeros.shape)
-            print("Coh features")
-            print(coh_features.shape)
-            print("all feature")
-            print(all_features.shape)
 
         # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)

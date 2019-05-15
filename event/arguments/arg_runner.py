@@ -4,6 +4,7 @@ from event.arguments.arg_models import (
     EventCoherenceModel,
     BaselineEmbeddingModel,
     MostFrequentModel,
+    RandomBaseline,
 )
 from traitlets import (
     Unicode,
@@ -115,6 +116,7 @@ class ArgRunner(Configurable):
     def __init__(self, **kwargs):
         super(ArgRunner, self).__init__(**kwargs)
 
+        self.basic_para = Basic(**kwargs)
         self.para = ArgModelPara(**kwargs)
         self.resources = ImplicitArgResources(**kwargs)
 
@@ -122,8 +124,10 @@ class ArgRunner(Configurable):
         # may change the embedding size (adding some extra words)
         self.reader = HashedClozeReader(self.resources, self.para)
 
-        self.model_dir = self.para.model_dir
-        self.debug_dir = self.para.debug_dir
+        self.model_dir = os.path.join(self.basic_para.model_dir,
+                                      self.basic_para.model_name)
+        self.debug_dir = os.path.join(self.basic_para.debug_dir,
+                                      self.basic_para.model_name)
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -145,7 +149,8 @@ class ArgRunner(Configurable):
         if self.para.model_type:
             if self.para.model_type == 'EventPairComposition':
                 self.model = EventCoherenceModel(
-                    self.para, self.resources, self.device
+                    self.para, self.resources, self.device,
+                    self.basic_para.model_name
                 ).to(self.device)
                 logging.info("Initialize model")
                 logging.info(str(self.model))
@@ -283,7 +288,7 @@ class ArgRunner(Configurable):
         self.model.eval()
 
         evaluator = ImplicitEval(self.reader.slot_names, eval_dir)
-        doc_count = 0
+        instance_count = 0
 
         logging.debug(f"Auto test: {auto_test}")
 
@@ -307,12 +312,12 @@ class ArgRunner(Configurable):
                     doc_id, event_idxes, slot_idxes, coh_scores, gold_labels,
                     candidate_meta, instance_meta)
 
-                doc_count += 1
+                instance_count += 1
 
-                if doc_count % 1000 == 0:
-                    logging.info("Tested %d instances." % doc_count)
+                if instance_count % 1000 == 0:
+                    logging.info("Tested %d instances." % instance_count)
 
-        logging.info("Finish testing %d instances." % doc_count)
+        logging.info("Finish testing %d instances." % instance_count)
 
         if eval_dir:
             logging.info("Writing evaluation output to %s." % eval_dir)
@@ -321,25 +326,38 @@ class ArgRunner(Configurable):
 
         self.model.train()
 
-    def self_study(self, train_in, self_test_size):
-        dev_lines = [l for l in data_gen(train_in, until_line=self_test_size)]
+    def self_study(self, basic_para, self_test_size):
+        dev_lines = [l for l in data_gen(
+            basic_para.train_in, until_line=self_test_size)]
 
-        test_results = os.path.join(
-            basic_para.log_dir, basic_para.model_name, 'self_test_results',
-            basic_para.run_name,
+        # Random baseline.
+        logging.info("Run self study with random baseline.")
+        random_baseline = RandomBaseline(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            random_baseline, dev_lines,
+            nid_detector=self.resolvable_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, random_baseline.name,
+                f'self_study_{self_test_size}',
+            ),
+            gold_field_name=basic_para.gold_field_name,
+            auto_test=True,
         )
-
-        os.makedirs(test_results)
 
         # W2v baseline.
         logging.info("Run self study with w2v baseline.")
         w2v_baseline = BaselineEmbeddingModel(
             self.para, self.resources, self.device).to(self.device)
         self.__test(
-            w2v_baseline, dev_lines,
-            nid_detector=self.nid_detector,
-            eval_dir=test_results,
+            w2v_baseline, test_lines=dev_lines,
+            nid_detector=self.resolvable_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, w2v_baseline.name,
+                f'self_study_{self_test_size}',
+            ),
             gold_field_name=basic_para.gold_field_name,
+            auto_test=True,
         )
 
         # Frequency baseline.
@@ -347,27 +365,38 @@ class ArgRunner(Configurable):
         most_freq_baseline = MostFrequentModel(
             self.para, self.resources, self.device).to(self.device)
         self.__test(
-            most_freq_baseline, dev_lines,
-            nid_detector=self.nid_detector,
-            eval_dir=test_results,
+            most_freq_baseline, test_lines=dev_lines,
+            nid_detector=self.resolvable_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, most_freq_baseline.name,
+                f'self_study_{self_test_size}',
+            ),
             gold_field_name=basic_para.gold_field_name,
+            auto_test=True,
         )
 
         # Checkpoint test.
         logging.info("Run self study with the checkpoint.")
+        print(self.model_dir)
+
         checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
         if os.path.isfile(checkpoint_path):
             logging.info("Loading checkpoint '{}'".format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
             self.model.load_state_dict(checkpoint['state_dict'])
+
             self.__test(
                 self.model, test_lines=dev_lines,
                 nid_detector=self.resolvable_detector,
-                eval_dir=test_results,
+                eval_dir=os.path.join(
+                    basic_para.log_dir, self.model.name,
+                    f'self_test_{self_test_size}',
+                ),
                 auto_test=True,
             )
+        logging.info("Done self test.")
 
-    def run_baseline(self):
+    def run_baseline(self, basic_para):
         logging.info(f"Test baseline models on {basic_para.test_in}.")
 
         test_results = os.path.join(
@@ -380,6 +409,16 @@ class ArgRunner(Configurable):
 
         if not os.path.exists(test_results):
             os.makedirs(test_results)
+
+        # Random baseline.
+        random_baseline = RandomBaseline(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            random_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=test_results,
+            gold_field_name=basic_para.gold_field_name
+        )
 
         # W2v baseline.
         w2v_baseline = BaselineEmbeddingModel(
@@ -407,8 +446,9 @@ class ArgRunner(Configurable):
         self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir,
                     gold_field_name=gold_field_name)
 
-    def train(self, train_in, validation_size=None, validation_in=None,
-              model_out_dir=None, resume=False, pre_validation=False):
+    def train(self, basic_para, resume=False):
+        train_in = basic_para.train_in
+
         target_pred_count = Counter()
 
         train_sampler = ClozeSampler()
@@ -416,18 +456,20 @@ class ArgRunner(Configurable):
 
         logging.info("Training with data from [%s]", train_in)
 
-        if validation_in:
-            logging.info("Validation with data from [%s]", validation_in)
-        elif validation_size:
+        if self.basic_para.valid_in:
+            logging.info("Validation with data from [%s]",
+                         self.basic_para.valid_in)
+        elif self.basic_para.validation_size:
             logging.info(
-                "Will use first [%d] lines for validation." % validation_size)
+                "Will use first [%d] lines for "
+                "validation." % self.basic_para.validation_size)
         else:
             logging.error("No validation!")
 
-        if model_out_dir:
-            logging.info("Model out directory is [%s]", model_out_dir)
-            if not os.path.exists(model_out_dir):
-                os.makedirs(model_out_dir)
+        model_out_dir = os.path.join(self.basic_para.model_dir, self.model.name)
+        logging.info("Model out directory is [%s]", model_out_dir)
+        if not os.path.exists(model_out_dir):
+            os.makedirs(model_out_dir)
 
         self.model.train()
 
@@ -468,13 +510,14 @@ class ArgRunner(Configurable):
 
         # Read development lines.
         dev_lines = None
-        if validation_in:
-            dev_lines = [l for l in data_gen(validation_in)]
-        if validation_size:
+        if self.basic_para.valid_in:
+            dev_lines = [l for l in data_gen(self.basic_para.valid_in)]
+        if self.basic_para.validation_size:
             dev_lines = [l for l in
-                         data_gen(train_in, until_line=validation_size)]
+                         data_gen(train_in,
+                                  until_line=self.basic_para.validation_size)]
 
-        if pre_validation:
+        if self.basic_para.pre_val:
             logging.info("Conduct a pre-validation, this will overwrite best "
                          "loss with the most recent loss.")
 
@@ -484,8 +527,6 @@ class ArgRunner(Configurable):
 
             best_loss = dev_loss
             previous_dev_loss = dev_loss
-
-            input('wait here')
 
         # Training stats.
         total_loss = 0
@@ -497,7 +538,8 @@ class ArgRunner(Configurable):
 
             train_sampler.reset()
             for batch_data, debug_data in self.reader.read_train_batch(
-                    data_gen(train_in, from_line=validation_size),
+                    data_gen(train_in,
+                             from_line=self.basic_para.validation_size),
                     train_sampler):
 
                 batch_instance, batch_info, b_size, mask = batch_data
@@ -573,13 +615,6 @@ class ArgRunner(Configurable):
 
             logging.info("Best loss is %.4f." % best_loss)
 
-            # A small test.
-            if self_test_lines is not None:
-                logging.info("Computing test result on a small dev set.")
-                self.__test(self.model, test_lines=self_test_lines,
-                            nid_detector=self.resolvable_detector,
-                            auto_test=True)
-
             # Whether stop now.
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
@@ -600,7 +635,9 @@ class ArgRunner(Configurable):
             logging.info("Overall, %s is observed %d times." % (pred, count))
 
 
-def main():
+def main(conf):
+    basic_para = Basic(config=conf)
+
     if not basic_para.cmd_log and basic_para.log_dir:
         mode = ''
 
@@ -630,41 +667,29 @@ def main():
 
     runner = ArgRunner(
         config=conf,
-        model_dir=os.path.join(
-            basic_para.model_dir, basic_para.model_name
-        ),
-        debug_dir=basic_para.debug_dir,
     )
 
     if basic_para.run_baselines:
-        runner.run_baseline()
+        runner.run_baseline(basic_para)
 
     if basic_para.do_training:
-        runner.train(
-            basic_para.train_in,
-            validation_size=basic_para.validation_size,
-            validation_in=basic_para.valid_in,
-            resume=True,
-            pre_validation=basic_para.pre_val,
-        )
+        runner.train(basic_para, resume=True)
 
-    if basic_para.do_self_test:
+    if basic_para.self_test_size > 0:
         # runner.
         runner.self_study(
-            basic_para.train_in,
-            self_test_size=basic_para.self_test_size,
+            basic_para, self_test_size=basic_para.self_test_size,
         )
 
     if basic_para.do_test:
         result_dir = os.path.join(
-            basic_para.log_dir, basic_para.model_name, 'results',
-            basic_para.run_name,
+            basic_para.log_dir, basic_para.model_name, basic_para.run_name,
         )
 
         if not os.path.exists(result_dir):
             os.makedirs(result_dir)
 
-        print("Evaluation results will be saved in: " + result_dir)
+        logging.info("Evaluation results will be saved in: " + result_dir)
 
         runner.test(
             test_in=basic_para.test_in,
@@ -695,8 +720,6 @@ if __name__ == '__main__':
                        default_value=False).tag(config=True)
         do_training = Bool(help='Flag for conducting training.',
                            default_value=False).tag(config=True)
-        do_self_test = Bool(help='Flag for a self test study.',
-                            default_value=False).tag(config=True)
         do_test = Bool(help='Flag for conducting testing.',
                        default_value=False).tag(config=True)
         run_baselines = Bool(help='Run baseline.', default_value=False).tag(
@@ -708,7 +731,4 @@ if __name__ == '__main__':
 
 
     conf = load_mixed_configs()
-
-    basic_para = Basic(config=conf)
-
-    main()
+    main(conf)

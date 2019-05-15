@@ -19,6 +19,8 @@ class ImplicitEval:
         self.slot_names = slot_names
 
         if self.out_dir is not None:
+            if not os.path.exists(self.out_dir):
+                os.makedirs(self.out_dir)
             self.detail_path = os.path.join(self.out_dir, 'detailed_out.json')
             self.overall_path = os.path.join(self.out_dir, 'overall.json')
             if os.path.exists(self.detail_path):
