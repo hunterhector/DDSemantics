@@ -906,8 +906,11 @@ class HashedClozeReader:
 
     def add_ghost_instance(self, instance_data):
         if self.fix_slot_mode:
+            component_per = 2 if self.para.use_frame else 1
+            num_event_components = (1 + self.para.num_slots) * component_per
+
             instance_data['events'].append(
-                [self.ghost_component] * self.para.num_event_component)
+                [self.ghost_component] * num_event_components)
         else:
             instance_data['predicates'].append(
                 self.ghost_component
