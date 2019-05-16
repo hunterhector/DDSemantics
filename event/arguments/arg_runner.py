@@ -476,9 +476,6 @@ class ArgRunner(Configurable):
 
         optimizer = torch.optim.Adam(self.model.parameters())
 
-        batch_count = 0
-        instance_count = 0
-
         start_epoch = 0
         best_loss = math.inf
         previous_dev_loss = math.inf
@@ -529,6 +526,9 @@ class ArgRunner(Configurable):
             best_loss = dev_loss
             previous_dev_loss = dev_loss
 
+        batch_count = 0
+        instance_count = 0
+
         # Training stats.
         total_loss = 0
         recent_loss = 0
@@ -536,6 +536,8 @@ class ArgRunner(Configurable):
 
         for epoch in range(start_epoch, self.nb_epochs):
             logging.info("Starting epoch {}.".format(epoch))
+            epoch_batch_count = 0
+            epoch_instance_count = 0
 
             train_sampler.reset()
             for batch_data, debug_data in self.reader.read_train_batch(
@@ -580,12 +582,14 @@ class ArgRunner(Configurable):
 
                 if not batch_count % log_freq:
                     logging.info(
-                        "Epoch {}, Batch {} ({} instances); Recent ({}) avg. "
-                        "loss {:.5f}; Overall avg. loss {:.5f}".format(
-                            epoch, batch_count, instance_count, log_freq,
-                            recent_loss / log_freq,
-                            total_loss / batch_count)
+                        f"Epoch {epoch} ({epoch_batch_count} batches and "
+                        f"{epoch_instance_count} instances); "
+                        f"Total Batch {batch_count} ({instance_count} "
+                        f"instances); Recent ({log_freq}) avg. "
+                        f"loss {recent_loss / log_freq:.5f}; "
+                        f"Overall avg. loss {total_loss / batch_count:.5f}"
                     )
+
                     recent_loss = 0
 
             checkpoint_path = self.__save_checkpoint({
@@ -608,13 +612,20 @@ class ArgRunner(Configurable):
                     dev_loss=dev_loss / n_batches,
                 ))
 
+            logging.info(
+                f"Finished epoch {epoch:d}, "
+                f"avg. loss {total_loss / batch_count:.4f}, "
+                f"validation loss {dev_loss / n_batches:.4f}"
+            )
+
             if not best_loss or dev_loss < best_loss:
                 best_loss = dev_loss
                 best_path = os.path.join(self.model_dir, self.best_model_name)
                 logging.info("Saving it as best model")
                 shutil.copyfile(checkpoint_path, best_path)
 
-            logging.info("Best loss is %.4f." % best_loss)
+            logging.info(f"Best loss is {best_loss:.4f} "
+                         f"(avg. {best_loss / n_batches:.4f}).")
 
             # Whether stop now.
             if dev_loss < previous_dev_loss:
@@ -625,10 +636,9 @@ class ArgRunner(Configurable):
                 if worse == self.para.early_stop_patience:
                     logging.info(
                         (
-                            "Dev loss increase from {pre:.4f} to {curr:.4f}, "
-                            "stop at Epoch {epoch:d}"
-                        ).format(pre=previous_dev_loss, curr=dev_loss,
-                                 epoch=epoch)
+                            f"Dev loss increase from {previous_dev_loss:.4f} "
+                            f"to {dev_loss:.4f}, stop at Epoch {epoch:d}"
+                        )
                     )
                     break
 
