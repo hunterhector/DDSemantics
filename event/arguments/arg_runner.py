@@ -574,7 +574,10 @@ class ArgRunner(Configurable):
                 optimizer.step()
 
                 batch_count += 1
+                epoch_batch_count += 1
+
                 instance_count += b_size
+                epoch_instance_count += b_size
 
                 loss_val = loss.item()
                 total_loss += loss_val
@@ -604,13 +607,6 @@ class ArgRunner(Configurable):
             logging.info("Computing validation loss.")
             dev_loss, n_batches, n_instances = self.validation(
                 dev_lines, dev_sampler)
-
-            logging.info(
-                "Finished epoch {epoch:d}, avg. loss {loss:.4f}, "
-                "validation loss {dev_loss:.4f}".format(
-                    epoch=epoch, loss=total_loss / batch_count,
-                    dev_loss=dev_loss / n_batches,
-                ))
 
             logging.info(
                 f"Finished epoch {epoch:d}, "

@@ -318,7 +318,8 @@ class EventCoherenceModel(ArgCompatibleModel):
             feature_size += para.num_distance_features
             # Output 9 different var, corresponding to 9 distance measures.
             self.event_to_var_layer = nn.Linear(
-                self.para.event_embedding_dim, 9)
+                self.para.event_embedding_dim, 9
+            )
 
         self._vote_method = para.vote_method
 
@@ -348,7 +349,7 @@ class EventCoherenceModel(ArgCompatibleModel):
     def _encode_distance(self, predicates, distances):
         """
         Encode distance into event dependent kernels.
-        :param event_emb:
+        :param predicates:
         :param distances:
         :return:
         """
@@ -367,29 +368,36 @@ class EventCoherenceModel(ArgCompatibleModel):
         # Output d variances (\sigma^2), each one for each distance.
         # We detach predicates here, force the model to learn distance operation
         #  in the fully connected layer (not learn from the predicates).
-        raw_var = self.event_to_var_layer(predicates.detach())
-        # Variances cannot be zero, so we use soft plus here.
-        variances = F.softplus(raw_var)
+
+        # raw_var = self.event_to_var_layer(predicates.detach())
+        # # Variances cannot be zero, so we use soft plus here.
+        # variances = F.softplus(raw_var)
+
+        log_var = self.event_to_var_layer(predicates.detach())
 
         if self.__debug_show_shapes:
             print("variance size")
-            print(variances.shape)
+            # print(variances.shape)
+            print(log_var.shape)
 
         # print(torch.min(raw_var))
         # print(torch.min(variances))
+        print(torch.min(log_var))
         # print(torch.min(- dist_sq / variances))
-        # input('---------------')
+        print(torch.min(- dist_sq / log_var))
+
+        input('---------------')
 
         kernel_value = torch.exp(- dist_sq / variances)
 
-        # print("Debugging distance encoding")
-        # print(distances.shape)
-        # print(torch.max(distances))
-        # print(dist_sq.shape)
-        # print(torch.max(dist_sq))
+        print("Debugging distance encoding")
+        print(distances.shape)
+        print(torch.max(distances))
+        print(dist_sq.shape)
+        print(torch.max(dist_sq))
         # print(variances.shape)
         # print(torch.max(variances))
-        # input('----------------------------')
+        input('----------------------------')
 
         if self.__debug_show_shapes:
             print("distance kernel values")
@@ -502,9 +510,10 @@ class EventCoherenceModel(ArgCompatibleModel):
             batch_context = batch_info['context_events']
             context_emb = self.event_embedding(batch_context)
             event_emb = self.event_embedding(batch_event_rep)
-            pred_emb = event_emb[:, :, 1, 1]
             event_repr = self.arg_composition_model(event_emb)
             context_repr = self.arg_composition_model(context_emb)
+
+            pred_emb = event_emb[:, :, 1, :]
         elif self.para.arg_representation_method == 'role_dynamic':
             d_keys = 'predicates', 'slots', 'slot_values'
             batch_embedded_event_data = {}
