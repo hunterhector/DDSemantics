@@ -539,7 +539,13 @@ class HashedClozeReader:
 
                         candidate_meta.append({
                             'entity': cand_arg['represent'],
+                            'distance_to_event': (
+                                    pred_sent - cand_arg['sentence_id']
+                            ),
+                            'source': cand_arg['source'],
                         })
+
+                        print('')
 
                         if len(cloze_event_indices) == 500:
                             break
@@ -864,16 +870,15 @@ class HashedClozeReader:
         total_dist = 0.0
         total_pair = 0.0
 
-        print(f'current event is {current_evm_id}')
+        # print(f'current event is {current_evm_id}')
 
         for evm_id, slot, sid in entity_positions[filler_eid]:
-            print(
-                f'entity {filler_eid} appears at sentence {sid} with event {evm_id}')
 
-            if evm_id == current_evm_id and slot == target_slot:
-                # This is the target entity itself, not counting.
-                print(f'this is a itself at {evm_id} and {slot}')
-                continue
+            # # TODO: check here
+            # if evm_id == current_evm_id and slot == target_slot:
+            #     # This is the target entity itself, not counting.
+            #     print(f'this is a itself at {evm_id} and {slot}')
+            #     continue
 
             distance = abs(sid - sent_id)
 
@@ -888,9 +893,9 @@ class HashedClozeReader:
             total_dist += distance
             total_pair += 1.0
 
-        print(sent_id)
-        print(max_dist, min_dist, total_dist)
-        input('check distance signature')
+        # print(sent_id)
+        # print(max_dist, min_dist, total_dist)
+        # input('check distance signature')
 
         if total_pair > 0:
             distances.append((max_dist, min_dist, total_dist / total_pair))

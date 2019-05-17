@@ -85,6 +85,8 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
     hashed_doc['entities'] = hashed_entities
 
+    # print('processing ', docid)
+
     for event in events:
         pid = event_emb_vocab.get_index(
             typed_event_vocab.get_pred_rep(event), None)

@@ -180,9 +180,11 @@ class EventReader:
                         'arg_end': arg_info['argEnd'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
-                        'propbank_role': arg_info.get('propbank_role', 'NA'),
+                        'propbank_role': arg_info.get(
+                            'propbank_role', 'NA').lower(),
                         'text': arg_info['text'],
                         'represent': represent,
+                        'source': arg_info.get('source', 'NA'),
                     }
 
                     if 'isImplicit' in arg_info:

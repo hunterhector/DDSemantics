@@ -234,10 +234,15 @@ class SlotHandler:
             else:
                 position = get_simple_dep(nombank_special_dep)
 
+            # if predicate == 'leak':
+            #     print(position)
+
             if position == 'dep':
                 # Put other dependency to the prepositional slot in the fixed
                 # mode.
                 position = 'prep'
+                arg_candidates[position].append((dep, full_fe, arg, source))
+            else:
                 arg_candidates[position].append((dep, full_fe, arg, source))
 
         # TODO: still some hairy stuff like duplicate FE slots.
@@ -252,12 +257,16 @@ class SlotHandler:
                 event['predicate_end']
             )
 
-            if predicate == 'leak':
-                from pprint import pprint
-                pprint(arg_candidates)
-
-                pprint(p_arg_info)
-                input('check the sorted list')
+            # if predicate == 'leak':
+            #     from pprint import pprint
+            #     pprint(arg_list)
+            #
+            #     pprint(event)
+            #
+            #     pprint(arg_candidates)
+            #
+            #     pprint(p_arg_info)
+            #     input('check the sorted list')
 
             if position == 'NA':
                 unsure_args = [p[1] for p in p_arg_info]

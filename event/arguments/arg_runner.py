@@ -397,19 +397,8 @@ class ArgRunner(Configurable):
             )
         logging.info("Done self test.")
 
-    def run_baseline(self, basic_para):
+    def run_baselines(self, basic_para):
         logging.info(f"Test baseline models on {basic_para.test_in}.")
-
-        test_results = os.path.join(
-            basic_para.log_dir, basic_para.model_name, 'results',
-            basic_para.run_name,
-        )
-
-        logging.info(f"{basic_para.model_name}  evaluation results will "
-                     f"be saved in: {test_results} ")
-
-        if not os.path.exists(test_results):
-            os.makedirs(test_results)
 
         # Random baseline.
         random_baseline = RandomBaseline(
@@ -417,17 +406,66 @@ class ArgRunner(Configurable):
         self.__test(
             random_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
-            eval_dir=test_results,
+            eval_dir=os.path.join(
+                basic_para.log_dir, random_baseline.name, 'default',
+            ),
             gold_field_name=basic_para.gold_field_name
         )
 
         # W2v baseline.
+        # Variation 1: max_sim, concat
+        self.para.w2v_baseline_method = 'max_sim'
+        self.para.w2v_event_repr = 'concat'
         w2v_baseline = BaselineEmbeddingModel(
             self.para, self.resources, self.device).to(self.device)
         self.__test(
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
-            eval_dir=test_results,
+            eval_dir=os.path.join(
+                basic_para.log_dir, w2v_baseline.name, 'concat_max',
+            ),
+            gold_field_name=basic_para.gold_field_name
+        )
+
+        # Variation 2: topk, concat
+        self.para.w2v_baseline_method = 'topk_average'
+        self.para.w2v_event_repr = 'concat'
+        w2v_baseline = BaselineEmbeddingModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            w2v_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, w2v_baseline.name, 'concat_top3',
+            ),
+            gold_field_name=basic_para.gold_field_name
+        )
+
+        # Variation 3: topk, sum
+        self.para.w2v_baseline_method = 'max_sim'
+        self.para.w2v_event_repr = 'sum'
+        w2v_baseline = BaselineEmbeddingModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            w2v_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, w2v_baseline.name, 'sum_max',
+            ),
+            gold_field_name=basic_para.gold_field_name
+        )
+
+        # Variation 4: topk, sum
+        self.para.w2v_baseline_method = 'topk_average'
+        self.para.w2v_event_repr = 'sum'
+        w2v_baseline = BaselineEmbeddingModel(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            w2v_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, w2v_baseline.name, 'sum_top3',
+            ),
             gold_field_name=basic_para.gold_field_name
         )
 
@@ -437,7 +475,9 @@ class ArgRunner(Configurable):
         self.__test(
             most_freq_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
-            eval_dir=test_results,
+            eval_dir=os.path.join(
+                basic_para.log_dir, most_freq_baseline.name, 'default',
+            ),
             gold_field_name=basic_para.gold_field_name
         )
 
@@ -677,7 +717,7 @@ def main(conf):
     )
 
     if basic_para.run_baselines:
-        runner.run_baseline(basic_para)
+        runner.run_baselines(basic_para)
 
     if basic_para.do_training:
         runner.train(basic_para, resume=True)
@@ -692,10 +732,6 @@ def main(conf):
         result_dir = os.path.join(
             basic_para.log_dir, basic_para.model_name, basic_para.run_name,
         )
-
-        if not os.path.exists(result_dir):
-            os.makedirs(result_dir)
-
         logging.info("Evaluation results will be saved in: " + result_dir)
 
         runner.test(
