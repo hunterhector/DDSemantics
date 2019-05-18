@@ -145,7 +145,7 @@ class ImplicitEval:
                     if sel_name == 'neighbor':
                         print(meta)
 
-                    input('these are close by entities')
+            input('these are close by entities')
 
         if ins_meta['has_true']:
             self.overall_res['num_fillable'] += 1
