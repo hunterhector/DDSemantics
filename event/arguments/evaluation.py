@@ -235,7 +235,8 @@ class ImplicitEval:
             for member_name, member_scores in group_scores['results'].items():
                 for k in member_scores['system']:
                     if '@' in k:
-                        member_scores['system'] /= group_scores['num_instances']
+                        member_scores['system'][
+                            k] /= group_scores['num_instances']
 
                 tp = member_scores['score']['tp']
                 prec = tp / num_res if num_res > 0 else 0
