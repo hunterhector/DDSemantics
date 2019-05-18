@@ -120,7 +120,7 @@ class ImplicitEval:
                 {
                     'score': score,
                     'label': label,
-                    'meta': meta['entity'],
+                    'meta': meta,
                     'distance_to_event': meta['distance_to_event'],
                     'source': meta['source'],
                 }
@@ -142,6 +142,11 @@ class ImplicitEval:
                             }
                         )
 
+                    if sel_name == 'neighbor':
+                        print(meta)
+
+                    input('these are close by entities')
+
         if ins_meta['has_true']:
             self.overall_res['num_fillable'] += 1
 
@@ -151,13 +156,13 @@ class ImplicitEval:
 
         instance_res = {
             'event_index': event_idx,
+            'predicate': ins_meta['predicate'],
             'slot_index': slot_idx,
+            'gold_entity': ins_meta['gold_entity'],
             'slot_name': self.slot_names[slot_idx],
             'num_gold': num_golds,
             'gold_ranks': dict(gold_ranks),
             'top_k': {},
-            'predicate': ins_meta['predicate'],
-            'gold_entity': ins_meta['gold_entity'],
             'scores': dict([(n, {}) for n in self.selectors.keys()]),
             'gold': dict([(n, {}) for n in self.selectors.keys()]),
         }
@@ -200,7 +205,7 @@ class ImplicitEval:
                 self.overall_res['gold'][sel_name][f'r@{c}'] += gold_r
 
         data['results'].append(instance_res)
-        data['predicates'] = ranked_predictions
+        data['predictions'] = ranked_predictions
 
         if self.out_dir:
             mode = 'a' if os.path.exists(self.detail_path) else 'w'
