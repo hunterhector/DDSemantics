@@ -193,7 +193,7 @@ class ImplicitEval:
         }
 
         for group_name, selected_group in selected_groups.items():
-            instance_res['categorized_scores'][group_name] = {}
+            instance_res['categorized_result'][group_name] = {}
             for member_name, members in selected_group.items():
                 self.create_score_group(group_name, member_name)
                 ins_scores = self.compute_scores(
