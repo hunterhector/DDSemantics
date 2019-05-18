@@ -27,28 +27,81 @@ class ImplicitEval:
             if os.path.exists(self.detail_path):
                 util.append_num_to_path(self.detail_path)
 
-        self.overall_res = {
-            'num_docs': 0,
-            'num_instances': 0,
-            'num_fillable': 0,
-            'num_fill_attempts': Counter(),
-            'tp': Counter(),
-            'scores': {},
-            'gold': {},
-        }
-
         self.selectors = self.candidate_selectors()
         self.k = 5
 
-        for name in self.selectors.keys():
-            self.overall_res['scores'][name] = {}
-            self.overall_res['gold'][name] = {}
-            for c in self.cutoffs:
-                self.overall_res['scores'][name][f'p@{c}'] = 0.0
-                self.overall_res['scores'][name][f'r@{c}'] = 0.0
+        self.score_buffer = {}
 
-                self.overall_res['gold'][name][f'p@{c}'] = 0.0
-                self.overall_res['gold'][name][f'r@{c}'] = 0.0
+    def create_score_group(self, group, group_member):
+        if group not in self.score_buffer:
+            self.score_buffer[group] = {
+                'num_fillable': 0,
+                'num_fill_attempts': 0,
+                'num_instances': 0,
+                'results': {},
+            }
+
+        self.score_buffer[group]['results'][group_member] = {
+            'system': {},
+            'oracle': {},
+        }
+
+        for c in self.cutoffs:
+            self.score_buffer[group]['results'][group_member]['system'][f'p@{c}'] = 0
+            self.score_buffer[group]['results'][group_member]['system'][f'r@{c}'] = 0
+            self.score_buffer[group]['results'][group_member]['system']['tp'] = 0
+
+            self.score_buffer[group]['results'][group_member]['oracle'][f'p@{c}'] = 0
+            self.score_buffer[group]['results'][group_member]['oracle'][f'r@{c}'] = 0
+            self.score_buffer[group]['results'][group_member]['oracle']['tp'] = 0
+
+    def compute_scores(self, raw_scores_labels, score_group):
+        this_res = {
+            'scores': {}
+        }
+
+        gold_ranks = []
+        for r, (score, label) in enumerate(raw_scores_labels):
+            rank = r + 1
+            if label == 1:
+                gold_ranks.append(rank)
+
+        num_gold = sum([l for (_, l) in raw_scores_labels])
+
+        for c in self.cutoffs:
+            if num_gold == 0:
+                p = 0
+                r = 0
+                gold_p = 0
+                gold_r = 0
+            else:
+                tp_at_c = sum(
+                    [1 if v <= c else 0 for v in gold_ranks]
+                )
+                p = 1.0 * tp_at_c / c
+                r = 1.0 * tp_at_c / num_gold
+
+                gold_tp = min(num_gold, c)
+                gold_p = 1.0 * gold_tp / c
+                gold_r = gold_tp / num_gold
+
+            this_res['system'][f'p@{c}'] = p
+            this_res['system'][f'r@{c}'] = r
+
+            this_res['oracle'][f'p@{c}'] = gold_p
+            this_res['oracle'][f'r@{c}'] = gold_r
+
+            score_group['system']['system'][f'p@{c}'] += p
+            score_group['system']['system'][f'r@{c}'] += r
+
+            score_group['oracle']['oracle'][f'p@{c}'] += gold_p
+            score_group['oracle']['oracle'][f'r@{c}'] += gold_r
+
+        if raw_scores_labels[0][1] == 1:
+            score_group['results']['system']['tp'] += 1
+            score_group['results']['oracle']['tp'] += 1
+
+        return this_res
 
     def add_prediction(self, doc_id, event_indexes, slot_indexes, coh_scores,
                        gold_labels, candidate_meta, instance_meta):
@@ -64,32 +117,37 @@ class ImplicitEval:
 
     @staticmethod
     def candidate_selectors():
-        selector = {}
 
         def neighbor_selector(meta):
             if 0 <= meta['distance_to_event'] <= 2:
-                return True
+                return 'neighbor'
             else:
                 return False
 
         def gold_selector(meta):
             if meta['source'] == 'gold':
-                return True
+                return 'gold'
             else:
                 return False
 
         def neighbor_gold_selector(meta):
-            return neighbor_selector(meta) and gold_selector(meta)
+            if neighbor_selector(meta) and gold_selector(meta):
+                return 'gold_neighbor'
+            return False
 
         def all_selector(meta):
             return True
 
-        selector['neighbor'] = neighbor_selector
-        selector['gold'] = gold_selector
-        selector['neighbor_gold'] = neighbor_gold_selector
-        selector['all'] = all_selector
+        def entity_selector(meta):
+            return meta['entity']
 
-        return selector
+        return {
+            'neighbor': neighbor_selector,
+            'gold': gold_selector,
+            'neighbor_gold': neighbor_gold_selector,
+            'all': all_selector,
+            'entity': entity_selector
+        }
 
     def add_result(self, doc_id, event_idx, slot_idx, score_labels, ins_meta,
                    c_meta):
@@ -99,55 +157,29 @@ class ImplicitEval:
 
         data = {
             'doc_id': doc_id,
-            'results': [],
+            'results': {},
             'predictions': [],
         }
-
-        self.overall_res['num_docs'] += 1
 
         ranked_predictions = []
 
         sorted_result = sorted(zip(score_labels, c_meta), reverse=True,
                                key=itemgetter(0))
 
-        num_golds = Counter()
-        gold_ranks = defaultdict(list)
-        top_k = defaultdict(list)
+        selected_groups = {}
+        for group, selector in self.selectors.items():
+            selected_groups[group] = {}
+            for sl, meta in sorted_result:
+                selection = selector(meta)
+                if selection:
+                    if selection not in selected_groups[group]:
+                        selected_groups[group][selection] = {
+                            'score_labels': [],
+                            'metas': []
+                        }
 
-        rank_count = Counter()
-        for (score, label), meta in sorted_result:
-            ranked_predictions.append(
-                {
-                    'score': score,
-                    'label': label,
-                    'meta': meta,
-                    'distance_to_event': meta['distance_to_event'],
-                    'source': meta['source'],
-                }
-            )
-
-            for sel_name, selector in self.candidate_selectors().items():
-                rank_count[sel_name] += 1
-                if selector(meta):
-                    if label == 1:
-                        gold_ranks[sel_name].append(rank_count[sel_name])
-                        num_golds[sel_name] += 1
-
-                    if rank_count[sel_name] < self.k:
-                        top_k[sel_name].append(
-                            {
-                                'meta': meta,
-                                'rank': rank_count[sel_name],
-                                'score': score,
-                            }
-                        )
-
-        if ins_meta['has_true']:
-            self.overall_res['num_fillable'] += 1
-
-        for sel_name, tops in top_k.items():
-            if tops[0]['meta']['entity'] == ghost_entity_text:
-                self.overall_res['num_fill_attempts'][sel_name] += 1
+                    selected_groups[group][selection]['score_labels'].append(sl)
+                    selected_groups[group][selection]['metas'].append(meta)
 
         instance_res = {
             'event_index': event_idx,
@@ -155,51 +187,27 @@ class ImplicitEval:
             'slot_index': slot_idx,
             'gold_entity': ins_meta['gold_entity'],
             'slot_name': self.slot_names[slot_idx],
-            'num_gold': num_golds,
-            'gold_ranks': dict(gold_ranks),
-            'top_k': {},
-            'scores': dict([(n, {}) for n in self.selectors.keys()]),
-            'gold': dict([(n, {}) for n in self.selectors.keys()]),
+            'categorized_scores': {},
         }
 
-        for sel_name, ranks in gold_ranks.items():
-            instance_res['top_k'][sel_name] = top_k[sel_name]
-            # If one of the gold instance is ranked as the best.
-            if any([r == 1 for r in gold_ranks[sel_name]]):
-                self.overall_res['tp'][sel_name] += 1
+        for group_name, selected_group in selected_groups.items():
+            instance_res['categorized_scores'][group_name] = {}
+            for member_name, members in selected_group.items():
+                self.create_score_group(group_name, member_name)
+                ins_scores = self.compute_scores(
+                    members['score_labels'], self.score_buffer[group_name])
+                if ins_meta['has_true']:
+                    self.score_buffer[group_name]['num_fillable'] += 1
+                if members['metas'][0]['entity'] == ghost_entity_text:
+                    self.score_buffer[group_name]['num_fill_attempts'] += 1
 
-        self.overall_res['num_instances'] += 1
+                instance_res['categorized_scores'][group_name][
+                    member_name
+                ] = ins_scores
 
-        for c in self.cutoffs:
-            for sel_name, num_gold in num_golds.items():
-                if num_gold == 0:
-                    p = 0
-                    r = 0
-                    gold_p = 0
-                    gold_r = 0
-                else:
-                    tp_at_c = sum(
-                        [1 if v <= c else 0 for v in gold_ranks[sel_name]]
-                    )
-                    p = 1.0 * tp_at_c / c
-                    r = 1.0 * tp_at_c / num_gold
-                    gold_tp = min(num_gold, c)
-                    gold_p = 1.0 * gold_tp / c
-                    gold_r = gold_tp / num_gold
+        print(instance_res)
 
-                instance_res['scores'][sel_name]['p@%d' % c] = p
-                instance_res['scores'][sel_name]['r@%d' % c] = r
-
-                instance_res['gold'][sel_name]['p@%d' % c] = gold_p
-                instance_res['gold'][sel_name]['r@%d' % c] = gold_r
-
-                self.overall_res['scores'][sel_name][f'p@{c}'] += p
-                self.overall_res['scores'][sel_name][f'r@{c}'] += r
-
-                self.overall_res['gold'][sel_name][f'p@{c}'] += gold_p
-                self.overall_res['gold'][sel_name][f'r@{c}'] += gold_r
-
-        data['results'].append(instance_res)
+        data['results'] = instance_res
         data['predictions'] = ranked_predictions
 
         if self.out_dir:
@@ -209,58 +217,37 @@ class ImplicitEval:
                 res_out.write('\n')
 
     def collect(self):
-        for sel_name, sel_scores in self.overall_res['scores'].items():
-            for k, v in sel_scores.items():
-                if self.overall_res['num_instances'] > 0:
-                    self.overall_res['scores'][sel_name][k] /= self.overall_res[
-                        'num_instances']
-                else:
-                    self.overall_res['scores'][k] = 0
+        for group_name, group_scores in self.score_buffer.items():
+            num_res = group_scores['num_fill_attempts']
+            num_gold = group_scores['num_fillable']
+            for member_name, member_scores in group_scores['results'].items():
+                for k in member_scores['system']:
+                    if '@' in k:
+                        member_scores['system'] /= group_scores['num_instances']
 
-        for sel_name, sel_scores in self.overall_res['gold'].items():
-            for k, v in sel_scores.items():
-                if self.overall_res['num_instances'] > 0:
-                    self.overall_res['gold'][sel_name][k] /= self.overall_res[
-                        'num_instances']
-                else:
-                    self.overall_res['gold'][k] = 0
+                tp = member_scores['score']['tp']
+                prec = tp / num_res if num_res > 0 else 0
+                recall = tp / num_gold if num_gold > 0 else 0
+                f1 = 2*prec*recall/(prec + recall) if prec + recall > 0 else 0
 
-        precs = {}
-        for sel_name, tp in self.overall_res['scores'].items():
-            if self.overall_res['num_fillable'] > 0:
-                prec = self.overall_res['tp'][sel_name] / self.overall_res[
-                    'num_fillable']
-                precs[sel_name] = prec
-            else:
-                precs[sel_name] = 0
+                member_scores['system']['precision'] = prec
+                member_scores['system']['recall'] = recall
+                member_scores['system']['F1'] = f1
 
-        recalls = {}
-        for sel_name, tp in self.overall_res['scores'].items():
-            if self.overall_res['num_fill_attempts'][sel_name] > 0:
-                recall = self.overall_res['tp'][sel_name] / self.overall_res[
-                    'num_fill_attempts']
-                recalls[sel_name] = recall
-            else:
-                recalls[sel_name] = 0
+                for k in member_scores['oracle']:
+                    if '@' in k:
+                        member_scores['oracle'] /= group_scores['num_instances']
 
-        for n in precs.keys():
-            p = precs[n]
-            r = recalls[n]
-            self.overall_res['scores'][n]['precision'] = p
-            self.overall_res['scores'][n]['recall'] = r
+                otp = member_scores['oracle']['tp']
+                o_prec = otp / num_res if num_res > 0 else 0
+                o_recall = otp / num_gold if num_gold > 0 else 0
+                o_f1 = 2*prec*recall/(prec + recall) if prec + recall > 0 else 0
 
-            if p + r > 0:
-                self.overall_res['scores'][n]['f1'] = 2 * p * r / (p + r)
-            else:
-                self.overall_res['scores'][n]['f1'] = 0
+                member_scores['oracle']['precision'] = o_prec
+                member_scores['oracle']['recall'] = o_recall
+                member_scores['oracle']['F1'] = o_f1
 
         if self.out_dir is not None:
             with open(self.overall_path, 'w') as out:
-                json.dump(self.overall_res, out, indent=2)
+                json.dump(self.score_buffer, out, indent=2)
                 out.write('\n')
-
-        info = "Test F1s: "
-        for n in self.overall_res['scores']:
-            info += f"{n}: {self.overall_res['scores'][n]['f1']:.4f}"
-
-        return self.overall_res
