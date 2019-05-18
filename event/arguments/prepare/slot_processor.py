@@ -257,17 +257,6 @@ class SlotHandler:
                 event['predicate_end']
             )
 
-            # if predicate == 'leak':
-            #     from pprint import pprint
-            #     pprint(arg_list)
-            #
-            #     pprint(event)
-            #
-            #     pprint(arg_candidates)
-            #
-            #     pprint(p_arg_info)
-            #     input('check the sorted list')
-
             if position == 'NA':
                 unsure_args = [p[1] for p in p_arg_info]
             else:

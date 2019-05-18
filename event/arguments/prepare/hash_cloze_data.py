@@ -85,9 +85,8 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
     hashed_doc['entities'] = hashed_entities
 
-    # print('processing ', docid)
-
     for event in events:
+        pred = event['predicate']
         pid = event_emb_vocab.get_index(
             typed_event_vocab.get_pred_rep(event), None)
         fid = event_emb_vocab.get_index(event.get('frame'), None)
@@ -96,8 +95,13 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         sent_offset = sent_starts[event['sentence_id']]
 
         full_args = {}
+
+        num_implicit_arg = 0
+
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
+
+            has_implicit_arg = False
             for arg_info in arg_info_list:
                 dep, full_fe, arg = arg_info
 
@@ -124,7 +128,18 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                         hashed_arg['sentence_id'] = len(sent_starts) - 1
 
                 hashed_arg_list.append(hashed_arg)
+
+                if hashed_arg['implicit']:
+                    has_implicit_arg = True
+                    implicit_answer_counts[pred] += 1
             full_args[slot] = hashed_arg_list
+
+            if has_implicit_arg:
+                num_implicit_arg += 1
+
+        if num_implicit_arg > 0:
+            implicit_pred_counts[pred] += 1
+            implicit_slot_counts[pred] += num_implicit_arg
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
 
@@ -168,7 +183,6 @@ def hash_data(params):
             hashed_doc = hash_one_doc(
                 docid, events, entities, event_emb_vocab, word_emb_vocab,
                 typed_event_vocab, slot_handler, sent_starts)
-            # hashed_doc['sentence_offsets'] = sent_starts
 
             data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
@@ -212,4 +226,36 @@ if __name__ == '__main__':
     set_basic_log()
     hash_params = HashParam(config=load_mixed_configs())
 
+    implicit_pred_counts = Counter()
+    implicit_slot_counts = Counter()
+    implicit_answer_counts = Counter()
+
     hash_data(hash_params)
+
+    print('======Predicates that has implicit arguments======')
+    print("Predicate\tCount")
+    sum = 0
+    for pred, c in implicit_pred_counts.items():
+        print(f"{pred}\t{c}")
+        sum += c
+    print(f"Total\t{sum}")
+    print('==================================================')
+
+    print('=============Slots that are implicit==============')
+    print("In Predicate\tCount")
+    sum = 0
+    for pred, c in implicit_slot_counts.items():
+        print(f"{pred}\t{c}")
+        sum += c
+    print(f"Total\t{sum}")
+    print('==================================================')
+
+    print('======Answers that are implicit arguments======')
+    print("In Predicate\tCount")
+    sum = 0
+    for pred, c in implicit_answer_counts.items():
+        print(f"{pred}\t{c}")
+        sum += c
+    print(f"Total\t{sum}")
+    print('================================================')
+
