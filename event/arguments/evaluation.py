@@ -92,15 +92,15 @@ class ImplicitEval:
             this_res['oracle'][f'p@{c}'] = gold_p
             this_res['oracle'][f'r@{c}'] = gold_r
 
-            score_group['results']['system'][f'p@{c}'] += p
-            score_group['results']['system'][f'r@{c}'] += r
+            score_group['system'][f'p@{c}'] += p
+            score_group['system'][f'r@{c}'] += r
 
-            score_group['results']['oracle'][f'p@{c}'] += gold_p
-            score_group['results']['oracle'][f'r@{c}'] += gold_r
+            score_group['oracle'][f'p@{c}'] += gold_p
+            score_group['oracle'][f'r@{c}'] += gold_r
 
         if raw_scores_labels[0][1] == 1:
-            score_group['results']['system']['tp'] += 1
-            score_group['results']['oracle']['tp'] += 1
+            score_group['system']['tp'] += 1
+            score_group['oracle']['tp'] += 1
 
         return this_res
 
@@ -196,7 +196,8 @@ class ImplicitEval:
             for member_name, members in selected_group.items():
                 self.create_score_group(group_name, member_name)
                 ins_scores = self.compute_scores(
-                    members['score_labels'], self.score_buffer[group_name])
+                    members['score_labels'],
+                    self.score_buffer[group_name]['results'][member_name])
                 if ins_meta['has_true']:
                     self.score_buffer[group_name]['num_fillable'] += 1
                 if members['metas'][0]['entity'] == ghost_entity_text:
