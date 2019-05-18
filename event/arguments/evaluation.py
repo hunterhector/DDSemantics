@@ -179,7 +179,7 @@ class ImplicitEval:
                             'metas': []
                         }
 
-                    meta['predicate'] = ins_meta['predicate']
+                    meta['predicate'] = ins_meta['predicate'][1]
                     selected_groups[group][selection]['score_labels'].append(sl)
                     selected_groups[group][selection]['metas'].append(meta)
 
@@ -189,7 +189,7 @@ class ImplicitEval:
             'slot_index': slot_idx,
             'gold_entity': ins_meta['gold_entity'],
             'slot_name': self.slot_names[slot_idx],
-            'categorized_scores': {},
+            'categorized_result': {},
         }
 
         for group_name, selected_group in selected_groups.items():
@@ -201,12 +201,18 @@ class ImplicitEval:
                     self.score_buffer[group_name]['results'][member_name])
                 if ins_meta['has_true']:
                     self.score_buffer[group_name]['num_fillable'] += 1
-                if members['metas'][0]['entity'] == ghost_entity_text:
+
+                top_response = members['metas'][0]['entity']
+
+                if top_response == ghost_entity_text:
                     self.score_buffer[group_name]['num_fill_attempts'] += 1
 
-                instance_res['categorized_scores'][group_name][
+                instance_res['categorized_result'][group_name][
                     member_name
-                ] = ins_scores
+                ] = {
+                    'scores': ins_scores,
+                    'top_response': (top_response, members['score_labels'][0])
+                }
 
         for g, selection in selected_groups.items():
             print(f'{g} has {len(selection)} items.')
