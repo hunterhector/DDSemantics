@@ -37,7 +37,10 @@ class ImplicitEval:
                 'num_fillable': 0,
                 'num_fill_attempts': 0,
                 'num_instances': 0,
-                'results': {},
+                'results': {
+                    'system': {},
+                    'oracle': {},
+                },
             }
 
         for c in self.cutoffs:
