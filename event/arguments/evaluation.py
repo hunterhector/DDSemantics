@@ -134,7 +134,13 @@ class ImplicitEval:
                         num_golds[sel_name] += 1
 
                     if rank_count[sel_name] < self.k:
-                        top_k[sel_name].append(meta)
+                        top_k[sel_name].append(
+                            {
+                                'meta': meta,
+                                'rank': rank_count[sel_name],
+                                'score': score,
+                            }
+                        )
 
         if ins_meta['has_true']:
             self.overall_res['num_fillable'] += 1
