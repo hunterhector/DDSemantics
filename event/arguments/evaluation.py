@@ -198,6 +198,8 @@ class ImplicitEval:
         data['predicates'] = ranked_predictions
 
         pprint(ranked_predictions[:5])
+
+        print('-------------------instance results --------------------')
         pprint(instance_res)
 
         input('check this.')
