@@ -245,7 +245,7 @@ class ImplicitEval:
                         member_scores['system'][
                             k] /= group_scores['num_instances']
 
-                tp = member_scores['score']['tp']
+                tp = member_scores['system']['tp']
                 prec = tp / num_res if num_res > 0 else 0
                 recall = tp / num_gold if num_gold > 0 else 0
                 f1 = 2*prec*recall/(prec + recall) if prec + recall > 0 else 0
