@@ -67,8 +67,7 @@ class ImplicitEval:
         selector = {}
 
         def neighbor_selector(meta):
-            # TODO zero not here.
-            if 0 < meta['distance_to_event'] <= 2:
+            if 0 <= meta['distance_to_event'] <= 2:
                 return True
             else:
                 return False
