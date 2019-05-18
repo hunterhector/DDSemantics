@@ -135,7 +135,7 @@ class ImplicitEval:
             return False
 
         def all_selector(meta):
-            return True
+            return "all"
 
         def predicate_selector(meta):
             return meta['predicate']
@@ -224,9 +224,8 @@ class ImplicitEval:
                 'top_responses': top_responses,
             }
 
-            print(members)
-
-            input(f'this is a member of {group_name}')
+            # print(members)
+            # input(f'this is a member of {group_name}')
 
         data['results'] = instance_res
         data['predictions'] = ranked_predictions
