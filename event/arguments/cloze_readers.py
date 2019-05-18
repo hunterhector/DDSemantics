@@ -545,12 +545,6 @@ class HashedClozeReader:
                             'source': cand_arg['source'],
                         })
 
-                        print(predicate)
-                        print(pred_sent)
-                        print(cand_arg)
-
-                        input('here is one candidate.')
-
                         if len(cloze_event_indices) == 500:
                             break
 
@@ -1062,6 +1056,9 @@ class HashedClozeReader:
             updated_slot_info['entity_id'] = swap_slot['entity_id']
             updated_slot_info['represent'] = swap_slot['represent']
             updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
+            # Note: with the sentence Id we can have a better idea of where the
+            # argument is from, but we cannot use it to extract features.
+            updated_slot_info['sentence_id'] = swap_slot['sentence_id']
 
             # TODO: now using the full dependency label here.
             new_arg_rep = self.typed_event_vocab.get_arg_rep(
