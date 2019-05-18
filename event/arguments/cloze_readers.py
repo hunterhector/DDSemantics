@@ -545,6 +545,12 @@ class HashedClozeReader:
                             'source': cand_arg['source'],
                         })
 
+                        print(predicate)
+                        print(pred_sent)
+                        print(cand_arg)
+
+                        input('here is one candidate.')
+
                         if len(cloze_event_indices) == 500:
                             break
 
