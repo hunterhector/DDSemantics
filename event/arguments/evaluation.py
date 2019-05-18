@@ -256,7 +256,8 @@ class ImplicitEval:
 
                 for k in member_scores['oracle']:
                     if '@' in k:
-                        member_scores['oracle'] /= group_scores['num_instances']
+                        member_scores['oracle'][
+                            k] /= group_scores['num_instances']
 
                 otp = member_scores['oracle']['tp']
                 o_prec = otp / num_res if num_res > 0 else 0
