@@ -170,10 +170,12 @@ class ImplicitEval:
         sorted_result = sorted(zip(score_labels, c_meta), reverse=True,
                                key=itemgetter(0))
 
+
         for sl, m in sorted_result:
             if sl[1] == 1:
-                print(c_meta)
-        input('these are correct ones.')
+                print(sl)
+                print(m)
+                input('these are correct ones.')
 
         ranked_predictions = [(s, l, meta['entity']) for (s, l), meta in
                               sorted_result]
