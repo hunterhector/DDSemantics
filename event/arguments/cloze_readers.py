@@ -545,8 +545,6 @@ class HashedClozeReader:
                             'source': cand_arg['source'],
                         })
 
-                        print('')
-
                         if len(cloze_event_indices) == 500:
                             break
 
@@ -956,9 +954,9 @@ class HashedClozeReader:
                 total_dist += distance
                 total_pair += 1.0
 
-            print(sent_id)
-            print(max_dist, min_dist, total_dist)
-            input('check distance signature')
+            # print(sent_id)
+            # print(max_dist, min_dist, total_dist)
+            # input('check distance signature')
 
             if total_pair > 0:
                 distances.append((max_dist, min_dist, total_dist / total_pair))
