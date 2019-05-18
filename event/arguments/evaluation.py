@@ -214,10 +214,10 @@ class ImplicitEval:
                     'top_response': (top_response, members['score_labels'][0])
                 }
 
-        for g, selection in selected_groups.items():
-            print(f'{g} has {len(selection)} items.')
-        pprint(instance_res)
-        input('wait')
+        # for g, selection in selected_groups.items():
+        #     print(f'{g} has {len(selection)} items.')
+        # pprint(instance_res)
+        # input('wait')
 
         data['results'] = instance_res
         data['predictions'] = ranked_predictions
