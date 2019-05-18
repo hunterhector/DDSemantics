@@ -92,11 +92,11 @@ class ImplicitEval:
             this_res['oracle'][f'p@{c}'] = gold_p
             this_res['oracle'][f'r@{c}'] = gold_r
 
-            score_group['system']['system'][f'p@{c}'] += p
-            score_group['system']['system'][f'r@{c}'] += r
+            score_group['results']['system'][f'p@{c}'] += p
+            score_group['results']['system'][f'r@{c}'] += r
 
-            score_group['oracle']['oracle'][f'p@{c}'] += gold_p
-            score_group['oracle']['oracle'][f'r@{c}'] += gold_r
+            score_group['results']['oracle'][f'p@{c}'] += gold_p
+            score_group['results']['oracle'][f'r@{c}'] += gold_r
 
         if raw_scores_labels[0][1] == 1:
             score_group['results']['system']['tp'] += 1
