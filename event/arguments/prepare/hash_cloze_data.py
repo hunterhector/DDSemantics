@@ -138,8 +138,10 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 num_implicit_arg += 1
 
         if num_implicit_arg > 0:
+            print(f'{pred} has {num_implicit_arg} implicit arguments')
             implicit_pred_counts[pred] += 1
             implicit_slot_counts[pred] += num_implicit_arg
+            input('check')
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
 
