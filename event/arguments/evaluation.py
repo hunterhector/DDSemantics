@@ -224,8 +224,8 @@ class ImplicitEval:
                 'top_responses': top_responses,
             }
 
-            # print(members)
-            # input(f'this is a member of {group_name}')
+            pprint(members)
+            input(f'this is a member of {group_name}')
 
         data['results'] = instance_res
         data['predictions'] = ranked_predictions
