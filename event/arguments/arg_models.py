@@ -92,7 +92,7 @@ class RandomBaseline(ArgCompatibleModel):
     def forward(self, batch_event_data, batch_info):
         batch_features = batch_event_data['features']
         a, b, c = batch_features.shape
-        return torch.rand(a, b, c)
+        return torch.rand(a, b, 1)
 
 
 class MostFrequentModel(ArgCompatibleModel):
