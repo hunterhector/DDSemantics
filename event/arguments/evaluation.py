@@ -139,15 +139,15 @@ class ImplicitEval:
         def all_selector(meta):
             return True
 
-        def entity_selector(meta):
-            return meta['entity']
+        def predicate_selector(meta):
+            return meta['predicate']
 
         return {
             'neighbor': neighbor_selector,
             'gold': gold_selector,
             'neighbor_gold': neighbor_gold_selector,
             'all': all_selector,
-            'entity': entity_selector
+            'predicate': predicate_selector
         }
 
     def add_result(self, doc_id, event_idx, slot_idx, score_labels, ins_meta,
@@ -179,6 +179,7 @@ class ImplicitEval:
                             'metas': []
                         }
 
+                    meta['predicate'] = ins_meta['predicate']
                     selected_groups[group][selection]['score_labels'].append(sl)
                     selected_groups[group][selection]['metas'].append(meta)
 
@@ -209,7 +210,7 @@ class ImplicitEval:
 
         for g, selection in selected_groups.items():
             print(f'{g} has {len(selection)} items.')
-        print(instance_res)
+        pprint(instance_res)
         input('wait')
 
         data['results'] = instance_res
