@@ -171,7 +171,7 @@ class ImplicitEval:
                                key=itemgetter(0))
 
         for sl, m in sorted_result:
-            if sl[1]:
+            if sl[1] == 1:
                 print(c_meta)
         input('these are correct ones.')
 
