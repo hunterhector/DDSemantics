@@ -120,7 +120,7 @@ class ImplicitEval:
                 {
                     'score': score,
                     'label': label,
-                    'entity': meta['entity'],
+                    'meta': meta['entity'],
                     'distance_to_event': meta['distance_to_event'],
                     'source': meta['source'],
                 }
@@ -146,7 +146,7 @@ class ImplicitEval:
             self.overall_res['num_fillable'] += 1
 
         for sel_name, tops in top_k.items():
-            if tops[0]['entity'] == ghost_entity_text:
+            if tops[0]['meta']['entity'] == ghost_entity_text:
                 self.overall_res['num_fill_attempts'][sel_name] += 1
 
         instance_res = {
