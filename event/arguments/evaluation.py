@@ -202,13 +202,6 @@ class ImplicitEval:
         data['results'].append(instance_res)
         data['predicates'] = ranked_predictions
 
-        pprint(ranked_predictions[:5])
-
-        print('-------------------instance results --------------------')
-        pprint(instance_res)
-
-        input('check this.')
-
         if self.out_dir:
             mode = 'a' if os.path.exists(self.detail_path) else 'w'
             with open(self.detail_path, mode) as res_out:
