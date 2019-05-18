@@ -57,7 +57,8 @@ class ImplicitEval:
 
     def compute_scores(self, raw_scores_labels, score_group):
         this_res = {
-            'scores': {}
+            'system': {},
+            'oracle': {},
         }
 
         gold_ranks = []
