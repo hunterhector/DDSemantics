@@ -205,7 +205,10 @@ class ImplicitEval:
                     member_name
                 ] = ins_scores
 
+        for g, selection in selected_groups.items():
+            print(f'{g} has {len(selection)} items.')
         print(instance_res)
+        input('wait')
 
         data['results'] = instance_res
         data['predictions'] = ranked_predictions
