@@ -12,7 +12,6 @@ from collections import Counter, defaultdict
 
 class ImplicitEval:
     def __init__(self, slot_names, out_dir=None):
-        self.num_instances = 0
         self.results = []
         self.out_dir = out_dir
         self.cutoffs = [1, 5, 10]
@@ -41,19 +40,26 @@ class ImplicitEval:
                 'results': {},
             }
 
-        self.score_buffer[group]['results'][group_member] = {
-            'system': {},
-            'oracle': {},
-        }
+        if group_member not in self.score_buffer[group]['results']:
+            self.score_buffer[group]['results'][group_member] = {
+                'system': {},
+                'oracle': {},
+            }
 
-        for c in self.cutoffs:
-            self.score_buffer[group]['results'][group_member]['system'][f'p@{c}'] = 0
-            self.score_buffer[group]['results'][group_member]['system'][f'r@{c}'] = 0
-            self.score_buffer[group]['results'][group_member]['system']['tp'] = 0
+            for c in self.cutoffs:
+                self.score_buffer[group]['results'][group_member][
+                    'system'][f'p@{c}'] = 0
+                self.score_buffer[group]['results'][group_member][
+                    'system'][f'r@{c}'] = 0
+                self.score_buffer[group]['results'][group_member][
+                    'system']['tp'] = 0
 
-            self.score_buffer[group]['results'][group_member]['oracle'][f'p@{c}'] = 0
-            self.score_buffer[group]['results'][group_member]['oracle'][f'r@{c}'] = 0
-            self.score_buffer[group]['results'][group_member]['oracle']['tp'] = 0
+                self.score_buffer[group]['results'][group_member][
+                    'oracle'][f'p@{c}'] = 0
+                self.score_buffer[group]['results'][group_member][
+                    'oracle'][f'r@{c}'] = 0
+                self.score_buffer[group]['results'][group_member][
+                    'oracle']['tp'] = 0
 
     def compute_scores(self, raw_scores_labels, score_group):
         this_res = {
@@ -196,6 +202,7 @@ class ImplicitEval:
             instance_res['categorized_result'][group_name] = {}
             for member_name, members in selected_group.items():
                 self.create_score_group(group_name, member_name)
+                self.score_buffer[group_name]['num_instances'] += 1
                 ins_scores = self.compute_scores(
                     members['score_labels'],
                     self.score_buffer[group_name]['results'][member_name])
