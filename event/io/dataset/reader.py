@@ -81,6 +81,7 @@ def main():
         gc_only = Bool(help='Only use GC arguments.').tag(config=True)
         format = Unicode(help='name for format', default_value='NomBank').tag(
             config=True)
+        stat_dir = Unicode(help='Path for stats.').tag(config=True)
 
     class PropBankConfig(DataConf):
         root = Unicode(help='Propbank corpus.').tag(config=True)
@@ -88,6 +89,11 @@ def main():
         frame_files = Unicode(help='Frame file pattern.').tag(config=True)
         verbs_file = Unicode(help='Verbs.').tag(config=True)
         format = Unicode(help='name for format', default_value='PropBank').tag(
+            config=True)
+
+        # PennTree Bank config.
+        wsj_path = Unicode(help='PennTree Bank path.').tag(config=True)
+        wsj_file_pattern = Unicode(help='File pattern to read PTD data').tag(
             config=True)
 
     class NegraConfig(DataConf):
@@ -126,38 +132,38 @@ def main():
         o = basic_param.order
         parser = RichERE(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    elif 'FrameNetConf' in config:
+    if 'FrameNetConf' in config:
         basic_param = FrameNetConf(config=config)
         o = basic_param.order
         parser = FrameNet(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    elif 'ConllConf' in config:
+    if 'ConllConf' in config:
         basic_param = ConllConf(config=config)
         o = basic_param.order
         parser = Conll(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    elif 'AceConf' in config:
+    if 'AceConf' in config:
         basic_param = AceConf(config=config)
         o = basic_param.order
         parser = ACE(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    elif 'NomBankConfig' in config:
+    if 'NomBankConfig' in config:
         basic_param = NomBankConfig(config=config)
         o = basic_param.order
         parser = NomBank(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    elif 'PropBankConfig' in config:
+        print('found nombank config')
+    if 'PropBankConfig' in config:
         basic_param = PropBankConfig(config=config)
         o = basic_param.order
         parser = PropBank(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    elif 'NegraConfig' in config:
+        print('found propbank config')
+    if 'NegraConfig' in config:
         basic_param = NegraConfig(config=config)
         o = basic_param.order
         parser = NeGraXML(basic_param, corpus, o == 0)
         order_parsers.append((o, parser))
-    else:
-        raise NotImplementedError("Selected format unknown.")
 
     order_parsers.sort()
     parsers = [p[1] for p in order_parsers]
@@ -202,6 +208,4 @@ def main():
 
 
 if __name__ == '__main__':
-    import sys
-
     main()

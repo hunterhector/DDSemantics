@@ -20,6 +20,9 @@ from event.io.dataset.base import (
 )
 
 from event.io.dataset import utils
+from collections import Counter
+import os
+import sys
 
 
 class NomBank(DataLoader):
@@ -30,18 +33,17 @@ class NomBank(DataLoader):
     def __init__(self, params, corpus, with_doc=False):
         super().__init__(params, corpus, with_doc)
 
-        if with_doc:
-            self.wsj_treebank = BracketParseCorpusReader(
-                root=params.wsj_path,
-                fileids=params.wsj_file_pattern,
-                tagset='wsj',
-                encoding='ascii'
-            )
+        self.wsj_treebank = BracketParseCorpusReader(
+            root=params.wsj_path,
+            fileids=params.wsj_file_pattern,
+            tagset='wsj',
+            encoding='ascii'
+        )
 
-            logging.info(
-                'Found {} treebank files.'.format(
-                    len(self.wsj_treebank.fileids()))
-            )
+        logging.info(
+            'Found {} treebank files.'.format(
+                len(self.wsj_treebank.fileids()))
+        )
 
         self.nombank = NombankCorpusReader(
             root=FileSystemPathPointer(params.nombank_path),
@@ -52,7 +54,7 @@ class NomBank(DataLoader):
             parse_corpus=self.wsj_treebank
         )
 
-        logging.info("Loading G&C annotations")
+        logging.info("Loading G&C annotations.")
         self.gc_annos = self.load_gc_annotations()
 
         logging.info("Loading Nombank annotations")
@@ -60,6 +62,15 @@ class NomBank(DataLoader):
         for nb_instance in self.nombank.instances():
             docid = nb_instance.fileid.split('/')[-1]
             self.nombank_annos[docid].append(nb_instance)
+
+        self.stats = {
+            'predicates_with_implicit': Counter(),
+            'implicit_slots': Counter(),
+            'non_incorp_implicit': Counter(),
+            'non_incorp_precede_implicit': Counter(),
+        }
+
+        self.stat_dir = params.stat_dir
 
     class NomElement:
         def __init__(self, article_id, sent_num, tree_pointer):
@@ -190,13 +201,13 @@ class NomBank(DataLoader):
         p = doc.add_predicate(None, predicate_span, frame_type='NOMBANK')
         p.add_meta('node', pred_node_repr)
 
-        arg_em = doc.add_entity_mention(None, argument_span)
+        em = doc.add_entity_mention(None, argument_span)
 
-        if p and arg_em:
+        if p and em:
             if implicit:
                 arg_type = 'i_' + arg_type
 
-            arg_mention = doc.add_argument_mention(p, arg_em.aid, arg_type)
+            arg_mention = doc.add_argument_mention(p, em.aid, arg_type)
             arg_mention.add_meta('node', arg_node_repr)
 
             if implicit:
@@ -207,6 +218,8 @@ class NomBank(DataLoader):
 
             if predicate.pointer == argument.pointer:
                 arg_mention.add_meta('incorporated', True)
+
+            return p, arg_mention
 
     def add_all_annotations(self, doc, parsed_sents):
         logging.info("Adding nombank annotation for " + doc.docid)
@@ -226,11 +239,42 @@ class NomBank(DataLoader):
 
         if doc.docid in self.gc_annos:
             for predicate_node, gc_args in self.gc_annos[doc.docid].items():
+                added_args = defaultdict(list)
+                non_incop_args = defaultdict(list)
+                nom_incop_preceed_args = defaultdict(list)
+
                 for arg_type, arg_nodes in gc_args.items():
                     for arg_node in arg_nodes:
-                        self.add_nombank_arg(doc, parsed_sents, doc.token_spans,
-                                             predicate_node, arg_type, arg_node,
-                                             True)
+                        p, arg = self.add_nombank_arg(
+                            doc, parsed_sents, doc.token_spans, predicate_node,
+                            arg_type, arg_node, True)
+                        added_args[arg_type].append(arg)
+
+                        if not arg.meta.get('incorporated', False):
+                            non_incop_args[arg_type].append(arg)
+
+                            if not arg.meta.get('succeeding', False):
+                                nom_incop_preceed_args[arg_type].append(arg)
+
+                if len(added_args) > 0:
+                    p_text = p.text.lower()
+
+                    if p_text == 'losses' or p_text == 'loss':
+                        p_text = 'loss'
+                    else:
+                        p_text = p_text.rstrip('s')
+
+                    if '-' in p_text:
+                        p_text = p_text.split('-')[1]
+
+                    self.stats['predicates_with_implicit'][p_text] += 1
+                    self.stats['implicit_slots'][p_text] += len(added_args)
+                    self.stats['non_incorp_implicit'][p_text] += len(
+                        non_incop_args
+                    )
+                    self.stats['non_incorp_precede_implicit'][p_text] += len(
+                        nom_incop_preceed_args
+                    )
 
     def set_wsj_text(self, doc, fileid):
         text = ''
@@ -265,8 +309,6 @@ class NomBank(DataLoader):
         return all_annos
 
     def get_doc(self):
-        super().get_doc()
-
         for docid, instances in self.nombank_annos.items():
             if self.params.gc_only and docid not in self.gc_annos:
                 continue
@@ -285,3 +327,31 @@ class NomBank(DataLoader):
             self.add_all_annotations(doc, parsed_sents)
 
             yield doc
+
+    def print_stats(self):
+        logging.info("Corpus statistics from Nombank")
+
+        keys = self.stats.keys()
+        headline = 'predicate\t' + '\t'.join(keys)
+        sums = Counter()
+
+        if not os.path.exists(self.stat_dir):
+            os.makedirs(self.stat_dir)
+
+        preds = sorted(self.stats['predicates_with_implicit'].keys())
+
+        with open(os.path.join(self.stat_dir, 'counts.txt'), 'w') as out:
+            print(headline)
+            out.write(f'{headline}\n')
+
+            for pred in preds:
+                line = f"{pred}:"
+                for key in keys:
+                    line += f"\t{self.stats[key][pred]}"
+                    sums[key] += self.stats[key][pred]
+                print(line)
+                out.write(f'{line}\n')
+
+            sum_line = 'Total\t' + '\t'.join([str(sums[k]) for k in keys])
+            print(sum_line)
+            out.write(f'{sum_line}\n')

@@ -35,13 +35,6 @@ def make_words_from_pointer(tree, tree_pointer):
     """
     pointers = get_tree_pointers(tree_pointer)
 
-    print("check sent num of pointers")
-    for pointer in pointers:
-        print(pointer.sentnum)
-
-    input("Pause")
-
-
     all_word_idx = []
     all_word_surface = []
 

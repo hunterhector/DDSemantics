@@ -14,6 +14,7 @@ from traitlets.config import Configurable
 import sys
 from pprint import pprint
 
+
 def hash_context(word_emb_vocab, context):
     left, right = context
     return [word_emb_vocab.get_index(word, word_vocab.unk_word) for word in
@@ -71,6 +72,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         'docid': docid,
         'events': [],
     }
+    gold_slot_name = hash_params.gold_field_name
 
     hashed_entities = {}
     entity_represents = {}
@@ -99,12 +101,20 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
         full_args = {}
 
-        num_implicit_arg = 0
+        implicit_slots_preceed = set()
+        implicit_slots_no_incorp = set()
+        implicit_slots_all = set()
+
+        # Debug purpose.
+        raw_pred = pred
+        if raw_pred.startswith('not_'):
+            raw_pred = pred[4:]
+
+        if raw_pred == 'small-investor':
+            raw_pred = 'investor'
 
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
-
-            has_implicit_arg = False
             for arg_info in arg_info_list:
                 dep, full_fe, arg = arg_info
 
@@ -133,35 +143,27 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 hashed_arg_list.append(hashed_arg)
 
                 if hashed_arg['implicit']:
-                    has_implicit_arg = True
-                    implicit_answer_counts[pred] += 1
+                    if not hashed_arg['incorporated']:
+                        implicit_slots_no_incorp.add(arg['propbank_role'])
+                        if not hashed_arg['succeeding']:
+                            implicit_slots_preceed.add(arg['propbank_role'])
+                    implicit_slots_all.add(arg['propbank_role'])
 
             full_args[slot] = hashed_arg_list
 
-            if has_implicit_arg:
-                num_implicit_arg += 1
+        stat_counters['predicate'][raw_pred] += 1
+        if len(implicit_slots_no_incorp) > 0:
+            stat_counters['implicit predicates'][raw_pred] += 1
+            stat_counters['implicit slots (no incorp)'][raw_pred] += len(
+                implicit_slots_no_incorp)
 
-        implicit_slots = set()
-        for argument in event['arguments']:
-            if argument['implicit']:
-                implicit_slots.add(argument['propbank_role'])
+        if len(implicit_slots_all) > 0:
+            stat_counters['implicit slots (all)'][raw_pred] += len(
+                implicit_slots_all)
 
-        if not len(implicit_slots) == num_implicit_arg:
-            print(docid)
-            print(event['predicate'])
-            print(implicit_slots)
-
-            for s, args in full_args.items():
-                print('group by ',s)
-                for a in args:
-                    print(a['propbank_role'])
-            print(f'{len(implicit_slots)} is not the same as {num_implicit_arg}')
-            input('not the same')
-
-        predicate_counts[pred] += 1
-        if num_implicit_arg > 0:
-            implicit_pred_counts[pred] += 1
-            implicit_slot_counts[pred] += num_implicit_arg
+        if len(implicit_slots_preceed) > 0:
+            stat_counters['implicit slots (preceding)'][raw_pred] += len(
+                implicit_slots_preceed)
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
 
@@ -177,14 +179,16 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
     return hashed_doc
 
 
-def hash_data(params):
-    slot_handler = SlotHandler(params.frame_files, params.frame_dep_map,
-                               params.dep_frame_map, params.nom_map)
+def hash_data():
+    slot_handler = SlotHandler(hash_params.frame_files,
+                               hash_params.frame_dep_map,
+                               hash_params.dep_frame_map,
+                               hash_params.nom_map)
 
-    typed_event_vocab = TypedEventVocab(params.component_vocab_dir)
+    typed_event_vocab = TypedEventVocab(hash_params.component_vocab_dir)
 
-    event_emb_vocab = EmbbedingVocab(params.event_vocab)
-    word_emb_vocab = EmbbedingVocab(params.word_vocab)
+    event_emb_vocab = EmbbedingVocab(hash_params.event_vocab)
+    word_emb_vocab = EmbbedingVocab(hash_params.word_vocab)
 
     reader = EventReader()
 
@@ -192,8 +196,8 @@ def hash_data(params):
     event_count = 0
 
     print("{}: Start hashing".format(util.get_time()))
-    with gzip.open(params.raw_data) as data_in, gzip.open(
-            params.output_path, 'w') as data_out:
+    with gzip.open(hash_params.raw_data) as data_in, gzip.open(
+            hash_params.output_path, 'w') as data_out:
         for docid, events, entities, sentences in reader.read_events(data_in):
 
             offset = 0
@@ -215,6 +219,17 @@ def hash_data(params):
                 print('\r{}: Hashed for {} events in '
                       '{} docs.'.format(util.get_time(), event_count,
                                         doc_count), end='')
+
+            hashed_arg_count = 0
+            for event in hashed_doc['events']:
+                for slot, l_arg in event['args'].items():
+                    hashed_arg_count += len(l_arg)
+
+            read_arg_count = 0
+            for event in events:
+                read_arg_count += len(event['arguments'])
+
+            assert hashed_arg_count == read_arg_count
 
     print(
         '\nTotally {} events and {} documents.'.format(event_count, doc_count)
@@ -241,6 +256,8 @@ if __name__ == '__main__':
         frame_files = Unicode(help="Frame file data.").tag(config=True)
         output_path = Unicode(
             help='Output path of the hashed data.').tag(config=True)
+        gold_field_name = Unicode(help='THe gold standard field.').tag(
+            config=True)
 
 
     from event.util import load_mixed_configs, set_basic_log
@@ -248,40 +265,30 @@ if __name__ == '__main__':
     set_basic_log()
     hash_params = HashParam(config=load_mixed_configs())
 
-    implicit_pred_counts = Counter()
-    predicate_counts = Counter()
-    implicit_slot_counts = Counter()
-    implicit_answer_counts = Counter()
+    stat_counters = {
+        'predicate': Counter(),
+        'implicit predicates': Counter(),
+        'implicit slots (all)': Counter(),
+        'implicit slots (no incorp)': Counter(),
+        'implicit slots (preceding)': Counter(),
+    }
+    stat_keys = stat_counters.keys()
 
-    hash_data(hash_params)
+    hash_data()
 
-    print('======Predicates that has implicit arguments======')
-    print("Predicate\tCount\tAll Count")
-    sum = 0
-    sum_all = 0
-    for pred, c in implicit_pred_counts.items():
-        all_count = predicate_counts[pred]
-        print(f"{pred}\t{c}\t{all_count}")
-        sum += c
-        sum_all += all_count
-    print(f"Total\t{sum}\t{sum_all}")
+    print('==========Implicit arguments Statistics===========')
+    headline = "Predicate\t" + "\t".join(stat_keys)
+    print(headline)
+    preds = sorted(stat_counters['implicit predicates'].keys())
+
+    sums = [0] * len(stat_keys)
+    for pred in preds:
+        line = pred
+        for idx, key in enumerate(stat_keys):
+            v = stat_counters[key][pred]
+            line += f"\t{v}"
+            sums[idx] += v
+        print(line)
+
+    print("Total\t" + '\t'.join([str(s) for s in sums]))
     print('==================================================')
-
-    print('=============Slots that are implicit==============')
-    print("In Predicate\tCount")
-    sum = 0
-    for pred, c in implicit_slot_counts.items():
-        print(f"{pred}\t{c}")
-        sum += c
-    print(f"Total\t{sum}")
-    print('==================================================')
-
-    print('======Answers that are implicit arguments======')
-    print("In Predicate\tCount")
-    sum = 0
-    for pred, c in implicit_answer_counts.items():
-        print(f"{pred}\t{c}")
-        sum += c
-    print(f"Total\t{sum}")
-    print('================================================')
-

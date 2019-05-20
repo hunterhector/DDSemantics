@@ -1,0 +1,42 @@
+After reading from raw
+Predicate       Implicit Predicates     Implicit Slots  Non incorp implicit slots       Non incop preceeding implicit slots
+bid     73      137     137     137
+cost    73      88      88      88
+fund    34      63      58      58
+investment      35      55      55      54
+investor        150     250     121     119
+loan    52      88      88      87
+loss    48      63      63      62
+plan    57      83      83      83
+price   133     212     167     167
+sale    126     199     198     198
+Total   781     1238    1058    1053
+
+After creating cloze json
+Predicate       Implicit Predicates     Implicit Slots  Non incorp implicit slots       Non incop preceeding implicit slots
+bid     73      137     137     137
+cost    73      88      88      88
+fund    34      63      58      58
+investment      35      55      55      54
+investor        150     250     121     119
+loan    52      88      88      87
+loss    48      63      63      62
+plan    57      83      83      83
+price   133     212     167     167
+sale    126     199     198     198
+
+After hashing
+==========Implicit arguments Statistics===========
+Predicate       predicate       implicit predicates     implicit slots (all)    implicit slots (no incorp)      implicit slots (preceding)
+bid     105     73      137     137     137
+cost    113     73      88      88      88
+fund    66      33      63      58      58  <-- miss one
+investment      66      35      55      55      54
+investor        161     105     250     121     119
+loan    82      52      88      88      87
+loss    108     26      39      39      39 <-- miss many
+plan    166     54      77      77      77 <-- miss 3
+price   258     122     212     167     167 <-- miss 11
+sale    250     69      116     115     115 <-- miss many
+Total   1375    642     1125    945     941
+==================================================

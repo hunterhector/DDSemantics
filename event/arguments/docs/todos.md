@@ -9,7 +9,7 @@
 1. Distance features
     - Distance cutoff baseline
     - Fix the distance embedding error, should deal with infinity much better
-1. Setup google platform
+1. Using constituent to find the headword is not reliable, should use dependency
 1. Get the slot classifier to work
     - Rule based like Ruppenhofer
     - Classifier like Erk
@@ -83,3 +83,4 @@ not resolvable.
 1. ~~Make sure training reader works properly~~
 1. ~~Study w2v baseline carefully~~
 1. ~~We are using the detailed dependency labels~~
+1. ~~Setup google platform~~
