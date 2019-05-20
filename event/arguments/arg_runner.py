@@ -36,6 +36,7 @@ from event.util import (
     set_file_log, set_basic_log, ensure_dir, append_num_to_path
 )
 from time import localtime, strftime
+import numpy as np
 
 
 def data_gen(data_path, from_line=None, until_line=None):
@@ -82,12 +83,22 @@ class GoldNullArgDetector(NullArgDetector):
     A Null arg detector that look at gold standard.
     """
 
-    def __index__(self):
-        super(NullArgDetector, self).__init__()
+    def __init__(self):
+        super().__init__()
 
     def should_fill(self, event_info, slot, arg):
         return arg.get('implicit', False) and not arg.get('incorporated', False)
 
+
+class AllArgDetector(NullArgDetector):
+    """
+    A Null arg detector that returns everything.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def should_fill(self, event_info, slot, arg):
+        return True
 
 class ResolvableArgDetector(NullArgDetector):
     """
@@ -95,7 +106,7 @@ class ResolvableArgDetector(NullArgDetector):
     """
 
     def __init__(self):
-        super(NullArgDetector, self).__init__()
+        super().__init__()
 
     def should_fill(self, event_info, slot, arg):
         return len(arg) > 0 and arg['resolvable']
@@ -297,8 +308,8 @@ class ArgRunner(Configurable):
         self.reader.gold_role_field = gold_field_name
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
-            (doc_id, instances, common_data, gold_labels, candidate_meta,
-             instance_meta,) = test_data
+            (doc_id, instances, common_data, candidate_meta,instance_meta,
+             ) = test_data
 
             with torch.no_grad():
                 coh = model(instances, common_data)
@@ -307,11 +318,12 @@ class ArgRunner(Configurable):
                     0].tolist()
                 slot_idxes = common_data['slot_indices'].data.cpu().numpy()[
                     0].tolist()
-                coh_scores = coh.data.cpu().numpy()[0].tolist()
+                coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
 
                 evaluator.add_prediction(
-                    doc_id, event_idxes, slot_idxes, coh_scores, gold_labels,
-                    candidate_meta, instance_meta)
+                    doc_id, event_idxes, slot_idxes, coh_scores,
+                    candidate_meta, instance_meta
+                )
 
                 instance_count += 1
 
@@ -400,18 +412,6 @@ class ArgRunner(Configurable):
     def run_baselines(self, basic_para):
         logging.info(f"Test baseline models on {basic_para.test_in}.")
 
-        # Random baseline.
-        random_baseline = RandomBaseline(
-            self.para, self.resources, self.device).to(self.device)
-        self.__test(
-            random_baseline, data_gen(basic_para.test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=os.path.join(
-                basic_para.log_dir, random_baseline.name, 'default',
-            ),
-            gold_field_name=basic_para.gold_field_name
-        )
-
         # W2v baseline.
         # Variation 1: max_sim, concat
         self.para.w2v_baseline_method = 'max_sim'
@@ -422,7 +422,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'concat_max',
+                basic_para.log_dir, 'baselines', w2v_baseline.name, 'concat_max'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -436,7 +436,8 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'concat_top3',
+                basic_para.log_dir, 'baselines',
+                w2v_baseline.name, 'concat_top3'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -450,7 +451,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'sum_max',
+                basic_para.log_dir, 'baselines', w2v_baseline.name, 'sum_max'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -464,7 +465,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'sum_top3',
+                basic_para.log_dir, 'baselines', w2v_baseline.name, 'sum_top3',
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -476,7 +477,20 @@ class ArgRunner(Configurable):
             most_freq_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, most_freq_baseline.name, 'default',
+                basic_para.log_dir, 'baselines', most_freq_baseline.name,
+                'default',
+            ),
+            gold_field_name=basic_para.gold_field_name
+        )
+
+        # Random baseline.
+        random_baseline = RandomBaseline(
+            self.para, self.resources, self.device).to(self.device)
+        self.__test(
+            random_baseline, data_gen(basic_para.test_in),
+            nid_detector=self.nid_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, 'baselines', random_baseline.name, 'default'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -712,9 +726,7 @@ def main(conf):
         "Started the runner at " + strftime("%Y-%m-%d_%H-%M-%S", localtime()))
     logging.info(json.dumps(conf, indent=2))
 
-    runner = ArgRunner(
-        config=conf,
-    )
+    runner = ArgRunner(config=conf)
 
     if basic_para.run_baselines:
         runner.run_baselines(basic_para)

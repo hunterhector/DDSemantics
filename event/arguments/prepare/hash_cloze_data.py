@@ -12,7 +12,7 @@ from traitlets import (
 from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
 import sys
-
+from pprint import pprint
 
 def hash_context(word_emb_vocab, context):
     left, right = context
@@ -90,6 +90,9 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         pid = event_emb_vocab.get_index(
             typed_event_vocab.get_pred_rep(event), None)
         fid = event_emb_vocab.get_index(event.get('frame'), None)
+
+        # TODO: many args are mapped in the "prep" slot, but some of them are
+        # different implicit slots.
         mapped_args = slot_handler.organize_args(event)
 
         sent_offset = sent_starts[event['sentence_id']]
@@ -132,11 +135,30 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 if hashed_arg['implicit']:
                     has_implicit_arg = True
                     implicit_answer_counts[pred] += 1
+
             full_args[slot] = hashed_arg_list
 
             if has_implicit_arg:
                 num_implicit_arg += 1
 
+        implicit_slots = set()
+        for argument in event['arguments']:
+            if argument['implicit']:
+                implicit_slots.add(argument['propbank_role'])
+
+        if not len(implicit_slots) == num_implicit_arg:
+            print(docid)
+            print(event['predicate'])
+            print(implicit_slots)
+
+            for s, args in full_args.items():
+                print('group by ',s)
+                for a in args:
+                    print(a['propbank_role'])
+            print(f'{len(implicit_slots)} is not the same as {num_implicit_arg}')
+            input('not the same')
+
+        predicate_counts[pred] += 1
         if num_implicit_arg > 0:
             implicit_pred_counts[pred] += 1
             implicit_slot_counts[pred] += num_implicit_arg
@@ -227,18 +249,22 @@ if __name__ == '__main__':
     hash_params = HashParam(config=load_mixed_configs())
 
     implicit_pred_counts = Counter()
+    predicate_counts = Counter()
     implicit_slot_counts = Counter()
     implicit_answer_counts = Counter()
 
     hash_data(hash_params)
 
     print('======Predicates that has implicit arguments======')
-    print("Predicate\tCount")
+    print("Predicate\tCount\tAll Count")
     sum = 0
+    sum_all = 0
     for pred, c in implicit_pred_counts.items():
-        print(f"{pred}\t{c}")
+        all_count = predicate_counts[pred]
+        print(f"{pred}\t{c}\t{all_count}")
         sum += c
-    print(f"Total\t{sum}")
+        sum_all += all_count
+    print(f"Total\t{sum}\t{sum_all}")
     print('==================================================')
 
     print('=============Slots that are implicit==============')

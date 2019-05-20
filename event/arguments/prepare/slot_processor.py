@@ -180,7 +180,9 @@ class SlotHandler:
         dep_slots = {}
         frame_slots = {}
 
+        # TODO: handle slashed events (small-investor)
         predicate = util.remove_neg(event.get('predicate'))
+
         frame = event.get('frame', 'NA')
         for arg in args:
             dep = arg.get('dep', 'NA')
@@ -233,9 +235,6 @@ class SlotHandler:
                 position = get_simple_dep(dep)
             else:
                 position = get_simple_dep(nombank_special_dep)
-
-            # if predicate == 'leak':
-            #     print(position)
 
             if position == 'dep':
                 # Put other dependency to the prepositional slot in the fixed
