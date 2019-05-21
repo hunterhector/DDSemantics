@@ -6,6 +6,12 @@ import pickle
 import json
 
 
+def revert_nmod(dep):
+    if dep.startswith("nmod:") and not dep == "nmod:'s":
+        dep = dep.replace("nmod:", "prep_")
+    return dep
+
+
 class Vocab:
     def __init__(self, base_folder, name, embedding_path=None, emb_dim=100,
                  ignore_existing=False):
@@ -171,7 +177,7 @@ class EventReader:
 
                     # TODO: can automate the field mapping here.
                     arg = {
-                        'dep': arg_info.get('dep', 'NA'),
+                        'dep': revert_nmod(arg_info.get('dep', 'NA')),
                         'fe': arg_info['feName'],
                         'arg_context': arg_context,
                         'entity_id': arg_info['entityId'],

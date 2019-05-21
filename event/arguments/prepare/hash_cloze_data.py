@@ -148,8 +148,20 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                         if not hashed_arg['succeeding']:
                             implicit_slots_preceed.add(arg['propbank_role'])
                     implicit_slots_all.add(arg['propbank_role'])
-
             full_args[slot] = hashed_arg_list
+
+        # num_actual = len(event["arguments"])
+        # num_full_args = sum([len(l) for l in full_args.values()])
+        # num_mapped_args = sum([len(l) for l in mapped_args.values()])
+        # if not num_actual == num_full_args:
+        #     print(f'Actual number of args {num_actual}')
+        #     print(f'Full args contains {num_full_args} args')
+        #     print(f'mapped args contains {num_mapped_args} args')
+        #
+        #     pprint(event['arguments'])
+        #     pprint(full_args)
+        #
+        #     raise ValueError("Incorrect argument numbers.")
 
         stat_counters['predicate'][raw_pred] += 1
         if len(implicit_slots_no_incorp) > 0:
@@ -220,16 +232,22 @@ def hash_data():
                       '{} docs.'.format(util.get_time(), event_count,
                                         doc_count), end='')
 
-            hashed_arg_count = 0
-            for event in hashed_doc['events']:
-                for slot, l_arg in event['args'].items():
-                    hashed_arg_count += len(l_arg)
-
-            read_arg_count = 0
-            for event in events:
-                read_arg_count += len(event['arguments'])
-
-            assert hashed_arg_count == read_arg_count
+            # for event, hashed_event in zip(events, hashed_doc['events']):
+            #     num_hashed_args = 0
+            #     for slot, l_arg in hashed_event['args'].items():
+            #         num_hashed_args += len(l_arg)
+            #
+            #     num_actual_args = len(event['arguments'])
+            #
+            #     if not num_hashed_args == num_actual_args:
+            #         print("=====Actual arguments======")
+            #         pprint(hashed_event['args'])
+            #         print("=====Hashed arguments======")
+            #         pprint(event['arguments'])
+            #
+            #         raise ValueError(
+            #             f'{num_hashed_args} hashed, '
+            #             f'{num_actual_args} can be found.')
 
     print(
         '\nTotally {} events and {} documents.'.format(event_count, doc_count)

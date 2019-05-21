@@ -174,28 +174,39 @@ class SlotHandler:
     def organize_args(self, event):
         # Step 0, read slot information
         args = event['arguments']
-
-        arg_list = []
-
-        dep_slots = {}
-        frame_slots = {}
-
         # TODO: handle slashed events (small-investor)
         predicate = util.remove_neg(event.get('predicate'))
-
         frame = event.get('frame', 'NA')
+
+        # List of resolved arguments.
+        arg_list = []
+
+        # Arguments that have a valid dependency.
+        dep_slots = {}
+        # Arguments that have a valid frame element.
+        frame_slots = {}
+
         for arg in args:
-            dep = arg.get('dep', 'NA')
-            fe = arg.get('fe', 'NA')
+            dep = arg['dep']
+            fe = arg['fe']
+
+            # There are a few defined mapping for the target predicates.
+            if predicate in self.nombank_mapping and 'propbank_role' in arg:
+                this_nom_map = self.nombank_mapping[predicate][1]
+                prop_role = arg['propbank_role'].replace('i_', '')
+                if prop_role in this_nom_map:
+                    dep = this_nom_map[prop_role]
 
             plain_arg = remove_slot_info(arg)
 
-            if fe == 'NA' and not dep == 'NA':
-                if not dep.startswith('prep_'):
-                    dep_slots[dep] = ((frame, fe), remove_slot_info(arg))
+            if fe == 'NA' and not dep == 'NA' and not dep.startswith('prep_'):
+                # Try to impute the FE from dependency label.
+                dep_slots[dep] = ((frame, fe), plain_arg)
             elif dep == 'NA' and not fe == 'NA':
-                frame_slots[(frame, fe)] = (dep, remove_slot_info(arg))
+                # Try to impute the dependency from FE.
+                frame_slots[(frame, fe)] = (dep, plain_arg)
             else:
+                # Add the others directly to the list.
                 arg_list.append((dep, (frame, fe), plain_arg, 'origin'))
 
         # Step 1, impute dependency or FE slot.
@@ -223,18 +234,7 @@ class SlotHandler:
         }
 
         for dep, full_fe, arg, source in arg_list:
-            nombank_special_dep = None
-            if predicate in self.nombank_mapping and 'propbank_role' in arg:
-                this_nom_map = self.nombank_mapping[predicate][1]
-                prop_role = arg['propbank_role'].replace('i_', '')
-
-                if prop_role in this_nom_map:
-                    nombank_special_dep = this_nom_map[prop_role]
-
-            if nombank_special_dep is None:
-                position = get_simple_dep(dep)
-            else:
-                position = get_simple_dep(nombank_special_dep)
+            position = get_simple_dep(dep)
 
             if position == 'dep':
                 # Put other dependency to the prepositional slot in the fixed
@@ -263,5 +263,16 @@ class SlotHandler:
 
         # Put all the unsured ones to the last bin.
         final_args['prep'].extend(unsure_args)
+
+        from pprint import pprint
+        num_actual = len(event["arguments"])
+        num_full_args = sum([len(l) for l in final_args.values()])
+        if not num_actual == num_full_args:
+            print(f'Actual number of args {num_actual}')
+            print(f'Full args contains {num_full_args} args')
+            pprint(arg_list)
+            pprint(event['arguments'])
+            pprint(final_args)
+            raise ValueError("Incorrect argument numbers.")
 
         return final_args

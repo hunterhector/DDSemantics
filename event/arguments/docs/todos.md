@@ -1,5 +1,7 @@
 # List of TODOs 
 
+1. Dependency
+    - Rerun the parser with the old dependency maybe?
 1. Richer output in evaluation
     - ~~Add F1~~
     - Add Dice (partial argument overlap)
@@ -21,6 +23,8 @@
     - One empty slot vocab
     - Different vocab for different predicate
     - Different vocab for different slot
+1. Study the influences from context distances
+1. The mapping from prep to argN is not one-to-one, how to deal with this?
 
 # Advanced thoughts
 
