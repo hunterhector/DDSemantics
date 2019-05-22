@@ -204,6 +204,9 @@ class SlotHandler:
 
             if fe == 'NA' and not dep == 'NA' and not dep.startswith('prep_'):
                 # Try to impute the FE from dependency label.
+
+                # TODO: The bug is here, when we map arguments here,
+                #  if the dependency is the same then we lose a lot.
                 dep_slots[dep] = ((frame, fe), plain_arg)
             elif dep == 'NA' and not fe == 'NA':
                 # Try to impute the dependency from FE.
@@ -286,14 +289,12 @@ class SlotHandler:
         if not num_actual == num_full_args:
             print(f'Actual number of gold args {num_actual}')
             print(f'Full args contains {num_full_args} gold args')
-            print('==== arg list ====')
-            pprint(arg_list)
-            print('==== test arg list ====')
-            pprint(test_arg_list)
+
             print('==== raw arguments ====')
             pprint(event['arguments'])
             print('==== Processed arguments ====')
             pprint(final_args)
+
             raise ValueError(
                 f"Incorrect argument numbers: {num_actual} vs {num_full_args}")
 
