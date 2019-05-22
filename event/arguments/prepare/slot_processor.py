@@ -231,9 +231,14 @@ class SlotHandler:
                 most_common = False
 
         for i_dep, frame_counts in imputed_deps.items():
-            full_fe, count = frame_counts.most_common(1)[0]
-            _, arg = frame_slots[full_fe]
-            arg_list.append((i_dep, full_fe, arg, 'imputed_deps'))
+            most_common = True
+            for full_fe, count in frame_counts.most_common():
+                _, arg = frame_slots[full_fe]
+                if most_common:
+                    arg_list.append((i_dep, full_fe, arg, 'origin'))
+                else:
+                    arg_list.append(('NA', full_fe, arg, 'origin'))
+                most_common = False
 
         arg_candidates = {
             'subj': [],
