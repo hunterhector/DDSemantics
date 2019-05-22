@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict, Counter
 from event.arguments import util
 from operator import itemgetter
+from pprint import pprint
 
 
 def remove_slot_info(arg_info):
@@ -64,7 +65,7 @@ def sort_arg_priority(args, pred_start, pred_end):
         priority = (source_level, num_emtpy, dist)
         p_arg_list.append((priority, (dep, fe, a)))
 
-    return sorted(p_arg_list, key=itemgetter(0))
+    return [p[1] for p in sorted(p_arg_list, key=itemgetter(0))]
 
 
 class SlotHandler:
@@ -186,6 +187,8 @@ class SlotHandler:
         # Arguments that have a valid frame element.
         frame_slots = {}
 
+        test_arg_list = []
+
         for arg in args:
             dep = arg['dep']
             fe = arg['fe']
@@ -208,6 +211,7 @@ class SlotHandler:
             else:
                 # Add the others directly to the list.
                 arg_list.append((dep, (frame, fe), plain_arg, 'origin'))
+                test_arg_list.append((dep, (frame, fe), plain_arg, 'origin'))
 
         # Step 1, impute dependency or FE slot.
         imputed_fes = self.impute_fe(arg_list, predicate, dep_slots,
@@ -217,9 +221,14 @@ class SlotHandler:
 
         # Step 2, find consistent imputation with priority and counts.
         for full_fe, dep_counts in imputed_fes.items():
-            dep, count = dep_counts.most_common(1)[0]
-            _, arg = dep_slots[dep]
-            arg_list.append((dep, full_fe, arg, 'imputed_fes'))
+            most_common = True
+            for dep, count in dep_counts.most_common():
+                _, arg = dep_slots[dep]
+                if most_common:
+                    arg_list.append((dep, full_fe, arg, 'imputed_fes'))
+                else:
+                    arg_list.append((dep, (frame, 'NA'), arg, 'imputed_fes'))
+                most_common = False
 
         for i_dep, frame_counts in imputed_deps.items():
             full_fe, count = frame_counts.most_common(1)[0]
@@ -244,35 +253,43 @@ class SlotHandler:
             else:
                 arg_candidates[position].append((dep, full_fe, arg, source))
 
-        # TODO: still some hairy stuff like duplicate FE slots.
-
         # Final step, organize all the args.
         final_args = {}
         unsure_args = []
         for position, candidate_args in arg_candidates.items():
-            p_arg_info = sort_arg_priority(
+            sorted_arg_info = sort_arg_priority(
                 candidate_args,
                 event['predicate_start'],
                 event['predicate_end']
             )
 
             if position == 'NA':
-                unsure_args = [p[1] for p in p_arg_info]
+                unsure_args = sorted_arg_info
             else:
-                final_args[position] = [p[1] for p in p_arg_info]
+                final_args[position] = sorted_arg_info
 
-        # Put all the unsured ones to the last bin.
+        # Put all the unsure ones to the last bin.
         final_args['prep'].extend(unsure_args)
 
-        from pprint import pprint
-        num_actual = len(event["arguments"])
-        num_full_args = sum([len(l) for l in final_args.values()])
+        num_actual = len(
+            [arg for arg in event["arguments"] if arg['source'] == 'gold'])
+        num_full_args = sum(
+            [len([a for a in l if a[2]['source'] == 'gold']) for l in
+             final_args.values()]
+        )
+
         if not num_actual == num_full_args:
-            print(f'Actual number of args {num_actual}')
-            print(f'Full args contains {num_full_args} args')
+            print(f'Actual number of gold args {num_actual}')
+            print(f'Full args contains {num_full_args} gold args')
+            print('==== arg list ====')
             pprint(arg_list)
+            print('==== test arg list ====')
+            pprint(test_arg_list)
+            print('==== raw arguments ====')
             pprint(event['arguments'])
+            print('==== Processed arguments ====')
             pprint(final_args)
-            raise ValueError("Incorrect argument numbers.")
+            raise ValueError(
+                f"Incorrect argument numbers: {num_actual} vs {num_full_args}")
 
         return final_args

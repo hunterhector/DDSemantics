@@ -175,6 +175,10 @@ class EventReader:
                     else:
                         represent = arg_info['text']
 
+                    propbank_role = arg_info.get('propbank_role', 'NA')
+                    if not propbank_role == 'NA':
+                        propbank_role = propbank_role.lower()
+
                     # TODO: can automate the field mapping here.
                     arg = {
                         'dep': revert_nmod(arg_info.get('dep', 'NA')),
@@ -186,8 +190,7 @@ class EventReader:
                         'arg_end': arg_info['argEnd'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
-                        'propbank_role': arg_info.get(
-                            'propbank_role', 'NA').lower(),
+                        'propbank_role': propbank_role,
                         'text': arg_info['text'],
                         'represent': represent,
                         'source': arg_info.get('source', 'NA'),
