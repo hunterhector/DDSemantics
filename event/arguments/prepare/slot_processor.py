@@ -143,33 +143,32 @@ class SlotHandler:
                 counts[from_pred] = from_count
         return fmap, counts
 
-    def impute_fe(self, arg_list, predicate, dep_slots, frame_slots):
+    def impute_fe(self, arg_list, predicate, frame, dep_slots, fe_slots):
         imputed_fes = defaultdict(Counter)
 
-        for dep, (full_fe, arg) in dep_slots.items():
-            imputed = False
-            candidates = self.dep_frames.get((predicate, dep), [])
-            for cand_frame, cand_fe, cand_count in candidates:
-                if (cand_frame, cand_fe) not in frame_slots:
-                    imputed_fes[(cand_frame, cand_fe)][dep] = cand_count
-                    imputed = True
-                    break
-            if not imputed:
-                arg_list.append((dep, full_fe, arg, 'origin'))
+        for dep, args in dep_slots.items():
+            for arg in args:
+                for cand_frame, cand_fe, cand_count in self.dep_frames.get(
+                        (predicate, dep), []):
+                    if cand_fe not in fe_slots and cand_frame == frame:
+                        imputed_fes[cand_fe][dep] = cand_count
+                        break
+                else:
+                    arg_list.append((dep, 'NA', arg, 'origin'))
         return imputed_fes
 
-    def impute_deps(self, arg_list, predicate, dep_slots, frame_slots):
+    def impute_deps(self, arg_list, predicate, frame, dep_slots, frame_slots):
         imputed_deps = defaultdict(Counter)
 
-        for (frame, fe), (dep, arg) in frame_slots.items():
-            imputed = False
-            for pred, dep, cand_count in self.frame_deps.get((frame, fe), []):
-                if dep not in dep_slots and pred == predicate:
-                    imputed_deps[dep][(frame, fe)] = cand_count
-                    imputed = True
-                    break
-            if not imputed:
-                arg_list.append((dep, (frame, fe), arg, 'origin'))
+        for fe, args in frame_slots.items():
+            for arg in args:
+                for cand_pred, cand_dep, cand_count in self.frame_deps.get(
+                        (frame, fe), []):
+                    if cand_dep not in dep_slots and cand_pred == predicate:
+                        imputed_deps[cand_dep][fe] = cand_count
+                        break
+                else:
+                    arg_list.append(('NA', fe, arg, 'origin'))
         return imputed_deps
 
     def organize_args(self, event):
@@ -183,9 +182,11 @@ class SlotHandler:
         arg_list = []
 
         # Arguments that have a valid dependency.
-        dep_slots = {}
+        # dep_slots = {}
+        dep_slots = defaultdict(list)
         # Arguments that have a valid frame element.
-        frame_slots = {}
+        # frame_slots = {}
+        fe_slots = defaultdict(list)
 
         test_arg_list = []
 
@@ -204,43 +205,42 @@ class SlotHandler:
 
             if fe == 'NA' and not dep == 'NA' and not dep.startswith('prep_'):
                 # Try to impute the FE from dependency label.
-
                 # TODO: The bug is here, when we map arguments here,
                 #  if the dependency is the same then we lose a lot.
-                dep_slots[dep] = ((frame, fe), plain_arg)
+                dep_slots[dep].append(plain_arg)
             elif dep == 'NA' and not fe == 'NA':
-                # Try to impute the dependency from FE.
-                frame_slots[(frame, fe)] = (dep, plain_arg)
+                # Try to impute the dependency from FE
+                fe_slots[fe].append(plain_arg)
             else:
                 # Add the others directly to the list.
-                arg_list.append((dep, (frame, fe), plain_arg, 'origin'))
-                test_arg_list.append((dep, (frame, fe), plain_arg, 'origin'))
+                arg_list.append((dep, fe, plain_arg, 'origin'))
+                test_arg_list.append((dep, fe, plain_arg, 'origin'))
 
         # Step 1, impute dependency or FE slot.
-        imputed_fes = self.impute_fe(arg_list, predicate, dep_slots,
-                                     frame_slots)
-        imputed_deps = self.impute_deps(arg_list, predicate, dep_slots,
-                                        frame_slots)
+        imputed_fes = self.impute_fe(
+            arg_list, predicate, frame, dep_slots, fe_slots)
+        imputed_deps = self.impute_deps(
+            arg_list, predicate, frame, dep_slots, fe_slots)
 
         # Step 2, find consistent imputation with priority and counts.
-        for full_fe, dep_counts in imputed_fes.items():
+        for fe, dep_counts in imputed_fes.items():
             most_common = True
             for dep, count in dep_counts.most_common():
-                _, arg = dep_slots[dep]
-                if most_common:
-                    arg_list.append((dep, full_fe, arg, 'imputed_fes'))
-                else:
-                    arg_list.append((dep, (frame, 'NA'), arg, 'imputed_fes'))
+                for arg in dep_slots[dep]:
+                    if most_common:
+                        arg_list.append((dep, fe, arg, 'imputed_fes'))
+                    else:
+                        arg_list.append((dep, 'NA', arg, 'imputed_fes'))
                 most_common = False
 
         for i_dep, frame_counts in imputed_deps.items():
             most_common = True
-            for full_fe, count in frame_counts.most_common():
-                _, arg = frame_slots[full_fe]
-                if most_common:
-                    arg_list.append((i_dep, full_fe, arg, 'origin'))
-                else:
-                    arg_list.append(('NA', full_fe, arg, 'origin'))
+            for fe, count in frame_counts.most_common():
+                for arg in fe_slots[fe]:
+                    if most_common:
+                        arg_list.append((i_dep, fe, arg, 'origin'))
+                    else:
+                        arg_list.append(('NA', fe, arg, 'origin'))
                 most_common = False
 
         arg_candidates = {
@@ -250,16 +250,16 @@ class SlotHandler:
             'NA': [],
         }
 
-        for dep, full_fe, arg, source in arg_list:
+        for dep, fe, arg, source in arg_list:
             position = get_simple_dep(dep)
 
             if position == 'dep':
                 # Put other dependency to the prepositional slot in the fixed
                 # mode.
                 position = 'prep'
-                arg_candidates[position].append((dep, full_fe, arg, source))
+                arg_candidates[position].append((dep, fe, arg, source))
             else:
-                arg_candidates[position].append((dep, full_fe, arg, source))
+                arg_candidates[position].append((dep, fe, arg, source))
 
         # Final step, organize all the args.
         final_args = {}
@@ -278,24 +278,4 @@ class SlotHandler:
 
         # Put all the unsure ones to the last bin.
         final_args['prep'].extend(unsure_args)
-
-        num_actual = len(
-            [arg for arg in event["arguments"] if arg['source'] == 'gold'])
-        num_full_args = sum(
-            [len([a for a in l if a[2]['source'] == 'gold']) for l in
-             final_args.values()]
-        )
-
-        if not num_actual == num_full_args:
-            print(f'Actual number of gold args {num_actual}')
-            print(f'Full args contains {num_full_args} gold args')
-
-            print('==== raw arguments ====')
-            pprint(event['arguments'])
-            print('==== Processed arguments ====')
-            pprint(final_args)
-
-            raise ValueError(
-                f"Incorrect argument numbers: {num_actual} vs {num_full_args}")
-
         return final_args

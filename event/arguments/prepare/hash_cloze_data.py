@@ -23,7 +23,7 @@ def hash_context(word_emb_vocab, context):
             right]
 
 
-def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
+def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
              typed_event_vocab, entity_represents):
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
@@ -40,15 +40,10 @@ def hash_arg(arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
         arg_role = typed_event_vocab.get_unk_arg_rep()
         arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
-    if full_fe is not None:
-        frame, fe = full_fe
-        fe_id = event_emb_vocab.get_index(
-            typed_event_vocab.get_fe_rep(frame, fe),
-            None
-        )
-    else:
-        # Treat empty frame element as UNK.
-        fe_id = event_emb_vocab.get_index(typed_event_vocab.oovs['fe'], None)
+    fe_id = event_emb_vocab.get_index(
+        typed_event_vocab.get_fe_rep(frame, fe),
+        typed_event_vocab.oovs['fe']
+    )
 
     hashed_context = hash_context(word_emb_vocab, arg['arg_context'])
 
@@ -89,9 +84,11 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
     for event in events:
         pred = event['predicate']
+        frame = event['frame']
+
         pid = event_emb_vocab.get_index(
             typed_event_vocab.get_pred_rep(event), None)
-        fid = event_emb_vocab.get_index(event.get('frame'), None)
+        fid = event_emb_vocab.get_index(frame, None)
 
         # TODO: many args are mapped in the "prep" slot, but some of them are
         # different implicit slots.
@@ -116,15 +113,10 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
             for arg_info in arg_info_list:
-                dep, full_fe, arg = arg_info
-
-                if fid == -1:
-                    # Even if we get a mapping from the predicate, it is still
-                    # noisy to say there is a valid frame element here.
-                    full_fe = None
+                dep, fe, arg = arg_info
 
                 hashed_arg = hash_arg(
-                    arg, dep, full_fe, event_emb_vocab, word_emb_vocab,
+                    arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents
                 )
 
@@ -143,39 +135,45 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 hashed_arg_list.append(hashed_arg)
 
                 if hashed_arg['implicit']:
+                    implicit_slots_all.add(arg['propbank_role'])
                     if not hashed_arg['incorporated']:
                         implicit_slots_no_incorp.add(arg['propbank_role'])
                         if not hashed_arg['succeeding']:
                             implicit_slots_preceed.add(arg['propbank_role'])
-                    implicit_slots_all.add(arg['propbank_role'])
             full_args[slot] = hashed_arg_list
 
-        # num_actual = len(event["arguments"])
-        # num_full_args = sum([len(l) for l in full_args.values()])
-        # num_mapped_args = sum([len(l) for l in mapped_args.values()])
-        # if not num_actual == num_full_args:
-        #     print(f'Actual number of args {num_actual}')
-        #     print(f'Full args contains {num_full_args} args')
-        #     print(f'mapped args contains {num_mapped_args} args')
-        #
-        #     pprint(event['arguments'])
-        #     pprint(full_args)
-        #
-        #     raise ValueError("Incorrect argument numbers.")
+        ###### Debug the argument counts ###########
+        num_actual = len(event["arguments"])
+        num_full_args = sum([len(l) for l in full_args.values()])
+        num_mapped_args = sum([len(l) for l in mapped_args.values()])
+        if not num_actual == num_full_args:
+            print(f'Actual number of args {num_actual}')
+            print(f'Full args contains {num_full_args} args')
+            print(f'mapped args contains {num_mapped_args} args')
+
+            pprint(event['arguments'])
+            pprint(full_args)
+
+            raise ValueError("Incorrect argument numbers.")
+        ###### Debug the argument counts ###########
 
         stat_counters['predicate'][raw_pred] += 1
-        if len(implicit_slots_no_incorp) > 0:
-            stat_counters['implicit predicates'][raw_pred] += 1
-            stat_counters['implicit slots (no incorp)'][raw_pred] += len(
-                implicit_slots_no_incorp)
-
         if len(implicit_slots_all) > 0:
+            if raw_pred == 'loss':
+                print('implicit for loss in ', docid)
+
+            stat_counters['implicit predicates'][raw_pred] += 1
             stat_counters['implicit slots (all)'][raw_pred] += len(
                 implicit_slots_all)
+
+        if len(implicit_slots_no_incorp) > 0:
+            stat_counters['implicit slots (no incorp)'][raw_pred] += len(
+                implicit_slots_no_incorp)
 
         if len(implicit_slots_preceed) > 0:
             stat_counters['implicit slots (preceding)'][raw_pred] += len(
                 implicit_slots_preceed)
+        ###### Debug the argument counts ###########
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
 
@@ -207,7 +205,7 @@ def hash_data():
     doc_count = 0
     event_count = 0
 
-    print("{}: Start hashing".format(util.get_time()))
+    print(f"{util.get_time()}: Start hashing")
     with gzip.open(hash_params.raw_data) as data_in, gzip.open(
             hash_params.output_path, 'w') as data_out:
         for docid, events, entities, sentences in reader.read_events(data_in):
@@ -228,9 +226,8 @@ def hash_data():
             event_count += len(hashed_doc['events'])
 
             if doc_count % 1000 == 0:
-                print('\r{}: Hashed for {} events in '
-                      '{} docs.'.format(util.get_time(), event_count,
-                                        doc_count), end='')
+                print(f'{util.get_time()}: Hashed for {event_count} events in '
+                      f'{doc_count} docs.', end='')
 
             # for event, hashed_event in zip(events, hashed_doc['events']):
             #     num_hashed_args = 0
@@ -250,7 +247,7 @@ def hash_data():
             #             f'{num_actual_args} can be found.')
 
     print(
-        '\nTotally {} events and {} documents.'.format(event_count, doc_count)
+        f'\nTotally {event_count} events and {doc_count} documents.'
     )
 
 
