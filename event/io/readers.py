@@ -175,7 +175,7 @@ class EventReader:
                     else:
                         represent = arg_info['text']
 
-                    propbank_role = arg_info.get('propbank_role', 'NA')
+                    propbank_role = arg_info.get('propbankRole', 'NA')
                     if not propbank_role == 'NA':
                         propbank_role = propbank_role.lower()
 
