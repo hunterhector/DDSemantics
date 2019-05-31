@@ -159,9 +159,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
         stat_counters['predicate'][raw_pred] += 1
         if len(implicit_slots_all) > 0:
-            if raw_pred == 'loss':
-                print('implicit for loss in ', docid)
-
             stat_counters['implicit predicates'][raw_pred] += 1
             stat_counters['implicit slots (all)'][raw_pred] += len(
                 implicit_slots_all)

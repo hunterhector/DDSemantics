@@ -57,6 +57,9 @@ class NomBank(DataLoader):
         logging.info("Loading G&C annotations.")
         self.gc_annos = self.load_gc_annotations()
 
+        logging.info("Showing gc annotation statistics")
+
+
         logging.info("Loading Nombank annotations")
         self.nombank_annos = defaultdict(list)
         for nb_instance in self.nombank.instances():
