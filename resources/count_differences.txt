@@ -1,5 +1,19 @@
 Now the pipeline in the own module is fine, but the number of initial implicit arguments are larger than it.
 
+After reading from raw G&C into json
+predicate       target_pred_count       predicates_with_implicit        implicit_slots  non_incorp_implicit     non_incorp_precede_implicit
+bid:    88      73      124     124     124  correct
+cost:   101     72      86      86      86   correct
+fund:   108     34      62      57      57   should be 56
+investment:     102     35      55      55      54     correct
+investor:       160     150     250     121     119    should be 108
+loan:   84      50      83      83      82    correct
+loss:   104     48      63      63      62    correct
+plan:   100     53      77      77      77    correct
+price:  216     129     195     150     150   should be 139
+sale:   184     123     183     182     182   correct
+Total   1247    767     1178    998     993
+
 After reading from Nombank and GC data (annotations/*.mrg.json)
 predicate       predicates_with_implicit        implicit_slots  non_incorp_implicit     non_incorp_precede_implicit
 bid:    73      137     137     137
@@ -14,7 +28,7 @@ price:  133     212     167     167
 sale:   126     199     198     198
 Total   781     1238    1058    1053
 
-After finish implicit feature extraction (ffcreate cloze.json)
+After finish implicit feature extraction (create cloze.json)
 Predicate       Predicate Count Implicit Predicates     Implicit Slots  Non incorp implicit slots       Non incop preceeding implicit slots
 bid     105     73      137     137     137
 cost    113     73      88      88      88

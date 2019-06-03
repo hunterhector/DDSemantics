@@ -188,6 +188,7 @@ class EventReader:
                         'resolvable': False,
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
+                        'sentence_id': arg_info['sentenceId'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
                         'propbank_role': propbank_role,

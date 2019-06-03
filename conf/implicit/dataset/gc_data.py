@@ -14,7 +14,7 @@ else:
 
 wsj_path = os.path.join(corpus_path, 'penn-treebank-rel3/parsed/mrg/wsj')
 wsj_file_pattern = '\d\d/wsj_.*\.mrg'
-base_out = os.path.join(working, 'nombank_with_gc_test')
+base_out = os.path.join(working, 'nombank_with_gc')
 
 c.PropBankConfig.root = os.path.join(corpus_path, 'propbank-LDC2004T14')
 c.PropBankConfig.propfile = os.path.join(corpus_path, 'propbank-LDC2004T14',

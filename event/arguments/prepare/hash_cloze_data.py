@@ -61,6 +61,15 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
     return hashed_arg
 
 
+def overlap(begin1, end1, begin2, end2):
+    if begin2 <= begin1 <= end2 or begin2 <= end1 <= end2:
+        return True
+    elif begin1 <= begin2 <= end1 or begin1 <= end2 <= end1:
+        return True
+    else:
+        return False
+
+
 def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                  typed_event_vocab, slot_handler, sent_starts):
     hashed_doc = {
@@ -120,22 +129,22 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents
                 )
 
-                abs_arg_start = hashed_arg['arg_start'] + sent_offset
-
-                hashed_arg['abs_arg_start'] = abs_arg_start
-                hashed_arg['abs_arg_end'] = hashed_arg['arg_end'] + sent_offset
-
-                for sid, s_off in enumerate(sent_starts):
-                    if abs_arg_start < s_off:
-                        hashed_arg['sentence_id'] = sid - 1
-                        break
-                    else:
-                        hashed_arg['sentence_id'] = len(sent_starts) - 1
-
                 hashed_arg_list.append(hashed_arg)
 
                 if hashed_arg['implicit']:
                     implicit_slots_all.add(arg['propbank_role'])
+
+                    ol = overlap(hashed_arg['arg_start'],
+                                 hashed_arg['arg_end'],
+                                 event['predicate_start'],
+                                 event['predicate_end'])
+
+                    if ol and not hashed_arg['incorporated']:
+                        print('overlap but unincorporated argument found.')
+
+                        print(pred)
+                        print(arg)
+
                     if not hashed_arg['incorporated']:
                         implicit_slots_no_incorp.add(arg['propbank_role'])
                         if not hashed_arg['succeeding']:
