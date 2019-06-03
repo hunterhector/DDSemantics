@@ -32,11 +32,13 @@ Test set setups:
     1. For G&C Corpus
         1. Read both Propbank and Nombank into the annotations format
         1. Add G&C data into the dataset        
+        1. ```python -m event.io.dataset.reader conf/implicit/dataset/gc_data.py```
     1. For SemEval2010 Task 10
         1. Read SemEval dataset into the annotation format
         1. ```python -m event.io.dataset.reader negra```
     1. Run ImplicitFeatureExtractionPipeline to create dataset with features.
         1. Now you will get cloze.json.gz
+        1. ```bin/run_pipeline.sh argument-modeling edu.cmu.cs.lti.script.pipeline.implicitFeatureExtractionPipeline ~/workspace/implicit/nombank_with_gc/text ~/workspace/implicit/nombank_with_gc/annotation ~/workspace/implicit/nombank_with_gc/processed```
     1. Run hasher to convert it to the Integer format
         1. Use different conf will use different vocab (filter or not) 
         1. ```python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash.py --HashParam.raw_data=cloze.json.gz --HashParam.output_path=cloze_hashed.json.gz```

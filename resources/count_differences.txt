@@ -1,18 +1,16 @@
-Now the pipeline in the own module is fine, but the number of initial implicit arguments are larger than it.
-
-After reading from raw G&C into json
+After reading from raw G&C into json, this number matches G&C data statistics.
 predicate       target_pred_count       predicates_with_implicit        implicit_slots  non_incorp_implicit     non_incorp_precede_implicit
-bid:    88      73      124     124     124  correct
-cost:   101     72      86      86      86   correct
-fund:   108     34      62      57      57   should be 56
-investment:     102     35      55      55      54     correct
-investor:       160     150     250     121     119    should be 108
-loan:   84      50      83      83      82    correct
-loss:   104     48      63      63      62    correct
-plan:   100     53      77      77      77    correct
-price:  216     129     195     150     150   should be 139
-sale:   184     123     183     182     182   correct
-Total   1247    767     1178    998     993
+bid:    88      73      124     124     124
+cost:   101     72      86      86      86
+fund:   108     33      56      56      56
+investment:     102     35      54      54      54  (G&C is 52)
+investor:       160     97      108     108     108
+loan:   84      50      82      82      82
+loss:   104     47      62      62      62
+plan:   100     53      77      77      77
+price:  216     113     139     139     139  (G&C is 138)
+sale:   184     122     182     182     182  (G&C is 181)
+Total   1247    695     970     970     970
 
 After reading from Nombank and GC data (annotations/*.mrg.json)
 predicate       predicates_with_implicit        implicit_slots  non_incorp_implicit     non_incorp_precede_implicit
