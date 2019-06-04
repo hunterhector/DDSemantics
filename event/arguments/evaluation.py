@@ -8,6 +8,7 @@ from event import util
 from event.arguments.cloze_readers import ghost_entity_text
 from pprint import pprint
 from collections import Counter, defaultdict
+from event.io.dataset.utils import nombank_pred_text
 
 
 class ImplicitEval:
@@ -134,7 +135,7 @@ class ImplicitEval:
             return "all"
 
         def predicate_selector(meta):
-            return meta['predicate']
+            return nombank_pred_text(meta['predicate'])
 
         return [
             neighbor_selector,
@@ -235,7 +236,7 @@ class ImplicitEval:
             tp = member_scores['results']['system']['tp']
             prec = tp / num_res if num_res > 0 else 0
             recall = tp / num_gold if num_gold > 0 else 0
-            f1 = 2*prec*recall/(prec + recall) if prec + recall > 0 else 0
+            f1 = 2 * prec * recall / (prec + recall) if prec + recall > 0 else 0
 
             member_scores['results']['system']['precision'] = prec
             member_scores['results']['system']['recall'] = recall
@@ -249,7 +250,7 @@ class ImplicitEval:
             tp = member_scores['results']['oracle']['tp']
             prec = tp / num_res if num_res > 0 else 0
             recall = tp / num_gold if num_gold > 0 else 0
-            f1 = 2*prec*recall/(prec + recall) if prec + recall > 0 else 0
+            f1 = 2 * prec * recall / (prec + recall) if prec + recall > 0 else 0
 
             member_scores['results']['oracle']['precision'] = prec
             member_scores['results']['oracle']['recall'] = recall
