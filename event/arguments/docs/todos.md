@@ -1,11 +1,11 @@
 # List of TODOs 
 
-1. Dependency
-    - Rerun the parser with the old dependency maybe?
+1. Baseline, our embedding max method should be at least as strong as the G&C paper 
+baseline.
 1. Richer output in evaluation
     - ~~Add F1~~
-    - Add Dice (partial argument overlap)
-    - Add a score with gold candidates
+    - ~~Add Dice (partial argument overlap)~~
+    - ~~Add a score with gold candidates~~
     - Only score candidates with in 2 sentence back and 1 sentence forward
 1. Design core experiments: pooling, attention, distance
 1. Distance features
@@ -88,3 +88,5 @@ not resolvable.
 1. ~~Study w2v baseline carefully~~
 1. ~~We are using the detailed dependency labels~~
 1. ~~Setup google platform~~
+1. ~~Dependency~~
+    - ~~Rerun the parser with the old dependency maybe?~~
