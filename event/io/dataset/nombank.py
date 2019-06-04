@@ -69,13 +69,9 @@ class NomBank(DataLoader):
             'target_pred_count': Counter(),
             'predicates_with_implicit': Counter(),
             'implicit_slots': Counter(),
-            'non_incorp_implicit': Counter(),
-            'non_incorp_precede_implicit': Counter(),
         }
 
         self.stat_dir = params.stat_dir
-
-        self.price_in_price = 0
 
     class NomElement:
         def __init__(self, article_id, sent_num, tree_pointer):
@@ -289,15 +285,14 @@ class NomBank(DataLoader):
                 if arg_node.pointer == predicate_node.pointer:
                     arg.add_meta('incorporated', True)
 
-        if doc.docid in self.gc_annos:
+        if not self.params.explicit_only and doc.docid in self.gc_annos:
             for predicate_node, gc_args in self.gc_annos[doc.docid].items():
                 added_args = defaultdict(list)
-                non_incop_args = defaultdict(list)
-                non_incop_preceed_args = defaultdict(list)
 
-                # Lost a loan and a loss
                 p = self.add_predicate(doc, parsed_sents, predicate_node)
-                p_text = self.get_predicate_text(p)
+                p_text = utils.nombank_pred_text(p.text)
+
+                p.add_meta('from_gc', True)
 
                 self.stats['target_pred_count'][p_text] += 1
 
@@ -309,41 +304,16 @@ class NomBank(DataLoader):
                         )
                         added_args[arg_type].append(arg)
 
+                        # The following should be useless already.
                         if arg_node.pointer == predicate_node.pointer:
                             arg.add_meta('incorporated', True)
-                        else:
-                            non_incop_args[arg_type].append(arg)
 
                         if arg_node.sent_num > predicate_node.sent_num:
                             arg.add_meta('succeeding', True)
 
-                        if not arg.meta.get('incorporated', False):
-                            if not arg.meta.get('succeeding', False):
-                                non_incop_preceed_args[arg_type].append(arg)
-
                 if len(added_args) > 0:
-                    # if p_text == 'price':
-                    #     print(doc.docid, len(added_args), added_args.keys(),
-                    #           predicate_node.sent_num)
-                    #     for k, value in added_args.items():
-                    #         print(k + ':', end=' ')
-                    #         for arg in value:
-                    #             print(arg.arg, arg.meta.get('text'),
-                    #                   arg.meta.get('sent_num'), end=' ')
-                    #             if 'price' in arg.meta.get('text'):
-                    #                 self.price_in_price += 1
-                    #                 print('price in price')
-                    #         print()
-                    #     print('============')
-
                     self.stats['predicates_with_implicit'][p_text] += 1
                     self.stats['implicit_slots'][p_text] += len(added_args)
-                    self.stats['non_incorp_implicit'][p_text] += len(
-                        non_incop_args
-                    )
-                    self.stats['non_incorp_precede_implicit'][p_text] += len(
-                        non_incop_preceed_args
-                    )
 
     def set_wsj_text(self, doc, fileid):
         text = ''
@@ -424,5 +394,3 @@ class NomBank(DataLoader):
             sum_line = 'Total\t' + '\t'.join([str(sums[k]) for k in keys])
             print(sum_line)
             out.write(f'{sum_line}\n')
-
-            print('price in price', self.price_in_price)

@@ -13,6 +13,7 @@ from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
 import sys
 from pprint import pprint
+from event.io.dataset import utils as data_utils
 
 
 def hash_context(word_emb_vocab, context):
@@ -112,12 +113,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         implicit_slots_all = set()
 
         # Debug purpose.
-        raw_pred = pred
-        if raw_pred.startswith('not_'):
-            raw_pred = pred[4:]
-
-        if raw_pred == 'small-investor':
-            raw_pred = 'investor'
+        raw_pred = data_utils.nombank_pred_text(pred)
 
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
@@ -133,17 +129,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
                 if hashed_arg['implicit']:
                     implicit_slots_all.add(arg['propbank_role'])
-
-                    ol = overlap(hashed_arg['arg_start'],
-                                 hashed_arg['arg_end'],
-                                 event['predicate_start'],
-                                 event['predicate_end'])
-
-                    if ol and not hashed_arg['incorporated']:
-                        print('overlap but unincorporated argument found.')
-
-                        print(pred)
-                        print(arg)
 
                     if not hashed_arg['incorporated']:
                         implicit_slots_no_incorp.add(arg['propbank_role'])
@@ -166,19 +151,12 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
             raise ValueError("Incorrect argument numbers.")
         ###### Debug the argument counts ###########
 
-        stat_counters['predicate'][raw_pred] += 1
-        if len(implicit_slots_all) > 0:
-            stat_counters['implicit predicates'][raw_pred] += 1
-            stat_counters['implicit slots (all)'][raw_pred] += len(
-                implicit_slots_all)
-
-        if len(implicit_slots_no_incorp) > 0:
-            stat_counters['implicit slots (no incorp)'][raw_pred] += len(
-                implicit_slots_no_incorp)
-
-        if len(implicit_slots_preceed) > 0:
-            stat_counters['implicit slots (preceding)'][raw_pred] += len(
-                implicit_slots_preceed)
+        if event['is_target']:
+            stat_counters['predicate'][raw_pred] += 1
+            if len(implicit_slots_all) > 0:
+                stat_counters['implicit predicates'][raw_pred] += 1
+                stat_counters['implicit slots'][raw_pred] += len(
+                    implicit_slots_all)
         ###### Debug the argument counts ###########
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
@@ -289,9 +267,7 @@ if __name__ == '__main__':
     stat_counters = {
         'predicate': Counter(),
         'implicit predicates': Counter(),
-        'implicit slots (all)': Counter(),
-        'implicit slots (no incorp)': Counter(),
-        'implicit slots (preceding)': Counter(),
+        'implicit slots': Counter(),
     }
     stat_keys = stat_counters.keys()
 

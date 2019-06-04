@@ -75,3 +75,22 @@ def get_nltk_span(token_spans, sent_num, indice_groups):
         if start >= 0 and end >= 0:
             spans.append(Span(start, end))
     return spans
+
+
+def nombank_pred_text(raw_text):
+    p_text = raw_text.lower()
+
+    if p_text.startswith('not_'):
+        p_text = p_text[4:]
+
+    if p_text == 'losses' or p_text == 'loss' or p_text == 'tax-loss':
+        p_text = 'loss'
+    else:
+        p_text = p_text.rstrip('s')
+
+    if p_text == 'savings-and-loan':
+        p_text = 'loan'
+
+    if '-' in p_text:
+        p_text = p_text.split('-')[1]
+    return p_text

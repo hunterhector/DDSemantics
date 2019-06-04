@@ -78,7 +78,9 @@ def main():
 
         implicit_path = Unicode(help='Implicit annotation xml path.').tag(
             config=True)
-        gc_only = Bool(help='Only use GC arguments.').tag(config=True)
+        gc_only = Bool(help='Only read docs that contains GC arguments.').tag(
+            config=True)
+        explicit_only = Bool(help='Do not add GC arguments.').tag(config=True)
         format = Unicode(help='name for format', default_value='NomBank').tag(
             config=True)
         stat_dir = Unicode(help='Path for stats.').tag(config=True)
@@ -105,9 +107,6 @@ def main():
 
     basic_console_log()
 
-    basic_params = []
-    order_parsers = []
-
     config = load_mixed_configs()
 
     output_param = OutputConf(config=config)
@@ -131,47 +130,46 @@ def main():
         basic_param = EreConf(config=config)
         o = basic_param.order
         parser = RichERE(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
     if 'FrameNetConf' in config:
         basic_param = FrameNetConf(config=config)
         o = basic_param.order
         parser = FrameNet(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
     if 'ConllConf' in config:
         basic_param = ConllConf(config=config)
         o = basic_param.order
         parser = Conll(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
     if 'AceConf' in config:
         basic_param = AceConf(config=config)
         o = basic_param.order
         parser = ACE(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
     if 'NomBankConfig' in config:
         basic_param = NomBankConfig(config=config)
         o = basic_param.order
         parser = NomBank(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
         print('found nombank config')
     if 'PropBankConfig' in config:
         basic_param = PropBankConfig(config=config)
         o = basic_param.order
         parser = PropBank(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
         print('found propbank config')
     if 'NegraConfig' in config:
         basic_param = NegraConfig(config=config)
         o = basic_param.order
         parser = NeGraXML(basic_param, corpus, o == 0)
-        order_parsers.append((o, parser))
+        order_parsers.append((o, parser, basic_param))
 
     order_parsers.sort()
-    parsers = [p[1] for p in order_parsers]
+    first_parser = order_parsers[0][1]
 
     # Use the documents created by the first parser.
-    for doc in parsers[0].get_doc():
-        for basic_param, parser in zip(basic_params[1:], parsers[1:]):
-            # TODO: This is not complete.
+    for doc in first_parser.get_doc():
+        for _, parser, basic_param in order_parsers[1:]:
             # Add annotations from each parser.
             parser.add_all_annotations(doc)
 
@@ -198,7 +196,7 @@ def main():
         with open(out_path, 'w') as out:
             out.write(source_text)
 
-    for p in parsers:
+    for _, p, _ in order_parsers:
         p.print_stats()
 
     # Write brat configs.

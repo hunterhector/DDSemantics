@@ -148,3 +148,4 @@ def append_num_to_path(file_path, suffix=0):
             append_num_to_path(file_path, suffix + 1)
         else:
             os.rename(file_path, new_path)
+

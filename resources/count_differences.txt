@@ -1,57 +1,42 @@
 After reading from raw G&C into json, this number matches G&C data statistics.
-predicate       target_pred_count       predicates_with_implicit        implicit_slots  non_incorp_implicit     non_incorp_precede_implicit
-bid:    88      73      124     124     124
-cost:   101     72      86      86      86
-fund:   108     33      56      56      56
-investment:     102     35      54      54      54  (G&C is 52)
-investor:       160     97      108     108     108
-loan:   84      50      82      82      82
-loss:   104     47      62      62      62
-plan:   100     53      77      77      77
-price:  216     113     139     139     139  (G&C is 138)
-sale:   184     122     182     182     182  (G&C is 181)
-Total   1247    695     970     970     970
+predicate       target_pred_count       predicates_with_implicit        implicit_slots
+bid:    88      73      124
+cost:   101     72      86
+fund:   108     33      56
+investment:     102     35      54   (G&C is 52)
+investor:       160     97      108
+loan:   84      50      82
+loss:   104     47      62
+plan:   100     53      77
+price:  216     113     139  (G&C is 138)
+sale:   184     122     182  (G&C is 181)
+Total   1247    695     970
 
-After reading from Nombank and GC data (annotations/*.mrg.json)
-predicate       predicates_with_implicit        implicit_slots  non_incorp_implicit     non_incorp_precede_implicit
-bid:    73      137     137     137
-cost:   73      88      88      88
-fund:   34      63      58      58
-investment:     35      55      55      54
-investor:       150     250     121     119
-loan:   52      88      88      87
-loss:   48      63      63      62
-plan:   57      83      83      83
-price:  133     212     167     167
-sale:   126     199     198     198
-Total   781     1238    1058    1053
-
-After finish implicit feature extraction (create cloze.json)
-Predicate       Predicate Count Implicit Predicates     Implicit Slots  Non incorp implicit slots       Non incop preceeding implicit slots
-bid     105     73      137     137     137
-cost    113     73      88      88      88
-fund    66      34      63      58      58
-investment      66      35      55      55      54
-investor        161     150     250     121     119
-loan    82      52      88      88      87
-loss    108     48      63      63      62
-plan    158     57      83      83      83
-price   258     133     212     167     167
-sale    249     126     199     198     198
-
-After running argument statistics (create cloze_hashed.json)
+Statistics from JsonEventDataReader (the predicate count didn't consider source)
+Predicate       Predicate Count Implicit Predicates     Implicit Slots
+bid     106     73      124
+cost    114     72      86
+fund    123     33      56
+investment      111     35      54
+investor        161     97      108
+loan    86      50      82
+loss    109     47      62
+plan    158     53      77
+price   258     113     139
+sale    255     122     182
+total   1481    695     970
 
 ==========Implicit arguments Statistics===========
-Predicate       predicate       implicit predicates     implicit slots (all)    implicit slots (no incorp)      implicit slots (preceding)
-bid     105     73      137     137     137
-cost    113     73      88      88      88
-fund    66      34      63      58      58
-investment      66      35      55      55      54
-investor        161     150     250     121     119
-loan    82      52      88      88      87
-loss    108     48      63      63      62
-plan    165     57      83      83      83
-price   258     133     212     167     167
-sale    249     126     199     198     198
-Total   1373    781     1238    1058    1053
+Predicate       predicate       implicit predicates     implicit slots
+bid     88      73      124
+cost    101     72      86
+fund    108     33      56
+investment      102     35      54
+investor        160     97      108
+loan    84      50      82
+loss    104     47      62
+plan    100     53      77
+price   216     113     139
+sale    184     122     182
+Total   1247    695     970
 ==================================================
