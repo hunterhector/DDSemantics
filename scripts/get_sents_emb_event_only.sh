@@ -6,13 +6,13 @@ python -m event.arguments.prepare.event_vocab --input_data ${implicit_corpus}/gi
 
 #echo "Creating frame based embeddings"
 #python -m event.arguments.prepare.train_event_embedding ${implicit_corpus}/gigaword_events/event_sentences/sent_with_frames.gz ${implicit_corpus}/gigaword_events/embeddings/event_embeddings_with_frame
-
+#
 #echo "Creating predicate based embeddings"
 #python -m event.arguments.prepare.train_event_embedding ${implicit_corpus}/gigaword_events/event_sentences/sent_pred_only.gz ${implicit_corpus}/gigaword_events/embeddings/event_embeddings_with_pred_only
 
-#echo "Creating mixed embeddings"
-#python -m event.arguments.prepare.train_event_embedding "${implicit_corpus}/gigaword_events/event_sentences/*.gz" ${implicit_corpus}/gigaword_events/embeddings/event_embeddings_mixed
-
 echo "Creating mixed embeddings"
+python -m event.arguments.prepare.train_event_embedding "${implicit_corpus}/gigaword_events/event_sentences/*.gz" ${implicit_corpus}/gigaword_events/embeddings/event_embeddings_mixed
+
+echo "Creating mixed embeddings with simplified dependency"
 python -m event.arguments.prepare.train_event_embedding "${implicit_corpus}/gigaword_events/event_sentences_simple/*.gz" ${implicit_corpus}/gigaword_events/embeddings_simple/event_embeddings_mixed
 
