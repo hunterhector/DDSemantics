@@ -35,8 +35,10 @@ def get_simple_dep(dep):
     elif dep == 'iobj':
         # iobj is more prep like location
         return 'prep'
-    elif dep.startswith('prep'):
+    elif dep.startswith('prep_'):
         return dep
+    elif dep.startswith('prepc_'):
+        return dep.repalce('prepc_', 'prep_')
     elif dep == 'NA':
         return 'NA'
     else:

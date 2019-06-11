@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-if [[ ! -d ${implicit_corpus}/gigaword_events/nyt_events_shuffled ]]; then
-    echo 'Spliting into smaller files'
-    cd ${implicit_corpus}/gigaword_events/
-    mkdir -p ${implicit_corpus}/gigaword_events/nyt_events_shuffled
-    gunzip -c  nyt_events.json.gz | split -l 50000 - nyt_events_shuffled/part_ --filter='shuf | gzip > $FILE.gz'
-fi
+#if [[ ! -d ${implicit_corpus}/gigaword_events/nyt_events_shuffled ]]; then
+#    echo 'Spliting into smaller files'
+#    cd ${implicit_corpus}/gigaword_events/
+#    mkdir -p ${implicit_corpus}/gigaword_events/nyt_events_shuffled
+#    gunzip -c  nyt_events.json.gz | split -l 50000 - nyt_events_shuffled/part_ --filter='shuf | gzip > $FILE.gz'
+#fi
 
 hash_dir='hashed_new'
 

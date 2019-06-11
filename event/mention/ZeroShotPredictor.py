@@ -150,7 +150,7 @@ class ZeroShotTypeMapper:
         for arg in content['arguments']:
             arg_lemma = entities[arg['entityId']]['lemma']
             if arg_lemma in aida_maps.arg_direct_map:
-                return aida_maps.arg_direct_map['arg_lemma'][0]
+                return aida_maps.arg_direct_map[arg_lemma][0]
 
     def map_from_event_type(self, event_type, lemma):
         level1, level2 = event_type.split('_')
@@ -295,8 +295,8 @@ class ZeroShotTypeMapper:
                 l_roles.append(r)
 
         if arg_lemma in aida_maps.arg_direct_map:
-            if event_type == aida_maps.arg_direct_map[0]:
-                return aida_maps.arg_direct_map[1]
+            if event_type == aida_maps.arg_direct_map[arg_lemma][0]:
+                return aida_maps.arg_direct_map[arg_lemma][1]
         else:
             for role in l_roles:
                 # Go through the event type hierarchy, then go up.

@@ -10,14 +10,11 @@ Preprocessing training dataset:
 1. Parse the large dataset with Stanford and Semafor (for example, get nyt_events.json.gz)
 1. Split it into sub files and shuffle the order
     1. ```gunzip -c nyt_all_frames.json.gz | split -l 50000 - nyt_frames_shuffled/part_  --filter='shuf | gzip > $FILE.gz```
-1. Calculate vocabulary
-    1. ```python -m event.arguments.prepare.event_vocab --input_data /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/nyt_events.json.gz --vocab_dir /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/vocab --embedding_dir /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/embeddings --sent_out /media/hdd/hdd0/data/arguments/implicit/gigaword_corpus/```
-    1. This will also create event sentences to train embeddings
 1. Creat frame_mapping
     1. ```create_frame_mappings.sh```
         1. ```python -m event.arguments.prepare.frame_collector nyt_events.json.gz frame_maps```
         1. ```python -m event.arguments.prepare.frame_mapper frame_map```
-1. Train event embedding
+1. Count vocabulary and train event embedding
     1. ```scripts/get_sents_emb_all_frames.sh```
     1. ```scripts/get_sents_emb_event_only.sh```
 1. Hash the dataset
