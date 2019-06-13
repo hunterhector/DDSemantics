@@ -62,13 +62,17 @@ class ZeroShotEventResources(Configurable):
         )
 
 
-def camel_split(s, lower=True):
+def camel_slash_split(s, lower=True):
     l_s = [[]]
 
     for c in s:
         if c.isupper():
             l_s.append([])
-        l_s[-1].append(c)
+
+        if c == '_':
+            l_s.append([])
+        else:
+            l_s[-1].append(c)
 
     if lower:
         return [''.join(l).lower() for l in l_s if len(l) > 0]
@@ -80,7 +84,7 @@ def event_type_split(s):
     if s in aida_maps.kbp_type_split_map:
         return aida_maps.kbp_type_split_map[s]
     else:
-        return camel_split(s)
+        return camel_slash_split(s)
 
 
 class ZeroShotTypeMapper:
@@ -105,27 +109,29 @@ class ZeroShotTypeMapper:
             if onto_category == 'event_type':
                 event_type = frame['@id']
                 self.onto_event_tokens[event_type] = {}
-
                 level_types = event_type.split(':')[1].split('.')
+
+                print(event_type)
 
                 tokenized_types = []
                 for lt in level_types:
                     tokenized_types.append([])
-                    for t in camel_split(lt):
+                    for t in camel_slash_split(lt):
                         if t not in aida_maps.ldc_ontology_skips:
-                            if t in aida_maps.onto_token_nom_map:
-                                t = aida_maps.onto_token_nom_map[t]
+                            t = aida_maps.onto_token_nom_map.get(t, t)
                             pred_id = self.resources.event_embed_vocab \
                                 .get_index(t + '-pred', None)
                             if pred_id >= 0:
                                 tokenized_types[-1].append(t)
                                 pred_vector = self.resources.event_embedding[
                                     pred_id]
+                                print('adding ', t)
                                 self.pred_embeds[t] = pred_vector
                             else:
                                 logging.debug(f"Predicate form for {t} not "
                                               f"found")
 
+                print(tokenized_types)
                 self.onto_event_tokens[event_type]['top'] = tokenized_types[0]
                 if len(level_types) > 2:
                     self.onto_event_tokens[event_type]['middle'] = \
@@ -133,8 +139,10 @@ class ZeroShotTypeMapper:
                     self.onto_event_tokens[event_type]['low'] = tokenized_types[
                         2]
 
-                    if not frame['subClassOf'] == 'aidaDC:EventType':
+                    if not frame['subClassOf'] == 'aida:EventType':
                         self.type_parent[event_type] = frame['subClassOf']
+
+                print(self.onto_event_tokens[event_type])
 
             if onto_category == 'event_argument_role_type':
                 role_type = frame['@id']
@@ -157,6 +165,11 @@ class ZeroShotTypeMapper:
         level2_tokens = event_type_split(level2)
         l_score, m_score, full_type = self.map_by_pred_match(
             [t + '-pred' for t in level2_tokens], [lemma + '-pred'])
+
+        if 'die' in level2_tokens:
+            print(l_score, m_score, event_type, full_type)
+            input('how about die')
+
         if m_score > 0.8 or l_score > 0.8:
             if l_score > 0.8:
                 return full_type
