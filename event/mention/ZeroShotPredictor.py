@@ -166,9 +166,9 @@ class ZeroShotTypeMapper:
         l_score, m_score, full_type = self.map_by_pred_match(
             [t + '-pred' for t in level2_tokens], [lemma + '-pred'])
 
-        if 'die' in level2_tokens:
-            print(l_score, m_score, event_type, full_type)
-            input('how about die')
+        # if 'die' in level2_tokens and event_type == 'Life_Die':
+        #     print(l_score, m_score, event_type, full_type)
+        #     input('how about die')
 
         if m_score > 0.8 or l_score > 0.8:
             if l_score > 0.8:

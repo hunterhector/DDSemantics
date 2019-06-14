@@ -25,7 +25,8 @@ ldc_ontology_skips = {
     'start',
     'end',
     'life',
-    'Existence',
+    'existence',
+    'event',
 }
 
 kbp_direct_map = {
