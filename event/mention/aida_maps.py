@@ -27,6 +27,8 @@ ldc_ontology_skips = {
     'life',
     'existence',
     'event',
+    'self',
+    'people',
 }
 
 kbp_direct_map = {
@@ -66,6 +68,7 @@ frame_direct_map = {
     'Hostile_encounter': 'ldcOnt:Conflict.Attack',
     'Taking': 'ldcOnt:Transaction.Transaction.TransferControl',
     'Meet': 'ldcOnt:Contact.Collaborate.Meet',
+    'Killing': 'ldcOnt:Life.Die.DeathCausedByViolentEvent',
 }
 
 srl_ldc_arg_map = {
@@ -158,6 +161,9 @@ srl_ldc_arg_map = {
     },
     'ldcOnt:Life.Die.DeathCausedByViolentEvents': {
         'Entity': 'Victim',
+        'Assailant': 'Attacker',
+        'Weapon': 'Instrument',
+        'Agent': 'Attacker',
     },
     'ldcOnt:Movement.TransportArtifact.SendSupplyExport': {
         'Effect': 'Artifact',

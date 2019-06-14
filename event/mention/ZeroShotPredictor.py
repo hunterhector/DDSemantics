@@ -111,8 +111,6 @@ class ZeroShotTypeMapper:
                 self.onto_event_tokens[event_type] = {}
                 level_types = event_type.split(':')[1].split('.')
 
-                print(event_type)
-
                 tokenized_types = []
                 for lt in level_types:
                     tokenized_types.append([])
@@ -125,13 +123,11 @@ class ZeroShotTypeMapper:
                                 tokenized_types[-1].append(t)
                                 pred_vector = self.resources.event_embedding[
                                     pred_id]
-                                print('adding ', t)
                                 self.pred_embeds[t] = pred_vector
                             else:
                                 logging.debug(f"Predicate form for {t} not "
                                               f"found")
 
-                print(tokenized_types)
                 self.onto_event_tokens[event_type]['top'] = tokenized_types[0]
                 if len(level_types) > 2:
                     self.onto_event_tokens[event_type]['middle'] = \
@@ -141,8 +137,6 @@ class ZeroShotTypeMapper:
 
                     if not frame['subClassOf'] == 'aida:EventType':
                         self.type_parent[event_type] = frame['subClassOf']
-
-                print(self.onto_event_tokens[event_type])
 
             if onto_category == 'event_argument_role_type':
                 role_type = frame['@id']
@@ -163,12 +157,9 @@ class ZeroShotTypeMapper:
     def map_from_event_type(self, event_type, lemma):
         level1, level2 = event_type.split('_')
         level2_tokens = event_type_split(level2)
-        l_score, m_score, full_type = self.map_by_pred_match(
-            [t + '-pred' for t in level2_tokens], [lemma + '-pred'])
 
-        # if 'die' in level2_tokens and event_type == 'Life_Die':
-        #     print(l_score, m_score, event_type, full_type)
-        #     input('how about die')
+        f_score, l_score, m_score, full_type = self.map_by_pred_match(
+            [t + '-pred' for t in level2_tokens], [lemma + '-pred'])
 
         if m_score > 0.8 or l_score > 0.8:
             if l_score > 0.8:
@@ -180,7 +171,7 @@ class ZeroShotTypeMapper:
                     return full_type
 
     def map_from_lemma_only(self, lemma):
-        l_score, m_score, full_type = self.map_by_pred_match(
+        f_score, l_score, m_score, full_type = self.map_by_pred_match(
             [lemma + '-pred'], [lemma + '-pred'])
 
         if m_score > 0.8 or l_score > 0.8:
@@ -197,7 +188,7 @@ class ZeroShotTypeMapper:
             return aida_maps.frame_direct_map[frame]
 
         lemma_pred = lemma + '_pred'
-        l_score, m_score, full_type = self.map_by_pred_match(
+        f_score, l_score, m_score, full_type = self.map_by_pred_match(
             [frame], [frame, lemma_pred]
         )
 
@@ -248,17 +239,19 @@ class ZeroShotTypeMapper:
                             if s > low_score:
                                 low_score = s
 
-            scored_pairs.append((low_score, middle_score, onto_type))
+            lm_sum = low_score + middle_score
+            lm_max = max(low_score, middle_score)
+            rank_num = lm_max
+
+            scored_pairs.append((rank_num, low_score, middle_score, onto_type))
 
         scored_pairs.sort(reverse=True)
         return scored_pairs[0]
 
     def map_event_type(self, event, entities):
-        # TODO: ThreatenCoerce?
-
         head_direct_type = self.head_token_direct(event['headLemma'])
         if head_direct_type:
-            return head_direct_type
+            return 'head_direct', head_direct_type
 
         if event['component'] == 'CrfMentionTypeAnnotator':
             t = event['type']
@@ -267,21 +260,21 @@ class ZeroShotTypeMapper:
 
             r = self.map_from_event_type(t, event['headLemma'])
             if r:
-                return r
+                return 'map_from_event_type', r
 
         arg_direct_type = self.arg_direct(event, entities)
         if arg_direct_type:
-            return arg_direct_type
+            return 'arg_direct', arg_direct_type
 
         if 'frame' in event:
             r = self.map_from_frame(event['frame'], event['headLemma'])
             if r:
-                return r
+                return 'map_from_frame', r
 
         if event['component'] == 'VerbBasedEventDetector':
             r = self.map_from_lemma_only(event['headLemma'])
             if r:
-                return r
+                return 'map_from_head_lemma', r
 
     def map_arg_role(self, evm, arg, entities):
         arg_lemma = entities[arg['entityId']]['lemma']
@@ -356,9 +349,19 @@ def main(para, resources):
                 }
 
             for evm in rich_doc['eventMentions']:
-                mapped_type = type_mapper.map_event_type(evm, entities)
+                map_res = type_mapper.map_event_type(evm, entities)
+                if not map_res:
+                    continue
+
+                rule, mapped_type = map_res
+
                 if mapped_type and mapped_type in resources.onto_set:
                     evm['type'] = mapped_type
+
+                    if mapped_type == 'ldcOnt:Transaction.Transaction':
+                        if evm['frame'] == 'Killing':
+                            print(evm)
+                            print('rule is ', rule)
 
                     for arg in evm['arguments']:
                         roles = []
