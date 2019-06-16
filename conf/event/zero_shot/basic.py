@@ -23,5 +23,5 @@ c.ZeroShotEventResources.word_vocab_path = os.path.join(
 c.ZeroShotEventResources.target_ontology = os.path.join(
     csr_resources, 'LDCOntology_v0.1.jsonld')
 
-c.Basic.input_path = '/home/hector/workspace/aida/test_docs/rich/simple_run'
-c.Basic.output_path = '/home/hector/workspace/aida/test_docs/rich/simple_run_mapped'
+c.Basic.input_path = '/home/hector/workspace/aida/test_docs/hector_out/english/rich/simple_run'
+c.Basic.output_path = '/home/hector/workspace/aida/test_docs/hector_out/rich/enlish/simple_run_mapped'

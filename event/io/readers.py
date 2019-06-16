@@ -119,6 +119,7 @@ class EventReader:
     def read_events(self, data_in):
         for line in data_in:
             doc = json.loads(line)
+            doc_text = doc['text']
             docid = doc['docid']
 
             events = []
@@ -143,10 +144,8 @@ class EventReader:
                             'entityType']
 
             for event_info in doc['events']:
-                sent = doc['sentences'][event_info['sentenceId']]
-
                 raw_context = self.get_context(
-                    sent,
+                    doc_text,
                     event_info['predicateStart'],
                     event_info['predicateEnd'],
                 )
@@ -159,6 +158,8 @@ class EventReader:
                     'predicate_start': event_info['predicateStart'],
                     'predicate_end': event_info['predicateEnd'],
                     'sentence_id': event_info['sentenceId'],
+                    'event_type': event_info.get('eventType', 'NA'),
+                    'is_target': event_info.get('fromGC', False)
                 }
 
                 if 'verbForm' in event_info:
@@ -188,6 +189,7 @@ class EventReader:
                         'resolvable': False,
                         'arg_start': arg_info['argStart'],
                         'arg_end': arg_info['argEnd'],
+                        'sentence_id': arg_info['sentenceId'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
                         'propbank_role': propbank_role,

@@ -14,6 +14,19 @@ def remove_slot_info(arg_info):
     return content
 
 
+def get_position(dep):
+    simple_dep = get_simple_dep(dep)
+
+    if simple_dep == 'dep':
+        # Put other dependency to the prepositional slot in the fixed
+        # mode.
+        return 'prep'
+    elif simple_dep.startswith('prep_'):
+        return 'prep'
+    else:
+        return simple_dep
+
+
 def get_simple_dep(dep):
     if dep == 'nsubj' or dep == 'agent' or dep == 'subj':
         return 'subj'
@@ -22,8 +35,10 @@ def get_simple_dep(dep):
     elif dep == 'iobj':
         # iobj is more prep like location
         return 'prep'
-    elif dep.startswith('prep'):
-        return 'prep'
+    elif dep.startswith('prep_'):
+        return dep
+    elif dep.startswith('prepc_'):
+        return dep.repalce('prepc_', 'prep_')
     elif dep == 'NA':
         return 'NA'
     else:
@@ -251,15 +266,8 @@ class SlotHandler:
         }
 
         for dep, fe, arg, source in arg_list:
-            position = get_simple_dep(dep)
-
-            if position == 'dep':
-                # Put other dependency to the prepositional slot in the fixed
-                # mode.
-                position = 'prep'
-                arg_candidates[position].append((dep, fe, arg, source))
-            else:
-                arg_candidates[position].append((dep, fe, arg, source))
+            position = get_position(dep)
+            arg_candidates[position].append((dep, fe, arg, source))
 
         # Final step, organize all the args.
         final_args = {}

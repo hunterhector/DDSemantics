@@ -14,16 +14,25 @@ kbp_type_split_map = {
     'EndOrg': ['end'],
     'MergeOrg': ['merge'],
     'BeBorn': ['born'],
+    'Life_Die': ['die'],
 }
 
 ldc_ontology_skips = {
     'artifact',
     'in',
+    'by',
     'person',
     'start',
     'end',
     'life',
-    'Existence',
+    'existence',
+    'event',
+    'self',
+    'people',
+}
+
+kbp_direct_map = {
+    'Life_die': 'ldcOnt:Life.Die',
 }
 
 kbp_frame_correction = {
@@ -51,6 +60,7 @@ onto_token_nom_map = {
 
 frame_direct_map = {
     'Arriving': 'ldcOnt:Movement.TransportPerson',
+    'Departing': 'ldcOnt:Movement.TransportPerson',
     'Employing': 'ldcOnt:Personnel.StartPosition',
     'Shoot_projectiles': 'ldcOnt:Conflict.Attack.AirstrikeMissileStrike',
     'Communication_response': 'ldcOnt:Contact.Discussion',
@@ -58,6 +68,7 @@ frame_direct_map = {
     'Hostile_encounter': 'ldcOnt:Conflict.Attack',
     'Taking': 'ldcOnt:Transaction.Transaction.TransferControl',
     'Meet': 'ldcOnt:Contact.Collaborate.Meet',
+    'Killing': 'ldcOnt:Life.Die.DeathCausedByViolentEvent',
 }
 
 srl_ldc_arg_map = {
@@ -113,6 +124,9 @@ srl_ldc_arg_map = {
         'Source': 'Origin',
         'ARG4': 'Vehicle',
         'Self_mover': 'Vehicle',
+        'Mode_of_transportation': 'Vehicle',
+        'Means': 'Vehicle',
+        'Place': 'Destination',
     },
     'ldcOnt:Movement.TransportArtifact': {
         'Effect': 'Artifact',
@@ -147,6 +161,9 @@ srl_ldc_arg_map = {
     },
     'ldcOnt:Life.Die.DeathCausedByViolentEvents': {
         'Entity': 'Victim',
+        'Assailant': 'Attacker',
+        'Weapon': 'Instrument',
+        'Agent': 'Attacker',
     },
     'ldcOnt:Movement.TransportArtifact.SendSupplyExport': {
         'Effect': 'Artifact',

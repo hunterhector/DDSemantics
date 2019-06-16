@@ -14,6 +14,7 @@ from nltk.data import FileSystemPathPointer
 from collections import defaultdict
 
 from event.io.dataset import utils
+from collections import Counter
 
 
 class PropBank(DataLoader):
@@ -51,6 +52,11 @@ class PropBank(DataLoader):
             docid = inst.fileid.split('/')[-1]
             self.propbank_annos[docid].append(inst)
 
+        self.stats = {
+            'predicate_count': 0,
+            'argument_count': 0,
+        }
+
     def add_all_annotations(self, doc):
         logging.info("Adding propbank annotations for " + doc.docid)
 
@@ -68,6 +74,8 @@ class PropBank(DataLoader):
             pred_node_repr = "%s:%d:%s" % (
                 doc.docid, inst.sentnum, inst.predicate)
 
+            self.stats['predicate_count'] += 1
+
             for argloc, arg_slot in inst.arguments:
                 a_word_idx = utils.make_words_from_pointer(tree, argloc)
                 arg_span = utils.get_nltk_span(
@@ -75,6 +83,8 @@ class PropBank(DataLoader):
 
                 if len(arg_span) == 0:
                     continue
+
+                self.stats['argument_count'] += 1
 
                 p = doc.add_predicate(None, pred_span, frame_type='PROPBANK')
                 arg_em = doc.add_entity_mention(None, arg_span)
@@ -87,3 +97,9 @@ class PropBank(DataLoader):
                     arg_mention = doc.add_argument_mention(
                         p, arg_em.aid, arg_slot.lower())
                     arg_mention.add_meta('node', arg_node_repr)
+
+    def print_stats(self):
+        logging.info("Corpus statistics from Propbank")
+
+        for key, value in self.stats.items():
+            logging.info(f"{key} : {value}")

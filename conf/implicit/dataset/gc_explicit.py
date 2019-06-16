@@ -14,7 +14,7 @@ else:
 
 wsj_path = os.path.join(corpus_path, 'penn-treebank-rel3/parsed/mrg/wsj')
 wsj_file_pattern = '\d\d/wsj_.*\.mrg'
-base_out = os.path.join(working, 'nombank_with_gc')
+base_out = os.path.join(working, 'nombank_explicit')
 
 c.PropBankConfig.root = os.path.join(corpus_path, 'propbank-LDC2004T14')
 c.PropBankConfig.propfile = os.path.join(corpus_path, 'propbank-LDC2004T14',
@@ -44,4 +44,5 @@ c.NomBankConfig.implicit_path = os.path.join(
     corpus_path, 'GerberChai_annotations/implicit_argument_annotations.xml')
 
 c.NomBankConfig.gc_only = True
+c.NomBankConfig.explicit_only = True
 c.NomBankConfig.stat_dir = os.path.join(base_out, 'stats')

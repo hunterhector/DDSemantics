@@ -1,17 +1,62 @@
 # List of TODOs 
 
-1. Dependency
-    - Rerun the parser with the old dependency maybe?
+1. Baseline, our embedding max method should be at least as strong as the G&C paper 
+baseline.
+    - Sometimes the system predict "from", this is because the training data 
+    contains "IN" as arguments, they should be removed from the generated data.
+    - Top responses are always the same thing, this may because the same entity
+    mention is in multiple arguments' slot, but we should reduce that at 
+    evaluation time. The span should be there.
+    - Multiple results are available in the gold entity, the current result file
+     only show the head of the first one, not very informative.
+    
 1. Richer output in evaluation
     - ~~Add F1~~
-    - Add Dice (partial argument overlap)
-    - Add a score with gold candidates
-    - Only score candidates with in 2 sentence back and 1 sentence forward
+    - ~~Add Dice (partial argument overlap)~~
+    - ~~Add a score with gold candidates~~
+    - Only score candidates with in 2 sentence back and current sentence
 1. Design core experiments: pooling, attention, distance
 1. Distance features
     - Distance cutoff baseline
     - Fix the distance embedding error, should deal with infinity much better
-1. Using constituent to find the headword is not reliable, should use dependency
+1. ~~Using constituent to find the headword is not reliable, should use dependency~~
+    - ~~with having abandoned their socialist principles --> head is with~~
+    - the auto cloze data now points to "with", "by", "to", "on", "from"
+    - "who" can be pointed to the actual content, in fact, in gold, we sometimes 
+    can see "who" being used as the i_arg, but we can find its appositive.
+1. analysis through event coref:
+    - however, how do we get the correct argument for this first plan?
+        - to abandon plans to raise temporary working capital through debt issued from an agency that would n't be counted on the federal budget .
+        - another "plan" will take the same arg with this plan.
+    - One way is to do carry over via supports.
+    - Another way is to use a nombank parser.
+    - Semafor did not produce that, we can get it from the "support" (abandon). but that's quite tricky.
+    - At the very least, we should get that if the gold candidate is given.
+    - Without the gold candidate, we are filling two arguments at the same time
+        - fill the first with an close entity
+        - fill the second one via coref
+1. analysis through the surrounding events:
+    - But higher interest rates paid on off-budget debt could add billions to the bailout costs
+    - for the costs, we can analyze "bailout" to get the actual entity
+        - such as "the new S&L bailout agency"
+    - similar analysis should be done on supports
+        - The borrowing to raise these funds (raise is the support for funds)
+    - Some answers can be directly found in supports 
+        - "the RTC may have to slow -LCB- S&L sales -RCB- or dump acquired assets through fire sales"
+1. analysis through multiple events:
+    - is it possible to read and analyze complex event chains?
+        - Du Pont Co. , Hewlett-Packard Co. and Los Alamos National Laboratory 
+        said they signed a three-year , $ 11 million agreement to collaborate 
+        on superconductor research 
+        - Joint-research programs have proliferated as U.S. companies seek to 
+        spread the risks and costs of commercializing new superconductors and 
+        to meet the challenges posed by foreign consortia
+        - signed-subj -> agreement-obj -> collaborate-prep
+        - cost-of
+    - first, we need to capture all the structures
+    - second, we need to have reasoning mechanisms
+1. how do we encode the "support" and "surrounding entities"?
+    - our training data does not contain these supports anyway
 1. Get the slot classifier to work
     - Rule based like Ruppenhofer
     - Classifier like Erk
@@ -88,3 +133,5 @@ not resolvable.
 1. ~~Study w2v baseline carefully~~
 1. ~~We are using the detailed dependency labels~~
 1. ~~Setup google platform~~
+1. ~~Dependency~~
+    - ~~Rerun the parser with the old dependency maybe?~~
