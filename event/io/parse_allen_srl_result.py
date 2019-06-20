@@ -63,6 +63,12 @@ if __name__ == '__main__':
             output_data = json.loads(outline)
             docid = input_data['docid']
 
+            if lastid and not docid == lastid:
+                data['docid'] = lastid
+
+                write_out(out_dir, lastid, data)
+                data = {'srl': []}
+
             sent_start = input_data['start']
             sent = input_data['sentence']
 
@@ -85,13 +91,6 @@ if __name__ == '__main__':
                 if len(srl) > 1:
                     # Keep the ones with arguments.
                     data['srl'].append(srl)
-
-            if lastid and not docid == lastid:
-                data['docid'] = lastid
-
-                write_out(out_dir, lastid, data)
-                data = {'srl': []}
-
             lastid = docid
 
         if lastid:
