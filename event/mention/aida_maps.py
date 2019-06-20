@@ -44,6 +44,7 @@ token_direct_map = {
     'seize': 'ldcOnt:Transaction.Transaction.TransferControl',
     'casualty': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',
     'capture': 'ldcOnt:Transaction.Transaction.TransferControl',
+    'fire': 'Conflict.Attack.FirearmAttack',
 }
 
 onto_token_nom_map = {
@@ -62,7 +63,7 @@ frame_direct_map = {
     'Arriving': 'ldcOnt:Movement.TransportPerson',
     'Departing': 'ldcOnt:Movement.TransportPerson',
     'Employing': 'ldcOnt:Personnel.StartPosition',
-    'Shoot_projectiles': 'ldcOnt:Conflict.Attack.AirstrikeMissileStrike',
+    'Shoot_projectiles': 'ldcOnt:Conflict.Attack.FirearmAttack',
     'Communication_response': 'ldcOnt:Contact.Discussion',
     'Chatting': 'ldcOnt:Contact.Discussion',
     'Hostile_encounter': 'ldcOnt:Conflict.Attack',
