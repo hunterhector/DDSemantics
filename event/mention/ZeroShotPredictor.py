@@ -144,6 +144,9 @@ class ZeroShotTypeMapper:
                 self.onto_arg_role_tokens[role_type] = [role_token.lower()]
                 self.onto_arg_domain[frame['domain']].append(role_type)
 
+    def frame_lemma_direct(self, frame, lemma):
+        return aida_maps.frame_lemma_map.get((frame, lemma), None)
+
     def head_token_direct(self, lemma):
         if lemma in aida_maps.token_direct_map:
             return aida_maps.token_direct_map[lemma]
@@ -155,11 +158,22 @@ class ZeroShotTypeMapper:
                 return aida_maps.arg_direct_map[arg_lemma][0]
 
     def map_from_event_type(self, event_type, lemma):
+        print("mapping tac kbp event type ", event_type, lemma)
+
         level1, level2 = event_type.split('_')
         level2_tokens = event_type_split(level2)
 
         f_score, l_score, m_score, full_type = self.map_by_pred_match(
             [t + '-pred' for t in level2_tokens], [lemma + '-pred'])
+
+        # print(
+        #     f_score,
+        #     l_score,
+        #     m_score,
+        #     full_type
+        # )
+        #
+        # input('check how the type is mapped to.')
 
         if m_score > 0.8 or l_score > 0.8:
             if l_score > 0.8:
@@ -267,6 +281,10 @@ class ZeroShotTypeMapper:
             return 'arg_direct', arg_direct_type
 
         if 'frame' in event:
+            r = self.frame_lemma_direct(event['frame'], event['headLemma'])
+            if r:
+                return 'map_from_frame', r
+
             r = self.map_from_frame(event['frame'], event['headLemma'])
             if r:
                 return 'map_from_frame', r
@@ -352,6 +370,8 @@ def main(para, resources):
                 map_res = type_mapper.map_event_type(evm, entities)
                 if not map_res:
                     continue
+
+                # print('mapping ', evm['type'], map_res)
 
                 rule, mapped_type = map_res
 

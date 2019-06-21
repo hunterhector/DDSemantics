@@ -8,7 +8,7 @@ else:
 
 if 'csr_resources' not in os.environ:
     raise KeyError("Please supply the directory as environment "
-                   "variable: 'event_resources'")
+                   "variable: 'csr_resources'")
 else:
     csr_resources = os.environ['csr_resources']
 

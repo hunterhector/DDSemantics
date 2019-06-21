@@ -59,6 +59,16 @@ onto_token_nom_map = {
     'stabbing': 'stab',
 }
 
+frame_lemma_map = {
+    ('Killing', 'fire'): 'ldcOnt:Conflict.Attack.FirearmAttack',
+    ('Killing', 'firing'): 'ldcOnt:Conflict.Attack.FirearmAttack',
+    ('Killing', 'shoot'): 'ldcOnt:Conflict.Attack.FirearmAttack',
+}
+
+propbank_sense_map = {
+    'fire.02': 'ldcOnt:Conflict.Attack.FirearmAttack',
+}
+
 frame_direct_map = {
     'Arriving': 'ldcOnt:Movement.TransportPerson',
     'Departing': 'ldcOnt:Movement.TransportPerson',
@@ -109,6 +119,8 @@ srl_ldc_arg_map = {
         'Side_1': 'Attacker',
         'Side_2': 'Attacker',
         'Agent': 'Attacker',
+        'Person': 'Attacker',  # open fire case
+        'ARGM-ADV': 'Victim',
         # 'Projectile': 'Instrument',
     },
     'ldcOnt:Movement.TransportPerson': {
