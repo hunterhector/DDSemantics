@@ -33,6 +33,16 @@ ldc_ontology_skips = {
 
 kbp_direct_map = {
     'Life_die': 'ldcOnt:Life.Die',
+    'Contact_Contact': 'ldcOnt:Contact.CommitmentPromiseExpressIntent',
+    'Contact_Meet': 'ldcOnt:Contact.CommitmentPromiseExpressIntent.Meet',
+    'Contact_Broadcast': 'ldcOnt:Contact.MediaStatement.Broadcast',
+}
+
+kbp_lemma_map = {
+    ('Conflict_Attack', 'shoot'): 'ldcOnt:Conflict.Attack.FirearmAttack',
+    ('Conflict_Attack', 'shooting'): 'ldcOnt:Conflict.Attack.FirearmAttack',
+    ('Conflict_Attack', 'fire'): 'ldcOnt:Conflict.Attack.FirearmAttack',
+    ('Conflict_Attack', 'firing'): 'ldcOnt:Conflict.Attack.FirearmAttack',
 }
 
 kbp_frame_correction = {
@@ -44,7 +54,9 @@ token_direct_map = {
     'seize': 'ldcOnt:Transaction.Transaction.TransferControl',
     'casualty': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',
     'capture': 'ldcOnt:Transaction.Transaction.TransferControl',
-    'fire': 'Conflict.Attack.FirearmAttack',
+    'bloodsh': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',
+    'bloodshed': 'ldcOnt:Life.Die.DeathCausedByViolentEvents',
+    'interview': 'ldcOnt:Contact.Discussion.Meet',
 }
 
 onto_token_nom_map = {
@@ -74,12 +86,16 @@ frame_direct_map = {
     'Departing': 'ldcOnt:Movement.TransportPerson',
     'Employing': 'ldcOnt:Personnel.StartPosition',
     'Shoot_projectiles': 'ldcOnt:Conflict.Attack.FirearmAttack',
+    'Statement': 'ldcOnt:Contact.CommitmentPromiseExpressIntent.Broadcast',
     'Communication_response': 'ldcOnt:Contact.Discussion',
     'Chatting': 'ldcOnt:Contact.Discussion',
     'Hostile_encounter': 'ldcOnt:Conflict.Attack',
     'Taking': 'ldcOnt:Transaction.Transaction.TransferControl',
     'Meet': 'ldcOnt:Contact.Collaborate.Meet',
     'Killing': 'ldcOnt:Life.Die.DeathCausedByViolentEvent',
+    'Questioning': 'ldcOnt:Contact.Discussion',
+    'Contacting': "ldcOnt:Contact",
+
 }
 
 srl_ldc_arg_map = {
@@ -120,7 +136,7 @@ srl_ldc_arg_map = {
         'Side_2': 'Attacker',
         'Agent': 'Attacker',
         'Person': 'Attacker',  # open fire case
-        'ARGM-ADV': 'Victim',
+        'ARGM-ADV': 'Target',
         # 'Projectile': 'Instrument',
     },
     'ldcOnt:Movement.TransportPerson': {
