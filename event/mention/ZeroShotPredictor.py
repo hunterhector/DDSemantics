@@ -279,10 +279,6 @@ class ZeroShotTypeMapper:
             if t in aida_maps.kbp_direct_map:
                 return 'map_kbp_direct', aida_maps.kbp_direct_map[t]
 
-            t = self.map_from_event_type(t, event['headLemma'])
-            if t:
-                return 'map_from_event_type', t
-
         arg_direct_type = self.arg_direct(event, entities)
         if arg_direct_type:
             return 'arg_direct', arg_direct_type
@@ -295,6 +291,13 @@ class ZeroShotTypeMapper:
             t = self.map_from_frame(event['frame'], event['headLemma'])
             if t:
                 return 'map_from_frame', t
+
+        if event['component'] == 'CrfMentionTypeAnnotator':
+            # Mapping from event map is less reliable.
+            t = event['type']
+            t = self.map_from_event_type(t, event['headLemma'])
+            if t:
+                return 'map_from_event_type', t
 
         if event['component'] == 'VerbBasedEventDetector':
             t = self.map_from_lemma_only(event['headLemma'])
