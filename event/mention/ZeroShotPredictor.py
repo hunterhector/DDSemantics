@@ -158,34 +158,27 @@ class ZeroShotTypeMapper:
                 return aida_maps.arg_direct_map[arg_lemma][0]
 
     def map_from_event_type(self, event_type, lemma):
-        print("mapping tac kbp event type ", event_type, lemma)
+        # print("mapping tac kbp event type ", event_type, lemma)
 
         level1, level2 = event_type.split('_')
         level2_tokens = event_type_split(level2)
 
-        f_score, l_score, m_score, full_type = self.map_by_pred_match(
+        l_score, m_score, full_type = self.map_by_pred_match(
             [t + '-pred' for t in level2_tokens], [lemma + '-pred'])
-
-        # print(
-        #     f_score,
-        #     l_score,
-        #     m_score,
-        #     full_type
-        # )
-        #
-        # input('check how the type is mapped to.')
 
         if m_score > 0.8 or l_score > 0.8:
             if l_score > 0.8:
                 return full_type
             else:
                 if full_type in self.type_parent:
+                    # print('parent is ', self.type_parent[full_type])
                     return self.type_parent[full_type]
                 else:
+                    # print('no parent')
                     return full_type
 
     def map_from_lemma_only(self, lemma):
-        f_score, l_score, m_score, full_type = self.map_by_pred_match(
+        l_score, m_score, full_type = self.map_by_pred_match(
             [lemma + '-pred'], [lemma + '-pred'])
 
         if m_score > 0.8 or l_score > 0.8:
@@ -202,7 +195,8 @@ class ZeroShotTypeMapper:
             return aida_maps.frame_direct_map[frame]
 
         lemma_pred = lemma + '_pred'
-        f_score, l_score, m_score, full_type = self.map_by_pred_match(
+        # print(frame, lemma_pred)
+        l_score, m_score, full_type = self.map_by_pred_match(
             [frame], [frame, lemma_pred]
         )
 
@@ -253,46 +247,59 @@ class ZeroShotTypeMapper:
                             if s > low_score:
                                 low_score = s
 
-            lm_sum = low_score + middle_score
-            lm_max = max(low_score, middle_score)
-            rank_num = lm_max
+            rank_num = max(low_score, middle_score)
 
             scored_pairs.append((rank_num, low_score, middle_score, onto_type))
 
         scored_pairs.sort(reverse=True)
-        return scored_pairs[0]
+
+        for rank_num, low_score, mid_score, t in scored_pairs:
+            if mid_score < 0.2:
+                continue
+            return low_score, mid_score, t
+
+        return 0, 0, None
 
     def map_event_type(self, event, entities):
-        head_direct_type = self.head_token_direct(event['headLemma'])
+        event_head = event['headLemma']
+
+        head_direct_type = self.head_token_direct(event_head)
         if head_direct_type:
             return 'head_direct', head_direct_type
 
         if event['component'] == 'CrfMentionTypeAnnotator':
             t = event['type']
             if (t, event.get('frame', 'NA')) in aida_maps.kbp_frame_correction:
-                t = aida_maps.kbp_frame_correction(t, event['frame'])
+                t = aida_maps.kbp_frame_correction[t, event['frame']]
 
-            r = self.map_from_event_type(t, event['headLemma'])
-            if r:
-                return 'map_from_event_type', r
+            if (t, event_head) in aida_maps.kbp_lemma_map:
+                t = aida_maps.kbp_lemma_map[(t, event_head)]
+                return 'map_kbp_lemma', t
+
+            if t in aida_maps.kbp_direct_map:
+                return 'map_kbp_direct', aida_maps.kbp_direct_map[t]
+
+            t = self.map_from_event_type(t, event['headLemma'])
+            if t:
+                return 'map_from_event_type', t
 
         arg_direct_type = self.arg_direct(event, entities)
         if arg_direct_type:
             return 'arg_direct', arg_direct_type
 
         if 'frame' in event:
-            r = self.frame_lemma_direct(event['frame'], event['headLemma'])
-            if r:
-                return 'map_from_frame', r
+            t = self.frame_lemma_direct(event['frame'], event['headLemma'])
+            if t:
+                return 'map_from_frame', t
 
-            r = self.map_from_frame(event['frame'], event['headLemma'])
-            if r:
-                return 'map_from_frame', r
+            t = self.map_from_frame(event['frame'], event['headLemma'])
+            if t:
+                return 'map_from_frame', t
 
         if event['component'] == 'VerbBasedEventDetector':
-            r = self.map_from_lemma_only(event['headLemma'])
-            if r:
-                return 'map_from_head_lemma', r
+            t = self.map_from_lemma_only(event['headLemma'])
+            if t:
+                return 'map_from_head_lemma', t
 
     def map_arg_role(self, evm, arg, entities):
         arg_lemma = entities[arg['entityId']]['lemma']
@@ -374,11 +381,14 @@ def main(para, resources):
                 }
 
             for evm in rich_doc['eventMentions']:
+                # print('evm is **' + evm['headLemma'] + '**')
                 map_res = type_mapper.map_event_type(evm, entities)
                 if not map_res:
+                    # print('No mapping results')
                     continue
 
-                # print('mapping ', evm['type'], map_res)
+                # print('Mapping results is ', map_res)
+                # input('take a look')
 
                 rule, mapped_type = map_res
 
