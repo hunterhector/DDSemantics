@@ -7,7 +7,7 @@ def convert(docid, inf, sent, out):
     txt = inf.read()
 
     for line in sent:
-        start, end, sid, _ = line.split()
+        start, end, sid, *_ = line.split()
         start = int(start)
         end = int(end)
         sent_json = {'sentence': txt[start: end], 'docid': docid,
