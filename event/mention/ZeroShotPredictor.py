@@ -309,14 +309,21 @@ class ZeroShotTypeMapper:
             l_types.append('.'.join(t_parts[:1]))
         l_types.append(t_parts[0])
 
-        # List the roles, with frame element first. We trust frame more.
+        # List the roles, with frame element first.
+        # We trust fn more, but "other" the least, so they are at the end.
         l_roles = []
+
+        other_roles = []
         for role in arg['roles']:
             prefix, r = role.split(':')
             if prefix == 'fn':
                 l_roles.insert(0, r)
+            elif prefix == 'other':
+                other_roles.append(r)
             else:
                 l_roles.append(r)
+
+        l_roles.extend(other_roles)
 
         if arg_lemma in aida_maps.arg_direct_map:
             if event_type == aida_maps.arg_direct_map[arg_lemma][0]:

@@ -82,6 +82,12 @@ frame_direct_map = {
     'Killing': 'ldcOnt:Life.Die.DeathCausedByViolentEvent',
 }
 
+entity_specific_srl_map = {
+    'ldcOnt:Conflict.Attack.FirearmAttack': {
+        ('ARG3', 'PERSON'): 'Attacker',
+    },
+}
+
 srl_ldc_arg_map = {
     'ldcOnt:ArtifactExistence.DamageDestroy': {
         'ARG2': 'Instrument',
@@ -121,6 +127,8 @@ srl_ldc_arg_map = {
         'Agent': 'Attacker',
         'Person': 'Attacker',  # open fire case
         'ARGM-ADV': 'Victim',
+        'prep-on': 'Victim',
+        'prep-by': 'Attacker',
         # 'Projectile': 'Instrument',
     },
     'ldcOnt:Movement.TransportPerson': {
