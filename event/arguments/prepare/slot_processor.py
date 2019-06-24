@@ -38,7 +38,7 @@ def get_simple_dep(dep):
     elif dep.startswith('prep_'):
         return dep
     elif dep.startswith('prepc_'):
-        return dep.repalce('prepc_', 'prep_')
+        return dep.replace('prepc_', 'prep_')
     elif dep == 'NA':
         return 'NA'
     else:

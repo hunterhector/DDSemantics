@@ -211,7 +211,7 @@ def hash_data():
 
             if doc_count % 1000 == 0:
                 print(f'{util.get_time()}: Hashed for {event_count} events in '
-                      f'{doc_count} docs.', end='')
+                      f'{doc_count} docs.\r', end='')
 
             # for event, hashed_event in zip(events, hashed_doc['events']):
             #     num_hashed_args = 0

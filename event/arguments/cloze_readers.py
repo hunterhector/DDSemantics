@@ -461,11 +461,11 @@ class HashedClozeReader:
 
         # Some need to be done in iteration.
         explicit_entity_positions = defaultdict(list)
-        doc_args = []
+
+        # Argument entity mentions.
+        arg_mentions = {}
 
         for evm_index, event in enumerate(doc_info['events']):
-            sentence_id = event.get('sentence_id', None)
-
             for slot, l_arg in event['args'].items():
                 # We iterate over all the arguments to collect distance data and
                 # candidate document arguments.
@@ -478,7 +478,6 @@ class HashedClozeReader:
                         eid = arg['entity_id']
                         doc_arg_info = {
                             'event_index': evm_index,
-                            # 'slot': slot,
                             'entity_id': eid,
                             'arg_phrase': arg['arg_phrase'],
                             # The sentence id is used to sort the candidate by
@@ -487,22 +486,29 @@ class HashedClozeReader:
                             'represent': arg['represent'],
                             'text': arg['text'],
                             'dep': arg['dep'],
-                            'span': (arg['arg_start'], arg['arg_end']),
+                            'arg_start': arg['arg_start'],
+                            'arg_end': arg['arg_end'],
                             'fe': arg['fe'],
                             'source': arg['source'],
+                            'ner': arg.get('ner', 'NA'),
                         }
+
                         if not self.auto_test:
                             doc_arg_info[self.gold_role_field] = arg[
                                 self.gold_role_field
                             ]
-                        doc_args.append(doc_arg_info)
+
+                        arg_mentions[
+                            (arg['arg_start'], arg['arg_end'])] = doc_arg_info
 
                         if not arg.get('implicit', False):
                             # We do not calculate distance features for implicit
                             # arguments.
                             explicit_entity_positions[eid].append(
-                                (evm_index, slot, sentence_id)
+                                (evm_index, slot, arg['sentence_id'])
                             )
+
+        doc_args = [v for v in arg_mentions.values()]
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
@@ -659,17 +665,15 @@ class HashedClozeReader:
         # [(evm_index, slot, sentence_id)]
         explicit_entity_positions = defaultdict(list)
 
-        # A set that contains some minimum argument entity information, used
-        # for sampling a slot to create clozes.
-        t_doc_args = []
+        # A dictionary of argument mentions, indexed by the span to ensure no
+        # mention level duplications. We can then use these values to create
+        # cloze tasks.
+        arg_mentions = {}
 
         # Count the occurrences of the entity.
         eid_count = Counter()
         event_subset = []
 
-        # TODO: The same entity is getting read many times without a unique
-        #  reference point. Some entities are not actually resolvable since they
-        #  are pointing to the same element.
         for evm_index, event in enumerate(doc_info['events']):
             if evm_index == self.para.max_events:
                 # Ignore documents that are too long.
@@ -690,16 +694,37 @@ class HashedClozeReader:
                         (evm_index, slot, sentence_id)
                     )
 
-                    # From eid to entity information.
-                    t_doc_args.append({
-                        'event_index': evm_index,
+                    # Some minimum information for creating cloze tests.
+                    # - Entity id is the target to predict.
+                    # - Arg phrase, represent or text are different ways to
+                    #   represent the argument mention.
+                    # - source distinguish gold and automatic predicted args.
+                    # - sentence_id is related to the distance based feature.
+                    # - arg start and end are used to identify this unique
+                    #   mention.
+                    mention_info = {
                         'entity_id': eid,
                         'arg_phrase': arg['arg_phrase'],
                         'represent': arg['represent'],
                         'text': arg['text'],
-                        'dep': arg['dep'],
-                    })
+                        'source': arg['source'],
+                        # # TODO: can we not including sentence id in the core?
+                        # 'sentence_id': arg['sentence_id'],
+                        'arg_start': arg['arg_start'],
+                        'arg_end': arg['arg_end'],
+                    }
+
+                    # TODO: need to check if ner is used correctly.
+                    if 'ner' in arg:
+                        mention_info['ner'] = arg['ner']
+
+                    arg_mentions[
+                        (arg['arg_start'], arg['arg_end'])] = mention_info
                     eid_count[eid] += 1
+
+        # A set that contains some minimum argument entity mention information,
+        # used for sampling a slot to create clozes.
+        t_doc_args = [v for v in arg_mentions.values()]
 
         all_event_reps = [
             self._take_event_repr(
@@ -796,8 +821,19 @@ class HashedClozeReader:
                 slot_index = self.slot_names.index(slot) if \
                     self.fix_slot_mode else slot
 
+                print("the original event detail is:")
+                pprint(event)
+                pprint("Will try to resolve the following ")
+                pprint(arg)
+                print(f"correct id is {correct_id}")
+                input('now replace with something')
+
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
+
+                    print("Cross sample args:")
+                    pprint(cross_args)
+                    input('the cross one')
 
                     self.assemble_instance(
                         cross_event_data, features_by_eid,
@@ -826,6 +862,10 @@ class HashedClozeReader:
 
                 if inside_sample:
                     inside_args, inside_filler_id, swap_slot = inside_sample
+
+                    print("Inside sample args:")
+                    pprint(inside_args)
+                    input('the inside one')
 
                     self.assemble_instance(
                         inside_event_data, features_by_eid,
@@ -1072,8 +1112,12 @@ class HashedClozeReader:
             updated_slot_info['entity_id'] = swap_slot['entity_id']
             updated_slot_info['represent'] = swap_slot['represent']
             updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
-            updated_slot_info['span'] = swap_slot['span']
             updated_slot_info['source'] = swap_slot['source']
+
+            if 'ner' in swap_slot:
+                updated_slot_info['ner'] = swap_slot['ner']
+            elif 'ner' in updated_slot_info:
+                updated_slot_info.pop('ner')
 
             # Note: with the sentence Id we can have a better idea of where the
             # argument is from, but we cannot use it to extract features.
@@ -1105,14 +1149,18 @@ class HashedClozeReader:
         :return:
         """
         _, target_arg = arg_list[target_arg_idx]
-        target_eid = target_arg['entity_id']
 
         sample_res = sampler.sample_cross(
-            doc_args, target_evm_id, target_eid
+            doc_args, target_arg['arg_start'], target_arg['arg_end']
         )
 
         if sample_res is None:
             return None
+
+        # print("Cross cloze")
+        # pprint(arg_list)
+        # print("will switch with sample res: ", sample_res)
+        # input('take a look')
 
         neg_instance = []
         for idx, (slot, content) in enumerate(arg_list):

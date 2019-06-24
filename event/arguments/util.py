@@ -14,11 +14,11 @@ class ClozeSampler:
     def reset(self):
         random.seed(self.provided_seed)
 
-    def sample_cross(self, arg_pool, evm_id, ent_id):
+    def sample_cross(self, arg_pool, origin_start, origin_end):
         remaining = []
         for arg_info in arg_pool:
-            if not (arg_info['event_index'] == evm_id
-                    or arg_info['entity_id'] == ent_id):
+            if not (arg_info['arg_start'] == origin_start
+                    or arg_info['arg_end'] == origin_end):
                 remaining.append(arg_info)
 
         if len(remaining) > 0:
