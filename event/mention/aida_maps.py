@@ -36,6 +36,7 @@ kbp_direct_map = {
     'Contact_Contact': 'ldcOnt:Contact.CommitmentPromiseExpressIntent',
     'Contact_Meet': 'ldcOnt:Contact.CommitmentPromiseExpressIntent.Meet',
     'Contact_Broadcast': 'ldcOnt:Contact.MediaStatement.Broadcast',
+    'Contact_Correspondence': 'ldcOnt:Contact.Collaborate.Correspondence',
 }
 
 kbp_lemma_map = {
