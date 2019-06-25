@@ -325,7 +325,7 @@ class ZeroShotTypeMapper:
 
         other_roles = []
         for role in arg['roles']:
-            prefix, r = role.split(':')
+            prefix, r = role.split(':', 1)
             if prefix == 'fn':
                 l_roles.insert(0, r)
             elif prefix == 'other':
