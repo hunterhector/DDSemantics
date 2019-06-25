@@ -299,6 +299,9 @@ class ZeroShotTypeMapper:
             if t:
                 return 'map_from_event_type', t
 
+            if t in aida_maps.kbp_backup_map:
+                return 'map_kbp_backup', aida_maps.kbp_backup_map[t]
+
         if event['component'] == 'VerbBasedEventDetector':
             t = self.map_from_lemma_only(event['headLemma'])
             if t:

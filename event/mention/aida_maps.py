@@ -37,6 +37,23 @@ kbp_direct_map = {
     'Contact_Meet': 'ldcOnt:Contact.CommitmentPromiseExpressIntent.Meet',
     'Contact_Broadcast': 'ldcOnt:Contact.MediaStatement.Broadcast',
     'Contact_Correspondence': 'ldcOnt:Contact.Collaborate.Correspondence',
+    'Justice_Sue': 'ldcOnt:Justice.InitiateJudicialProcess',
+    'Justice_Convict': 'ldcOnt:Justice.JudicialConsequences.Convict',
+    'Justice_Chargeindict': 'ldcOnt:Justice.InitiateJudicialProcess.ChargeIndict',
+    'Justice_Trialhearing': 'ldcOnt:Justice.InitiateJudicialProcess.TrialHearing',
+    'Justice_Execute': 'ldcOnt:Justice.JudicialConsequences.Execute',
+    'Justice_Extradite': 'ldcOnt:Justice.JudicialConsequences.Extradite',
+    'Manufacture_Artifact': 'ldcOnt:Manufacture.Artifact.CreateManufacture_Artifact',
+    'Justice_Arrestjail': 'ldcOnt:Justice.ArrestJailDetain.ArrestJailDetain',
+}
+
+kbp_backup_map = {
+    'Justice_Arrestjail': 'ldcOnt:Justice.ArrestJailDetain',
+    'Personnel_Endposition': 'ldcOnt:Personnel.EndPosition',
+    'Movement_Transportartifact': 'ldcOnt:Movement.TransportArtifact',
+    'Personnel_Startposition': 'ldcOnt:Personnel.StartPosition',
+    'Justice_Sentence': 'ldcOnt:Justice.JudicialConsequences',
+    'Movement_Transportperson': 'ldcOnt:Movement.TransportPerson',
 }
 
 kbp_lemma_map = {
@@ -135,6 +152,7 @@ srl_ldc_arg_map = {
         'ARG1': 'Artifact',
     },
     'ldcOnt:Conflict.Attack': {
+        'Killer': 'Attacker',
         'Victim': 'Target',
         'Assailant': 'Attacker',
         'Weapon': 'Instrument',
