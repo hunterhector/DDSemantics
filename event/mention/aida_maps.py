@@ -43,7 +43,7 @@ kbp_direct_map = {
     'Justice_Trialhearing': 'ldcOnt:Justice.InitiateJudicialProcess.TrialHearing',
     'Justice_Execute': 'ldcOnt:Justice.JudicialConsequences.Execute',
     'Justice_Extradite': 'ldcOnt:Justice.JudicialConsequences.Extradite',
-    'Manufacture_Artifact': 'ldcOnt:Manufacture.Artifact.CreateManufacture_Artifact',
+    'Manufacture_Artifact': 'ldcOnt:Manufacture.Artifact.CreateManufacture',
     'Justice_Arrestjail': 'ldcOnt:Justice.ArrestJailDetain.ArrestJailDetain',
 }
 
