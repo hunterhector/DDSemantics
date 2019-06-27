@@ -823,20 +823,8 @@ class HashedClozeReader:
                 slot_index = self.slot_names.index(slot) if \
                     self.fix_slot_mode else slot
 
-                print("the original event detail is:")
-                pprint(event)
-                pprint("Will try to resolve the following ")
-                pprint(arg)
-                print(f"correct id is {correct_id}")
-                input('now replace with something')
-
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
-
-                    print("Cross sample args:")
-                    pprint(cross_args)
-                    input('the cross one')
-
                     self.assemble_instance(cross_event_data, features_by_eid,
                                            explicit_entity_positions,
                                            current_sent, pred, event['frame'],
@@ -862,11 +850,6 @@ class HashedClozeReader:
 
                 if inside_sample:
                     inside_args, inside_filler_id, swap_slot = inside_sample
-
-                    print("Inside sample args:")
-                    pprint(inside_args)
-                    input('the inside one')
-
                     self.assemble_instance(inside_event_data, features_by_eid,
                                            explicit_entity_positions,
                                            current_sent, pred, event['frame'],
