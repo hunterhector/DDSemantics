@@ -23,6 +23,7 @@ from collections import defaultdict
 import pprint
 from scipy.spatial.distance import cosine
 from event.mention import aida_maps
+import traceback
 
 
 class ZeroShotEventResources(Configurable):
@@ -362,6 +363,53 @@ class ZeroShotTypeMapper:
                     )
 
 
+def process_one(type_mapper, resources, fin, fout):
+    rich_doc = json.load(fin)
+    # text = rich_doc['text']
+
+    entities = {}
+    for ent in rich_doc['entityMentions']:
+        entities[ent['id']] = {
+            'span': ent['span'],
+            "head_span": ent['headWord']['span'],
+            "text": ent['text'],
+            "lemma": ent['headWord']['lemma'],
+            'id': ent['id'],
+        }
+
+    for evm in rich_doc['eventMentions']:
+        # print('evm is **' + evm['headLemma'] + '**')
+        map_res = type_mapper.map_event_type(evm, entities)
+        if not map_res:
+            # print('No mapping results')
+            continue
+
+        # print('Mapping results is ', map_res)
+        # input('take a look')
+
+        rule, mapped_type = map_res
+
+        if mapped_type and mapped_type in resources.onto_set:
+            evm['type'] = mapped_type
+
+            for arg in evm['arguments']:
+                roles = []
+                mapped_role = type_mapper.map_arg_role(
+                    evm, arg, entities)
+
+                if mapped_role:
+                    if mapped_role in resources.onto_set:
+                        roles.append(mapped_role)
+                    else:
+                        debug_file.write(f'Mapped role not valid: '
+                                         f'{mapped_role}\n')
+
+                roles.extend(arg['roles'])
+                arg['roles'] = roles
+
+    json.dump(rich_doc, fout)
+
+
 def main(para, resources):
     type_mapper = ZeroShotTypeMapper(resources)
 
@@ -373,55 +421,14 @@ def main(para, resources):
             continue
         with open(os.path.join(para.input_path, p)) as fin, \
                 open(os.path.join(para.output_path, p), 'w') as fout:
-            rich_doc = json.load(fin)
-            # text = rich_doc['text']
-
-            entities = {}
-            for ent in rich_doc['entityMentions']:
-                entities[ent['id']] = {
-                    'span': ent['span'],
-                    "head_span": ent['headWord']['span'],
-                    "text": ent['text'],
-                    "lemma": ent['headWord']['lemma'],
-                    'id': ent['id'],
-                }
-
-            for evm in rich_doc['eventMentions']:
-                # print('evm is **' + evm['headLemma'] + '**')
-                map_res = type_mapper.map_event_type(evm, entities)
-                if not map_res:
-                    # print('No mapping results')
-                    continue
-
-                # print('Mapping results is ', map_res)
-                # input('take a look')
-
-                rule, mapped_type = map_res
-
-                if mapped_type and mapped_type in resources.onto_set:
-                    evm['type'] = mapped_type
-
-                    if mapped_type == 'ldcOnt:Transaction.Transaction':
-                        if evm['frame'] == 'Killing':
-                            print(evm)
-                            print('rule is ', rule)
-
-                    for arg in evm['arguments']:
-                        roles = []
-                        mapped_role = type_mapper.map_arg_role(
-                            evm, arg, entities)
-
-                        if mapped_role:
-                            if mapped_role in resources.onto_set:
-                                roles.append(mapped_role)
-                            else:
-                                debug_file.write(f'Mapped role not valid: '
-                                                 f'{mapped_role}\n')
-
-                        roles.extend(arg['roles'])
-                        arg['roles'] = roles
-
-            json.dump(rich_doc, fout)
+            try:
+                process_one(type_mapper, resources, fin, fout)
+            except Exception as err:
+                sys.stderr.write(
+                    f"ERROR: Exception in ZeroShotPredictor while "
+                    f"processing p\n")
+                traceback.print_exc()
+                logging.error(traceback.format_exc())
 
 
 if __name__ == '__main__':
