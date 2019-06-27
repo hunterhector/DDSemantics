@@ -286,20 +286,24 @@ class HashedClozeReader:
         """
         event_components = [
             predicate,
-            self.unk_frame_idx if frame_id == -1 else frame_id
         ]
+
+        if self.para.use_frame:
+            fid = self.unk_frame_idx if frame_id == -1 else frame_id
+            event_components.append(fid)
 
         for slot, arg in args:
             if len(arg) == 0:
-                event_components.append(self.unobserved_fe)
+                if self.para.use_frame:
+                    event_components.append(self.unobserved_fe)
                 event_components.append(self.unobserved_arg)
             else:
-                fe = arg['fe']
-                if fe == -1:
-                    event_components.append(self.unk_fe_idx)
-                else:
-                    event_components.append(fe)
-
+                if self.para.use_frame:
+                    fe = arg['fe']
+                    if fe == -1:
+                        event_components.append(self.unk_fe_idx)
+                    else:
+                        event_components.append(fe)
                 event_components.append(arg['arg_role'])
 
         if any([c < 0 for c in event_components]):
@@ -663,7 +667,7 @@ class HashedClozeReader:
         # Map from: entity id (eid) ->
         # A list of tuples that represent an argument position:
         # [(evm_index, slot, sentence_id)]
-        explicit_entity_positions = defaultdict(list)
+        explicit_entity_positions = defaultdict(dict)
 
         # A dictionary of argument mentions, indexed by the span to ensure no
         # mention level duplications. We can then use these values to create
@@ -689,10 +693,12 @@ class HashedClozeReader:
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
 
-                    # if not arg.get('implicit', False):
-                    explicit_entity_positions[eid].append(
-                        (evm_index, slot, sentence_id)
-                    )
+                    arg_start = arg['arg_start']
+                    arg_end = arg['arg_end']
+
+                    if not arg.get('implicit', False):
+                        explicit_entity_positions[eid][
+                            (arg_start, arg_end)] = sentence_id
 
                     # Some minimum information for creating cloze tests.
                     # - Entity id is the target to predict.
@@ -708,13 +714,11 @@ class HashedClozeReader:
                         'represent': arg['represent'],
                         'text': arg['text'],
                         'source': arg['source'],
-                        # # TODO: can we not including sentence id in the core?
-                        # 'sentence_id': arg['sentence_id'],
+                        'sentence_id': arg['sentence_id'],
                         'arg_start': arg['arg_start'],
                         'arg_end': arg['arg_end'],
                     }
 
-                    # TODO: need to check if ner is used correctly.
                     if 'ner' in arg:
                         mention_info['ner'] = arg['ner']
 
@@ -794,13 +798,14 @@ class HashedClozeReader:
                 if len(arg) == 0:
                     continue
 
-                # unks are not very resolvable.
+                # Not training unk args.
                 if arg['represent'] == self.typed_event_vocab.unk_arg_word:
                     continue
 
-                # unk fe is not the purpose here.
-                if not self.fix_slot_mode and slot == self.unk_fe_idx:
-                    continue
+                # Not sure how to handle unk fe cases yet.
+                # # unk fe is not the purpose here.
+                # if not self.fix_slot_mode and slot == self.unk_fe_idx:
+                #     continue
 
                 correct_id = arg['entity_id']
 
@@ -813,9 +818,8 @@ class HashedClozeReader:
                 if is_singleton and not self.para.use_ghost:
                     continue
 
-                cross_sample = self.cross_cloze(
-                    sampler, arg_list, t_doc_args, evm_index, arg_index
-                )
+                cross_sample = self.cross_cloze(sampler, arg_list, t_doc_args,
+                                                arg_index)
                 inside_sample = self.inside_cloze(sampler, arg_list, arg_index)
 
                 slot_index = self.slot_names.index(slot) if \
@@ -850,8 +854,7 @@ class HashedClozeReader:
                         self.assemble_instance(
                             cross_gold_standard, features_by_eid,
                             explicit_entity_positions, evm_index, current_sent,
-                            pred,
-                            event['frame'], arg_list, slot, correct_id
+                            pred, event['frame'], arg_list, slot, correct_id
                         )
                     # These two list indicate where the target argument is.
                     # When we use fix slot mode, the index is a indicator of
@@ -1137,14 +1140,12 @@ class HashedClozeReader:
 
         return updated_slot_info
 
-    def cross_cloze(self, sampler, arg_list, doc_args, target_evm_id,
-                    target_arg_idx):
+    def cross_cloze(self, sampler, arg_list, doc_args, target_arg_idx):
         """
         A negative cloze instance that use arguments from other events.
         :param sampler: A random sampler.
         :param arg_list: List of origin event arguments.
         :param doc_args: List of arguments (partial info) in this doc.
-        :param target_evm_id: The target event id.
         :param target_arg_idx: The index for the slot to be replaced
         :return:
         """
@@ -1156,11 +1157,6 @@ class HashedClozeReader:
 
         if sample_res is None:
             return None
-
-        # print("Cross cloze")
-        # pprint(arg_list)
-        # print("will switch with sample res: ", sample_res)
-        # input('take a look')
 
         neg_instance = []
         for idx, (slot, content) in enumerate(arg_list):
