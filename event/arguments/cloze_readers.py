@@ -334,19 +334,22 @@ class HashedClozeReader:
 
         return features_by_eid
 
-    def create_slot_candidates(self, target_arg, doc_args,
+    def create_slot_candidates(self, true_arg, doc_args,
                                target_evm_id, pred_sent):
         # Replace the target slot with other entities in the doc.
         dist_arg_list = []
 
         for doc_arg in doc_args:
-            if (self.auto_test and doc_arg['event_index'] == target_evm_id and
-                    doc_arg['entity_id'] == target_arg['entity_id']):
-                # During auto test, we avoid the original argument this way.
+            print(doc_arg)
+            print(true_arg)
+
+            if doc_arg['arg_start'] == true_arg['arg_start'] and doc_arg[
+                'arg_end'] == true_arg['arg_end']:
+                # We avoid the original argument mention.
                 continue
 
             # This is the target argument replaced by another entity.
-            update_arg = self.replace_slot_detail(target_arg, doc_arg, True)
+            update_arg = self.replace_slot_detail(true_arg, doc_arg, True)
 
             dist_arg_list.append((
                 abs(pred_sent - doc_arg['sentence_id']),
@@ -358,57 +361,51 @@ class HashedClozeReader:
         dists, sorted_arg_list = zip(*dist_arg_list)
         return sorted_arg_list
 
-    def get_testable_args(self, event_args, auto=False):
-        if auto:
-            return self.get_testable_args_auto(event_args)
-        else:
-            return self.get_testable_args_anno(event_args)
-
-    def get_testable_args_auto(self, event_args):
-        raise NotImplementedError
-
-    def get_testable_args_anno(self, event_args):
+    def get_testable_args(self, event_args):
         """
-        Take the args that could be used to fill (empty args) from annotated
-        data.
+        Find args to create clozes automatically.
         :param event_args:
         :return:
         """
         test_cases = []
+
         if self.fix_slot_mode:
             for slot in self.slot_names:
-                possible_args = event_args[slot]
+                arg_info = event_args[slot]
 
-                if len(possible_args) == 0:
+                if len(arg_info) == 0:
                     test_case = {
-                        'answers': [],
-                        'test_arg': {
-                            'resolvable': False,
-                            'implicit': False,
-                            'dep': slot,
-                        }
+                        'resolvable': False,
+                        'implicit': False,
+                        'dep': slot,
                     }
                     test_cases.append([slot, test_case])
                 else:
-                    answers = []
-                    for arg in possible_args:
-                        if arg['implicit'] and arg['source'] == 'gold' \
-                                and not arg['incorporated']:
-                            answers.append({
+                    for arg in arg_info:
+                        testable = False
+                        if self.auto_test:
+                            if arg['resolvable']:
+                                testable = True
+                        else:
+                            if arg['implicit'] and arg['source'] == 'gold' \
+                                    and not arg['incorporated']:
+                                testable = True
+
+                        if testable:
+                            test_case = {
                                 'text': arg['text'],
                                 'arg_phrase': arg['arg_phrase'],
-                                'span': (arg['arg_start'], arg['arg_end'],)
-                            })
-                    if len(answers) > 0:
-                        test_case = {
-                            'answers': answers,
-                            'test_arg': {
+                                'arg_start': arg['arg_start'],
+                                'arg_end': arg['arg_end'],
+                                'eid': arg['entity_id'],
                                 'resolvable': True,
                                 'implicit': True,
-                                'dep': slot,
+                                'dep': arg['dep'],
                             }
-                        }
-                        test_cases.append([slot, test_case])
+                            test_cases.append([slot, test_case])
+        else:
+            raise NotImplementedError("Dynamic slot mode not ready yet.")
+
         return test_cases
 
     def get_args_as_list(self, event_args, ignore_implicit):
@@ -474,44 +471,46 @@ class HashedClozeReader:
                 # We iterate over all the arguments to collect distance data and
                 # candidate document arguments.
                 for arg in l_arg:
-                    if len(arg) > 0:
-                        # Empty args will be ignored.
-                        # If one wanted to fill some arguments, make a
-                        # fake argument first.
+                    if len(arg) == 0:
+                        # Empty args will be skipped.
+                        # At real production time, we need to create an arg
+                        # with some placeholder values.
+                        continue
 
-                        eid = arg['entity_id']
-                        doc_arg_info = {
-                            'event_index': evm_index,
-                            'entity_id': eid,
-                            'arg_phrase': arg['arg_phrase'],
-                            # The sentence id is used to sort the candidate by
-                            # its distance.
-                            'sentence_id': arg['sentence_id'],
-                            'represent': arg['represent'],
-                            'text': arg['text'],
-                            'dep': arg['dep'],
-                            'arg_start': arg['arg_start'],
-                            'arg_end': arg['arg_end'],
-                            'fe': arg['fe'],
-                            'source': arg['source'],
-                            'ner': arg.get('ner', 'NA'),
-                        }
+                    eid = arg['entity_id']
+                    doc_arg_info = {
+                        'event_index': evm_index,
+                        'entity_id': eid,
+                        'arg_phrase': arg['arg_phrase'],
+                        # The sentence id is used to sort the candidate by
+                        # its distance.
+                        'sentence_id': arg['sentence_id'],
+                        'represent': arg['represent'],
+                        'text': arg['text'],
+                        'dep': arg['dep'],
+                        'arg_start': arg['arg_start'],
+                        'arg_end': arg['arg_end'],
+                        'fe': arg['fe'],
+                        'source': arg['source'],
+                        'ner': arg.get('ner', 'NA'),
+                    }
 
-                        if not self.auto_test:
-                            doc_arg_info[self.gold_role_field] = arg[
-                                self.gold_role_field
-                            ]
+                    if not self.auto_test:
+                        doc_arg_info[self.gold_role_field] = arg[
+                            self.gold_role_field
+                        ]
 
-                        arg_span = (arg['arg_start'], arg['arg_end'])
-                        arg_mentions[arg_span] = doc_arg_info
+                    arg_span = (arg['arg_start'], arg['arg_end'])
+                    arg_mentions[arg_span] = doc_arg_info
 
-                        if not arg.get('implicit', False):
-                            # We do not calculate distance features for implicit
-                            # arguments.
-                            explicit_entity_positions[eid][arg_span] = arg[
-                                'sentence_id']
+                    if not arg.get('implicit', False):
+                        # We do not calculate distance features for implicit
+                        # arguments.
+                        explicit_entity_positions[eid][arg_span] = arg[
+                            'sentence_id']
 
         doc_args = [v for v in arg_mentions.values()]
+        eid_to_mentions = dict([(arg['entity_id'], arg) for arg in doc_args])
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
@@ -524,12 +523,9 @@ class HashedClozeReader:
             arg_list = self.get_args_as_list(event_args, False)
 
             for target_slot, test_case in self.get_testable_args(event_args):
-                target_arg = test_case['test_arg']
-                answers = test_case['answers']
-
-                if nid_detector.should_fill(event, target_slot, target_arg):
+                if nid_detector.should_fill(event, target_slot, test_case):
                     test_rank_list = self.create_slot_candidates(
-                        target_arg, doc_args, evm_index, pred_sent
+                        test_case, doc_args, evm_index, pred_sent
                     )
 
                     # Prepare instance data for each possible instance.
@@ -564,10 +560,12 @@ class HashedClozeReader:
                             if not s == target_slot:
                                 candidate_args.append((s, arg))
 
-                        self.assemble_instance(instance_data, features_by_eid,
+                        self.assemble_instance(instance_data,
+                                               features_by_eid,
                                                explicit_entity_positions,
                                                pred_sent, pred_idx,
-                                               event['frame'], candidate_args,
+                                               event['frame'],
+                                               candidate_args,
                                                filler_eid)
 
                         cloze_event_indices.append(evm_index)
@@ -589,19 +587,20 @@ class HashedClozeReader:
 
                     if self.para.use_ghost:
                         self.add_ghost_instance(instance_data)
-                        if len(answers) == 0:
-                            # When there is no better instance,
-                            # the ghost should rank high.
-                            candidate_meta.append({'entity': ghost_entity_text})
+                        candidate_meta.append(
+                            {'entity': ghost_entity_text}
+                        )
 
-                    if len(answers) > 0:
-                        gold_entity = answers[0]['text']
+                    if 'eid' in test_case:
+                        answer_eid = test_case['eid']
+                        answers = eid_to_mentions[answer_eid]
                     else:
-                        gold_entity = ghost_entity_text
+                        answer_eid = ghost_entity_text
+                        answers = []
 
                     instance_meta.append({
                         'predicate': predicate,
-                        'gold_entity': gold_entity,
+                        'gold_entity': answer_eid,
                         'answers': answers,
                     })
 
@@ -675,6 +674,8 @@ class HashedClozeReader:
         # Count the occurrences of the entity.
         eid_count = Counter()
         event_subset = []
+
+        # print(f'{doc_info["docid"]} has {len(doc_info["events"])} events')
 
         for evm_index, event in enumerate(doc_info['events']):
             if evm_index == self.para.max_events:

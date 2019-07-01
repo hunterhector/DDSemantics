@@ -94,11 +94,13 @@ class AllArgDetector(NullArgDetector):
     """
     A Null arg detector that returns everything.
     """
+
     def __init__(self):
         super().__init__()
 
     def should_fill(self, event_info, slot, arg):
         return True
+
 
 class ResolvableArgDetector(NullArgDetector):
     """
@@ -302,13 +304,13 @@ class ArgRunner(Configurable):
         evaluator = ImplicitEval(self.reader.slot_names, eval_dir)
         instance_count = 0
 
-        logging.debug(f"Auto test: {auto_test}")
-
         self.reader.auto_test = auto_test
         self.reader.gold_role_field = gold_field_name
 
+        logging.info(f"Evaluation result will be stored at {eval_dir}")
+
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
-            (doc_id, instances, common_data, candidate_meta,instance_meta,
+            (doc_id, instances, common_data, candidate_meta, instance_meta,
              ) = test_data
 
             with torch.no_grad():
@@ -339,9 +341,9 @@ class ArgRunner(Configurable):
 
         self.model.train()
 
-    def self_study(self, basic_para, self_test_size):
+    def self_study_baseline(self, basic_para):
         dev_lines = [l for l in data_gen(
-            basic_para.train_in, until_line=self_test_size)]
+            basic_para.train_in, until_line=basic_para.self_test_size)]
 
         # Random baseline.
         logging.info("Run self study with random baseline.")
@@ -352,7 +354,7 @@ class ArgRunner(Configurable):
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
                 basic_para.log_dir, random_baseline.name,
-                f'self_study_{self_test_size}',
+                f'self_study_{basic_para.self_test_size}',
             ),
             gold_field_name=basic_para.gold_field_name,
             auto_test=True,
@@ -367,7 +369,7 @@ class ArgRunner(Configurable):
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
                 basic_para.log_dir, w2v_baseline.name,
-                f'self_study_{self_test_size}',
+                f'self_study_{basic_para.self_test_size}',
             ),
             gold_field_name=basic_para.gold_field_name,
             auto_test=True,
@@ -382,31 +384,38 @@ class ArgRunner(Configurable):
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
                 basic_para.log_dir, most_freq_baseline.name,
-                f'self_study_{self_test_size}',
+                f'self_study_{basic_para.self_test_size}',
             ),
             gold_field_name=basic_para.gold_field_name,
             auto_test=True,
         )
 
-        # Checkpoint test.
-        logging.info("Run self study with the checkpoint.")
-        print(self.model_dir)
+    def self_study_model(self, basic_para, load_checkpoint=False):
+        if load_checkpoint:
+            # Checkpoint test.
+            logging.info(
+                f"Run self study with the checkpoint at {self.model_dir}.")
 
-        checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
-        if os.path.isfile(checkpoint_path):
-            logging.info("Loading checkpoint '{}'".format(checkpoint_path))
-            checkpoint = torch.load(checkpoint_path)
-            self.model.load_state_dict(checkpoint['state_dict'])
+            checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
+            if os.path.isfile(checkpoint_path):
+                logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+                checkpoint = torch.load(checkpoint_path)
+                self.model.load_state_dict(checkpoint['state_dict'])
+        else:
+            logging.info('Run self model with current parameters.')
 
-            self.__test(
-                self.model, test_lines=dev_lines,
-                nid_detector=self.resolvable_detector,
-                eval_dir=os.path.join(
-                    basic_para.log_dir, self.model.name,
-                    f'self_test_{self_test_size}',
-                ),
-                auto_test=True,
-            )
+        dev_lines = [l for l in data_gen(
+            basic_para.train_in, until_line=basic_para.self_test_size)]
+
+        self.__test(
+            self.model, test_lines=dev_lines,
+            nid_detector=self.resolvable_detector,
+            eval_dir=os.path.join(
+                basic_para.log_dir, self.model.name,
+                f'self_test_{basic_para.self_test_size}',
+            ),
+            auto_test=True,
+        )
         logging.info("Done self test.")
 
     def run_baselines(self, basic_para):
@@ -647,6 +656,8 @@ class ArgRunner(Configurable):
                         f"Overall avg. loss {total_loss / batch_count:.5f}"
                     )
 
+                    self.self_study_model(basic_para)
+
                     recent_loss = 0
 
             checkpoint_path = self.__save_checkpoint({
@@ -728,6 +739,8 @@ def main(conf):
 
     runner = ArgRunner(config=conf)
 
+    runner.self_study_model(basic_para)
+
     if basic_para.run_baselines:
         runner.run_baselines(basic_para)
 
@@ -736,9 +749,8 @@ def main(conf):
 
     if basic_para.self_test_size > 0:
         # runner.
-        runner.self_study(
-            basic_para, self_test_size=basic_para.self_test_size,
-        )
+        runner.self_study_baseline(basic_para)
+        runner.self_study_model(basic_para, load_checkpoint=True)
 
     if basic_para.do_test:
         result_dir = os.path.join(
