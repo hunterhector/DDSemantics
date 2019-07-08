@@ -20,6 +20,7 @@ def inverse_vocab(vocab):
 
 
 ghost_entity_text = '__ghost_component__'
+ghost_entity_id = -1
 
 
 class HashedClozeReader:
@@ -334,15 +335,11 @@ class HashedClozeReader:
 
         return features_by_eid
 
-    def create_slot_candidates(self, true_arg, doc_args,
-                               target_evm_id, pred_sent):
+    def create_slot_candidates(self, true_arg, doc_args, pred_sent):
         # Replace the target slot with other entities in the doc.
         dist_arg_list = []
 
         for doc_arg in doc_args:
-            print(doc_arg)
-            print(true_arg)
-
             if doc_arg['arg_start'] == true_arg['arg_start'] and doc_arg[
                 'arg_end'] == true_arg['arg_end']:
                 # We avoid the original argument mention.
@@ -363,7 +360,7 @@ class HashedClozeReader:
 
     def get_testable_args(self, event_args):
         """
-        Find args to create clozes automatically.
+        Create arg cloze test with answers for easy evaluation.
         :param event_args:
         :return:
         """
@@ -374,12 +371,12 @@ class HashedClozeReader:
                 arg_info = event_args[slot]
 
                 if len(arg_info) == 0:
-                    test_case = {
+                    test_stub = {
                         'resolvable': False,
                         'implicit': False,
                         'dep': slot,
                     }
-                    test_cases.append([slot, test_case])
+                    test_cases.append([slot, test_stub, ghost_entity_id])
                 else:
                     for arg in arg_info:
                         testable = False
@@ -392,17 +389,18 @@ class HashedClozeReader:
                                 testable = True
 
                         if testable:
-                            test_case = {
+                            test_stub = {
                                 'text': arg['text'],
                                 'arg_phrase': arg['arg_phrase'],
                                 'arg_start': arg['arg_start'],
                                 'arg_end': arg['arg_end'],
-                                'eid': arg['entity_id'],
                                 'resolvable': True,
                                 'implicit': True,
                                 'dep': arg['dep'],
                             }
-                            test_cases.append([slot, test_case])
+
+                            test_cases.append(
+                                [slot, test_stub, arg['entity_id']])
         else:
             raise NotImplementedError("Dynamic slot mode not ready yet.")
 
@@ -510,23 +508,37 @@ class HashedClozeReader:
                             'sentence_id']
 
         doc_args = [v for v in arg_mentions.values()]
-        eid_to_mentions = dict([(arg['entity_id'], arg) for arg in doc_args])
+        logging.info(f'loading entity ids for doc {doc_info["docid"]}')
+        eid_to_mentions = {}
+        # dict([(arg['entity_id'], arg) for arg in doc_args])
+        for arg in doc_args:
+            try:
+                eid_to_mentions[arg['entity_id']].append(arg)
+            except KeyError:
+                eid_to_mentions[arg['entity_id']] = [arg]
+
+        print('arg by spans')
+        for span, arg_info in arg_mentions.items():
+            print(span, arg_info)
+
+        print('entity ids loaded')
+        print(eid_to_mentions.keys())
+
+
+
+        input('check')
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
             pred_idx = event['predicate']
-            predicate = (
-                pred_idx, self.event_inverted[pred_idx],
-                event['predicate_text']
-            )
             event_args = event['args']
             arg_list = self.get_args_as_list(event_args, False)
 
-            for target_slot, test_case in self.get_testable_args(event_args):
-                if nid_detector.should_fill(event, target_slot, test_case):
+            for target_slot, test_stub, answer_eid in self.get_testable_args(
+                    event_args):
+                if nid_detector.should_fill(event, target_slot, test_stub):
                     test_rank_list = self.create_slot_candidates(
-                        test_case, doc_args, evm_index, pred_sent
-                    )
+                        test_stub, doc_args, pred_sent)
 
                     # Prepare instance data for each possible instance.
                     if self.fix_slot_mode:
@@ -549,17 +561,16 @@ class HashedClozeReader:
 
                     limit = min(self.test_limit, len(test_rank_list))
 
-                    test_rank_list = test_rank_list[:limit]
-
-                    for cand_arg, filler_eid in test_rank_list:
-                        # Generate candidate arguments with one replaced.
+                    for cand_arg, filler_eid in test_rank_list[:limit]:
+                        # Re-create the event arguments by adding the newly
+                        # replaced one and the other old ones.
                         candidate_args = [(target_slot, cand_arg)]
-
                         # Add the remaining arguments.
-                        for c_arg_index, (s, arg) in enumerate(arg_list):
+                        for s, arg in arg_list:
                             if not s == target_slot:
                                 candidate_args.append((s, arg))
 
+                        # Create the event instance representation.
                         self.assemble_instance(instance_data,
                                                features_by_eid,
                                                explicit_entity_positions,
@@ -573,33 +584,46 @@ class HashedClozeReader:
                             self.slot_names.index(target_slot)
                         )
 
-                        candidate_meta.append({
-                            'entity': cand_arg['represent'],
-                            'distance_to_event': (
-                                    pred_sent - cand_arg['sentence_id']
-                            ),
-                            'span': cand_arg['span'],
-                            'source': cand_arg['source'],
-                        })
+                        if answer_eid == ghost_entity_id:
+                            candidate_meta.append(
+                                {
+                                    'entity': ghost_entity_text,
+                                    'span': (-1, -1),
+                                }
+                            )
+                        else:
+                            candidate_meta.append({
+                                'entity': cand_arg['represent'],
+                                'distance_to_event': (
+                                        pred_sent - cand_arg['sentence_id']
+                                ),
+                                'span': (
+                                    cand_arg['arg_start'], cand_arg['arg_end']
+                                ),
+                                'source': cand_arg['source'],
+                            })
 
-                        if len(cloze_event_indices) == 500:
-                            break
-
-                    if self.para.use_ghost:
-                        self.add_ghost_instance(instance_data)
-                        candidate_meta.append(
-                            {'entity': ghost_entity_text}
+                    answers = []
+                    if answer_eid == ghost_entity_id:
+                        answers.append(
+                            {
+                                'span': (-1, -1),
+                                'text': ghost_entity_text,
+                            }
                         )
-
-                    if 'eid' in test_case:
-                        answer_eid = test_case['eid']
-                        answers = eid_to_mentions[answer_eid]
                     else:
-                        answer_eid = ghost_entity_text
-                        answers = []
+                        for mention in eid_to_mentions[answer_eid]:
+                            answers.append({
+                                'span': (
+                                    mention['arg_start'],
+                                    mention['arg_end']
+                                ),
+                                'text': mention['arg_phrase'],
+                            })
 
                     instance_meta.append({
-                        'predicate': predicate,
+                        'predicate': event['predicate_text'],
+                        'predicate_idx': pred_idx,
                         'gold_entity': answer_eid,
                         'answers': answers,
                     })
@@ -994,16 +1018,20 @@ class HashedClozeReader:
     def assemble_instance(self, instance_data, features_by_eid,
                           entity_positions, sent_id, predicate, frame, arg_list,
                           filler_eid):
-        for key, value in self._take_event_repr(
-                predicate, frame, arg_list).items():
-            instance_data[key].append(value)
+        if filler_eid == ghost_entity_id:
+            self.add_ghost_instance(instance_data)
+        else:
+            # Add a concrete instance.
+            for key, value in self._take_event_repr(
+                    predicate, frame, arg_list).items():
+                instance_data[key].append(value)
 
-        instance_data['features'].append(features_by_eid[filler_eid])
+            instance_data['features'].append(features_by_eid[filler_eid])
 
-        instance_data['distances'].append(
-            self.get_target_distance_signature(entity_positions, sent_id,
-                                               filler_eid)
-        )
+            instance_data['distances'].append(
+                self.get_target_distance_signature(entity_positions, sent_id,
+                                                   filler_eid)
+            )
 
     def add_ghost_instance(self, instance_data):
         if self.fix_slot_mode:

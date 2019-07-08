@@ -169,7 +169,7 @@ class ImplicitEval:
                             'metas': []
                         }
 
-                    meta['predicate'] = ins_meta['predicate'][2]
+                    meta['predicate'] = ins_meta['predicate']
                     selected_groups[selection]['scores'].append(s)
                     selected_groups[selection]['metas'].append(meta)
 
@@ -194,7 +194,8 @@ class ImplicitEval:
                 self.overall_results[group_name]['num_fillable'] += 1
 
             top_responses = []
-            for i in range(2):
+            topk = min(2, len(members['scores']))
+            for i in range(topk):
                 top_responses.append(
                     (
                         members['metas'][0]['entity'],
@@ -209,10 +210,6 @@ class ImplicitEval:
                 'scores': ins_scores,
                 'top_responses': top_responses,
             }
-
-            # pprint(members)
-            # pprint(ins_scores)
-            # input(f'this is a member of {group_name}')
 
         data['results'] = instance_res
         data['predictions'] = ranked_predictions
