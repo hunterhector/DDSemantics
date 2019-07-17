@@ -675,7 +675,7 @@ class ArgRunner(Configurable):
 
             logging.info(
                 f"Finished epoch {epoch:d}, "
-                f"avg. loss {total_loss / batch_count:.4f}, "
+                f"avg. training loss {total_loss / batch_count:.4f}, "
                 f"validation loss {dev_loss / n_batches:.4f}"
             )
 

@@ -1,5 +1,12 @@
 # List of TODOs 
 
+1. Bug: The same phrase is assigned with different heads and entity id in the
+same text, this should be an inconsistent in head finding.
+    - In: NYT_ENG_20060527.0212, span (2716, 2771) has two mentions: 
+    lose or restaurant
+1. During training, two verbs may share the same exact span, this could be an
+ important source of information, but the standard way of creating cloze task
+  is to remove the span, hence the information is lost.
 1. Baseline, our embedding max method should be at least as strong as the G&C paper 
 baseline.
     - Sometimes the system predict "from", this is because the training data 

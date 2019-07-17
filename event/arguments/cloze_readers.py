@@ -238,7 +238,6 @@ class HashedClozeReader:
             debug_data = {}
             train_batch = self.create_batch(b_common_data, b_instance_data,
                                             max_context_size, max_instance_size)
-
             yield train_batch, debug_data
             _clear()
 
@@ -510,23 +509,23 @@ class HashedClozeReader:
         doc_args = [v for v in arg_mentions.values()]
         logging.info(f'loading entity ids for doc {doc_info["docid"]}')
         eid_to_mentions = {}
-        # dict([(arg['entity_id'], arg) for arg in doc_args])
+
         for arg in doc_args:
             try:
                 eid_to_mentions[arg['entity_id']].append(arg)
             except KeyError:
                 eid_to_mentions[arg['entity_id']] = [arg]
 
-        print('arg by spans')
-        for span, arg_info in arg_mentions.items():
-            print(span, arg_info)
-
-        print('entity ids loaded')
-        print(eid_to_mentions.keys())
-
-
-
-        input('check')
+        # print('arg by spans')
+        # for span, arg_info in arg_mentions.items():
+        #     print(span, arg_info)
+        #
+        # print('entity ids loaded')
+        # print(eid_to_mentions.keys())
+        #
+        # print(38 in eid_to_mentions)
+        #
+        # input('check')
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
@@ -612,6 +611,12 @@ class HashedClozeReader:
                             }
                         )
                     else:
+                        # TODO: This should not happen when dataset is processed
+                        #  correctly. But we add this check to get aroudn the
+                        #  bug for now.
+                        if answer_eid not in eid_to_mentions:
+                            continue
+
                         for mention in eid_to_mentions[answer_eid]:
                             answers.append({
                                 'span': (
@@ -699,11 +704,9 @@ class HashedClozeReader:
         eid_count = Counter()
         event_subset = []
 
-        # print(f'{doc_info["docid"]} has {len(doc_info["events"])} events')
-
         for evm_index, event in enumerate(doc_info['events']):
             if evm_index == self.para.max_events:
-                # Ignore documents that are too long.
+                # Skip the rest if the document is too long.
                 break
 
             # Only a subset in a long document will be used for generating.
