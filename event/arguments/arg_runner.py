@@ -38,6 +38,8 @@ from event.util import (
 from time import localtime, strftime
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 
 def data_gen(data_path, from_line=None, until_line=None):
     line_num = 0
@@ -55,12 +57,12 @@ def data_gen(data_path, from_line=None, until_line=None):
                             break
 
                         if not last_file == f:
-                            logging.info("Reading from {}".format(f))
+                            logger.info("Reading from {}".format(f))
                             last_file = f
                         yield line
     else:
         with open(data_path) as fin:
-            logging.info("Reading from {}".format(data_path))
+            logger.info("Reading from {}".format(data_path))
             for line in fin:
                 line_num += 1
                 if from_line and line_num <= from_line:
@@ -149,7 +151,7 @@ class ArgRunner(Configurable):
         if not os.path.exists(self.debug_dir):
             os.makedirs(self.debug_dir)
 
-        logging.info("Model saving directory: " + self.model_dir)
+        logger.info("Model saving directory: " + self.model_dir)
 
         self.checkpoint_name = 'checkpoint.pth'
         self.best_model_name = 'model_best.pth'
@@ -166,8 +168,8 @@ class ArgRunner(Configurable):
                     self.para, self.resources, self.device,
                     self.basic_para.model_name
                 ).to(self.device)
-                logging.info("Initialize model")
-                logging.info(str(self.model))
+                logger.info("Initialize model")
+                logger.info(str(self.model))
 
         # Set up Null Instantiation detector.
         if self.para.nid_method == 'gold':
@@ -236,18 +238,18 @@ class ArgRunner(Configurable):
         return loss
 
     def __dump_stuff(self, key, obj):
-        logging.info("Saving object: {}.".format(key))
+        logger.info("Saving object: {}.".format(key))
         with open(os.path.join(self.debug_dir, key + '.pickle'), 'wb') as out:
             pickle.dump(obj, out)
 
     def __load_stuff(self, key):
-        logging.info("Loading object: {}.".format(key))
+        logger.info("Loading object: {}.".format(key))
         with open(os.path.join(self.debug_dir, key + '.pickle'), 'rb') as fin:
             return pickle.load(fin)
 
     def __save_checkpoint(self, state, name):
         check_path = os.path.join(self.model_dir, name)
-        logging.info("Saving model at {}".format(check_path))
+        logger.info("Saving model at {}".format(check_path))
         torch.save(state, check_path)
         return check_path
 
@@ -256,7 +258,9 @@ class ArgRunner(Configurable):
         num_batches = 0
         num_instances = 0
 
+        logger.info(f'Validation with {len(dev_lines)} lines.')
         dev_sampler.reset()
+
         with torch.no_grad():
             for batch_data, debug_data in self.reader.read_train_batch(
                     dev_lines, dev_sampler):
@@ -271,17 +275,17 @@ class ArgRunner(Configurable):
                 num_batches += 1
                 num_instances += b_size
 
-            logging.info("Validation loss is [%.4f] on [%d] batches, [%d] "
-                         "instances. Average loss is [%.4f]." % (
-                             dev_loss, num_batches, num_instances,
-                             dev_loss / num_batches))
+            logger.info("Validation loss is [%.4f] on [%d] batches, [%d] "
+                        "instances. Average loss is [%.4f]." % (
+                            dev_loss, num_batches, num_instances,
+                            dev_loss / num_batches))
 
             return dev_loss, num_batches, num_instances
 
     def debug(self):
         checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
         if os.path.isfile(checkpoint_path):
-            logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+            logger.info("Loading checkpoint '{}'".format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
             self.model.load_state_dict(checkpoint['state_dict'])
 
@@ -293,7 +297,7 @@ class ArgRunner(Configurable):
 
     def __load_best(self):
         best_model_path = os.path.join(self.model_dir, self.best_model_name)
-        logging.info("Loading best model from '{}'".format(best_model_path))
+        logger.info("Loading best model from '{}'".format(best_model_path))
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint['state_dict'])
 
@@ -307,7 +311,7 @@ class ArgRunner(Configurable):
         self.reader.auto_test = auto_test
         self.reader.gold_role_field = gold_field_name
 
-        logging.info(f"Evaluation result will be stored at {eval_dir}")
+        logger.info(f"Evaluation result will be stored at {eval_dir}")
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             (doc_id, instances, common_data, candidate_meta, instance_meta,
@@ -330,12 +334,12 @@ class ArgRunner(Configurable):
                 instance_count += 1
 
                 if instance_count % 1000 == 0:
-                    logging.info("Tested %d instances." % instance_count)
+                    logger.info("Tested %d instances." % instance_count)
 
-        logging.info("Finish testing %d instances." % instance_count)
+        logger.info("Finish testing %d instances." % instance_count)
 
         if eval_dir:
-            logging.info("Writing evaluation output to %s." % eval_dir)
+            logger.info("Writing evaluation output to %s." % eval_dir)
 
         evaluator.collect()
 
@@ -346,7 +350,7 @@ class ArgRunner(Configurable):
             basic_para.train_in, until_line=basic_para.self_test_size)]
 
         # Random baseline.
-        logging.info("Run self study with random baseline.")
+        logger.info("Run self study with random baseline.")
         random_baseline = RandomBaseline(
             self.para, self.resources, self.device).to(self.device)
         self.__test(
@@ -361,7 +365,7 @@ class ArgRunner(Configurable):
         )
 
         # W2v baseline.
-        logging.info("Run self study with w2v baseline.")
+        logger.info("Run self study with w2v baseline.")
         w2v_baseline = BaselineEmbeddingModel(
             self.para, self.resources, self.device).to(self.device)
         self.__test(
@@ -376,7 +380,7 @@ class ArgRunner(Configurable):
         )
 
         # Frequency baseline.
-        logging.info("Run self study with frequency baseline.")
+        logger.info("Run self study with frequency baseline.")
         most_freq_baseline = MostFrequentModel(
             self.para, self.resources, self.device).to(self.device)
         self.__test(
@@ -393,16 +397,16 @@ class ArgRunner(Configurable):
     def self_study_model(self, basic_para, load_checkpoint=False):
         if load_checkpoint:
             # Checkpoint test.
-            logging.info(
+            logger.info(
                 f"Run self study with the checkpoint at {self.model_dir}.")
 
             checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
             if os.path.isfile(checkpoint_path):
-                logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+                logger.info("Loading checkpoint '{}'".format(checkpoint_path))
                 checkpoint = torch.load(checkpoint_path)
                 self.model.load_state_dict(checkpoint['state_dict'])
         else:
-            logging.info('Run self model with current parameters.')
+            logger.info('Run self model with current parameters.')
 
         dev_lines = [l for l in data_gen(
             basic_para.train_in, until_line=basic_para.self_test_size)]
@@ -416,10 +420,10 @@ class ArgRunner(Configurable):
             ),
             auto_test=True,
         )
-        logging.info("Done self test.")
+        logger.info("Done self test.")
 
     def run_baselines(self, basic_para):
-        logging.info(f"Test baseline models on {basic_para.test_in}.")
+        logger.info(f"Test baseline models on {basic_para.test_in}.")
 
         # W2v baseline.
         # Variation 1: max_sim, concat
@@ -505,7 +509,7 @@ class ArgRunner(Configurable):
         )
 
     def test(self, test_in, eval_dir, gold_field_name):
-        logging.info("Test on [%s]." % test_in)
+        logger.info("Test on [%s]." % test_in)
         self.__load_best()
         self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir,
                     gold_field_name=gold_field_name)
@@ -518,20 +522,20 @@ class ArgRunner(Configurable):
         train_sampler = ClozeSampler()
         dev_sampler = ClozeSampler(seed=7)
 
-        logging.info("Training with data from [%s]", train_in)
+        logger.info("Training with data from [%s]", train_in)
 
         if self.basic_para.valid_in:
-            logging.info("Validation with data from [%s]",
-                         self.basic_para.valid_in)
+            logger.info("Validation with data from [%s]",
+                        self.basic_para.valid_in)
         elif self.basic_para.validation_size:
-            logging.info(
+            logger.info(
                 "Will use first [%d] lines for "
                 "validation." % self.basic_para.validation_size)
         else:
             logging.error("No validation!")
 
         model_out_dir = os.path.join(self.basic_para.model_dir, self.model.name)
-        logging.info("Model out directory is [%s]", model_out_dir)
+        logger.info("Model out directory is [%s]", model_out_dir)
         if not os.path.exists(model_out_dir):
             os.makedirs(model_out_dir)
 
@@ -547,7 +551,7 @@ class ArgRunner(Configurable):
         if resume:
             checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
             if os.path.isfile(checkpoint_path):
-                logging.info("Loading checkpoint '{}'".format(checkpoint_path))
+                logger.info("Loading checkpoint '{}'".format(checkpoint_path))
                 checkpoint = torch.load(checkpoint_path)
                 self.model.load_state_dict(checkpoint['state_dict'])
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -557,14 +561,14 @@ class ArgRunner(Configurable):
                 previous_dev_loss = checkpoint['previous_dev_loss']
                 worse = checkpoint['worse']
 
-                logging.info(
+                logger.info(
                     f"Loaded check point, epoch {checkpoint['epoch']}, "
                     f"best loss {checkpoint['best_loss']}, "
                     f"previous dev loss {checkpoint['previous_dev_loss']}, "
                     f"worse {checkpoint['worse']} times."
                 )
             else:
-                logging.info(
+                logger.info(
                     "No model to resume at '{}', starting from scratch.".format(
                         checkpoint_path)
                 )
@@ -579,8 +583,8 @@ class ArgRunner(Configurable):
                                   until_line=self.basic_para.validation_size)]
 
         if self.basic_para.pre_val:
-            logging.info("Conduct a pre-validation, this will overwrite best "
-                         "loss with the most recent loss.")
+            logger.info("Conduct a pre-validation, this will overwrite best "
+                        "loss with the most recent loss.")
 
             dev_loss, n_batches, n_instances = self.validation(
                 dev_lines, dev_sampler
@@ -598,18 +602,21 @@ class ArgRunner(Configurable):
         log_freq = 100
 
         for epoch in range(start_epoch, self.nb_epochs):
-            logging.info("Starting epoch {}.".format(epoch))
+            logger.info("Starting epoch {}.".format(epoch))
             epoch_batch_count = 0
             epoch_instance_count = 0
 
             train_sampler.reset()
+
+            logger.info(f'Will ignore the first '
+                        f'{self.basic_para.validation_size} validation lines '
+                        f'for training.')
+
             for batch_data, debug_data in self.reader.read_train_batch(
                     data_gen(train_in,
                              from_line=self.basic_para.validation_size),
                     train_sampler):
-
                 batch_instance, batch_info, b_size, mask = batch_data
-
                 loss = self._get_loss(batch_instance, batch_info, mask)
 
                 # Case of a bug.
@@ -647,7 +654,7 @@ class ArgRunner(Configurable):
                 recent_loss += loss_val
 
                 if not batch_count % log_freq:
-                    logging.info(
+                    logger.info(
                         f"Epoch {epoch} ({epoch_batch_count} batches and "
                         f"{epoch_instance_count} instances); "
                         f"Total Batch {batch_count} ({instance_count} "
@@ -669,11 +676,11 @@ class ArgRunner(Configurable):
                 'worse': worse,
             }, self.checkpoint_name)
 
-            logging.info("Computing validation loss.")
+            logger.info("Computing validation loss.")
             dev_loss, n_batches, n_instances = self.validation(
                 dev_lines, dev_sampler)
 
-            logging.info(
+            logger.info(
                 f"Finished epoch {epoch:d}, "
                 f"avg. training loss {total_loss / batch_count:.4f}, "
                 f"validation loss {dev_loss / n_batches:.4f}"
@@ -682,11 +689,11 @@ class ArgRunner(Configurable):
             if not best_loss or dev_loss < best_loss:
                 best_loss = dev_loss
                 best_path = os.path.join(self.model_dir, self.best_model_name)
-                logging.info("Saving it as best model")
+                logger.info("Saving it as best model")
                 shutil.copyfile(checkpoint_path, best_path)
 
-            logging.info(f"Best loss is {best_loss:.4f} "
-                         f"(avg. {best_loss / n_batches:.4f}).")
+            logger.info(f"Best loss is {best_loss:.4f} "
+                        f"(avg. {best_loss / n_batches:.4f}).")
 
             # Whether stop now.
             if dev_loss < previous_dev_loss:
@@ -695,7 +702,7 @@ class ArgRunner(Configurable):
             else:
                 worse += 1
                 if worse == self.para.early_stop_patience:
-                    logging.info(
+                    logger.info(
                         (
                             f"Dev loss increase from {previous_dev_loss:.4f} "
                             f"to {dev_loss:.4f}, stop at Epoch {epoch:d}"
@@ -704,7 +711,7 @@ class ArgRunner(Configurable):
                     break
 
         for pred, count in target_pred_count.items():
-            logging.info("Overall, %s is observed %d times." % (pred, count))
+            logger.info("Overall, %s is observed %d times." % (pred, count))
 
 
 def main(conf):
@@ -733,13 +740,16 @@ def main(conf):
     else:
         set_basic_log()
 
-    logging.info(
+    logger.info(
         "Started the runner at " + strftime("%Y-%m-%d_%H-%M-%S", localtime()))
-    logging.info(json.dumps(conf, indent=2))
+    logger.info(json.dumps(conf, indent=2))
 
     runner = ArgRunner(config=conf)
 
-    runner.self_study_model(basic_para)
+    if basic_para.self_test_size > 0:
+        # Some simple self test.
+        runner.self_study_baseline(basic_para)
+        runner.self_study_model(basic_para)
 
     if basic_para.run_baselines:
         runner.run_baselines(basic_para)
@@ -747,16 +757,11 @@ def main(conf):
     if basic_para.do_training:
         runner.train(basic_para, resume=True)
 
-    if basic_para.self_test_size > 0:
-        # runner.
-        runner.self_study_baseline(basic_para)
-        runner.self_study_model(basic_para, load_checkpoint=True)
-
     if basic_para.do_test:
         result_dir = os.path.join(
             basic_para.log_dir, basic_para.model_name, basic_para.run_name,
         )
-        logging.info("Evaluation results will be saved in: " + result_dir)
+        logger.info("Evaluation results will be saved in: " + result_dir)
 
         runner.test(
             test_in=basic_para.test_in,
@@ -772,8 +777,8 @@ if __name__ == '__main__':
         test_out = Unicode(help='Test res.').tag(config=True)
         valid_in = Unicode(help='Validation in.').tag(config=True)
         validation_size = Integer(help='Validation size.').tag(config=True)
-        self_test_size = Integer(help='Self test document size.').tag(
-            config=True)
+        self_test_size = Integer(help='Self test document size.',
+                                 default_value=-1).tag(config=True)
         debug_dir = Unicode(help='Debug output.').tag(config=True)
         model_name = Unicode(help='Model name.', default_value='basic').tag(
             config=True)

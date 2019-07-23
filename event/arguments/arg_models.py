@@ -5,6 +5,8 @@ import logging
 from event.nn.models import KernelPooling
 from event import torch_util
 
+logger = logging.getLogger(__name__)
+
 
 class ArgCompatibleModel(nn.Module):
     def __init__(self, para, resources, device, model_name):
@@ -41,7 +43,7 @@ class ArgCompatibleModel(nn.Module):
         return one_zeros
 
     def __load_embeddings(self, resources):
-        logging.info("Loading %d x %d event embedding." % (
+        logger.info("Loading %d x %d event embedding." % (
             resources.event_embed_vocab.get_size(),
             self.para.event_embedding_dim
         ))
@@ -52,7 +54,7 @@ class ArgCompatibleModel(nn.Module):
             self.para.event_embedding_dim,
         )
 
-        logging.info("Loading %d x %d word embedding." % (
+        logger.info("Loading %d x %d word embedding." % (
             resources.word_embed_vocab.get_size(),
             self.para.word_embedding_dim
         ))
@@ -285,7 +287,7 @@ class EventCoherenceModel(ArgCompatibleModel):
     def __init__(self, para, resources, device, model_name):
         super(EventCoherenceModel, self).__init__(para, resources, device,
                                                   model_name)
-        logging.info(f"Pair composition network {model_name} started, "
+        logger.info(f"Pair composition network {model_name} started, "
                      f"with {self.para.num_extracted_features} extracted"
                      f" features and {self.para.num_distance_features} "
                      f"distance features.")

@@ -11,6 +11,8 @@ from event.io.io_utils import pad_2d_list
 from pprint import pprint
 from operator import itemgetter
 
+logger = logging.getLogger(__name__)
+
 
 def inverse_vocab(vocab):
     inverted = [0] * vocab.get_size()
@@ -120,7 +122,7 @@ class HashedClozeReader:
             "cuda" if para.use_gpu and torch.cuda.is_available() else "cpu"
         )
 
-        logging.info("Reading data with device: " + str(self.device))
+        logger.info("Reading data with device: " + str(self.device))
 
     def __batch_pad(self, key, data, pad_size):
         dim = self.__data_dim[key]
@@ -181,8 +183,9 @@ class HashedClozeReader:
 
         return instance_data, common_data, f_size, ins_mask
 
-    def read_train_batch(self, data_in, sampler, from_line=None,
-                         until_line=None):
+    def read_train_batch(self, data_in, sampler):
+        logger.info("Reading data as training batch.")
+
         b_common_data = defaultdict(list)
         b_instance_data = defaultdict(lambda: defaultdict(list))
 
@@ -202,8 +205,7 @@ class HashedClozeReader:
             max_context_size = 0
             max_instance_size = 0
 
-        for instance_data, common_data in self.parse_docs(
-                data_in, sampler, from_line, until_line):
+        for instance_data, common_data in self.parse_docs(data_in, sampler):
             for key, value in common_data.items():
                 b_common_data[key].append(value)
                 if key.startswith('context_'):
@@ -232,6 +234,9 @@ class HashedClozeReader:
 
                 yield train_batch, debug_data
                 _clear()
+
+        if doc_count == 0:
+            raise ValueError("Provided data is empty.")
 
         # Yield the remaining data.
         if len(b_common_data) > 0:
@@ -507,7 +512,6 @@ class HashedClozeReader:
                             'sentence_id']
 
         doc_args = [v for v in arg_mentions.values()]
-        logging.info(f'loading entity ids for doc {doc_info["docid"]}')
         eid_to_mentions = {}
 
         for arg in doc_args:
@@ -515,17 +519,6 @@ class HashedClozeReader:
                 eid_to_mentions[arg['entity_id']].append(arg)
             except KeyError:
                 eid_to_mentions[arg['entity_id']] = [arg]
-
-        # print('arg by spans')
-        # for span, arg_info in arg_mentions.items():
-        #     print(span, arg_info)
-        #
-        # print('entity ids loaded')
-        # print(eid_to_mentions.keys())
-        #
-        # print(38 in eid_to_mentions)
-        #
-        # input('check')
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
@@ -535,6 +528,9 @@ class HashedClozeReader:
 
             for target_slot, test_stub, answer_eid in self.get_testable_args(
                     event_args):
+                print(test_stub)
+                print("Test stub")
+
                 if nid_detector.should_fill(event, target_slot, test_stub):
                     test_rank_list = self.create_slot_candidates(
                         test_stub, doc_args, pred_sent)
@@ -611,10 +607,11 @@ class HashedClozeReader:
                             }
                         )
                     else:
-                        # TODO: This should not happen when dataset is processed
-                        #  correctly. But we add this check to get aroudn the
-                        #  bug for now.
                         if answer_eid not in eid_to_mentions:
+                            logger.warning(
+                                f"Answer entity id [{answer_eid}] is not found "
+                                f"in the mapping of document "
+                                f"[{doc_info['doc_id']}]")
                             continue
 
                         for mention in eid_to_mentions[answer_eid]:
@@ -629,6 +626,7 @@ class HashedClozeReader:
                     instance_meta.append({
                         'predicate': event['predicate_text'],
                         'predicate_idx': pred_idx,
+                        'target_slot': target_slot,
                         'gold_entity': answer_eid,
                         'answers': answers,
                     })
@@ -638,12 +636,17 @@ class HashedClozeReader:
                         'slot_indices': cloze_slot_indices,
                     }
 
+                    print(instance_meta)
+                    input('this instance.')
+
                     for context_eid, event_rep in enumerate(all_event_reps):
                         for key, value in event_rep.items():
                             try:
                                 common_data['context_' + key].append(value)
                             except KeyError:
                                 common_data['context_' + key] = [value]
+
+
 
                     if len(cloze_event_indices) > 0:
                         yield (instance_data, common_data,
@@ -703,6 +706,8 @@ class HashedClozeReader:
         # Count the occurrences of the entity.
         eid_count = Counter()
         event_subset = []
+
+        logger.info("Parsing doc " + doc_info['docid'])
 
         for evm_index, event in enumerate(doc_info['events']):
             if evm_index == self.para.max_events:
@@ -1059,17 +1064,8 @@ class HashedClozeReader:
         instance_data['distances'].append(
             [0.0] * self.para.num_distance_features)
 
-    def parse_docs(self, data_in, sampler, from_line=None, until_line=None):
-        line_num = 0
+    def parse_docs(self, data_in, sampler):
         for line in data_in:
-            line_num += 1
-
-            if from_line and line_num <= from_line:
-                continue
-
-            if until_line and line_num > until_line:
-                break
-
             parsed_output = self.create_training_data(line, sampler)
 
             if parsed_output is None:

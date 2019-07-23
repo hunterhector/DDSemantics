@@ -9,6 +9,7 @@ import logging
 from event.arguments.prepare.event_vocab import TypedEventVocab
 from event.arguments.prepare.event_vocab import EmbbedingVocab
 
+logger = logging.getLogger(__name__)
 
 class ImplicitArgResources(Configurable):
     """
@@ -34,15 +35,15 @@ class ImplicitArgResources(Configurable):
 
         self.predicate_count = self.count_predicates(self.event_vocab_path)
 
-        logging.info(
+        logger.info(
             f"{len(self.event_embed_vocab.vocab)} events in embedding.")
 
-        logging.info(
+        logger.info(
             f"{len(self.word_embed_vocab.vocab)} words in embedding."
         )
 
         self.typed_event_vocab = TypedEventVocab(self.raw_lookup_path)
-        logging.info("Loaded typed vocab, including oov words.")
+        logger.info("Loaded typed vocab, including oov words.")
 
     @staticmethod
     def count_predicates(vocab_file):

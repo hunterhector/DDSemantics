@@ -8,6 +8,7 @@ import logging
 from event import util
 from event.arguments.prepare.slot_processor import get_simple_dep
 
+logger = logging.getLogger(__name__)
 
 class TypedEventVocab:
     unk_predicate = 'unk_predicate-pred'
@@ -28,21 +29,21 @@ class TypedEventVocab:
                 logging.error("Vocabulary file not exist and not data "
                               "provided for counting.")
 
-            logging.info("Counting vocabulary.")
+            logger.info("Counting vocabulary.")
             vocab_counters = self.get_vocab_count(event_data)
             for key, counter in vocab_counters.items():
                 raw_vocab_path = os.path.join(vocab_dir, key + '.vocab')
                 with open(raw_vocab_path, 'w') as out:
                     for key, value in counter.most_common():
                         out.write('{}\t{}\n'.format(key, value))
-            logging.info("Done vocabulary counting.")
+            logger.info("Done vocabulary counting.")
 
             # Now filter the vocabulary.
-            logging.info("Filtering vocabulary.")
+            logger.info("Filtering vocabulary.")
             self.filter_vocab(vocab_counters)
-            logging.info("Done filtering.")
+            logger.info("Done filtering.")
         else:
-            logging.info("Will not overwrite vocabulary, using existing.")
+            logger.info("Will not overwrite vocabulary, using existing.")
             for f in os.listdir(vocab_dir):
                 if '_' in f and f.endswith('.vocab'):
                     vocab_type = f.split('_')[0]
@@ -61,7 +62,7 @@ class TypedEventVocab:
                         self.lookups[vocab_type][word] = index
                         index += 1
 
-                logging.info(
+                logger.info(
                     "Loaded {} types for {}".format(
                         len(self.lookups[vocab_type]), vocab_type))
 
@@ -276,7 +277,7 @@ class EmbbedingVocab:
         self.vocab[name] = extra_index
         self.tf.append(0)
 
-        logging.info(f"Adding {name} as extra dimension {extra_index}")
+        logger.info(f"Adding {name} as extra dimension {extra_index}")
 
         return extra_index
 
@@ -371,9 +372,9 @@ def main(event_data, vocab_dir, sent_out):
         os.makedirs(vocab_dir)
 
     event_vocab = TypedEventVocab(vocab_dir, event_data=event_data)
-    logging.info("Done loading vocabulary.")
+    logger.info("Done loading vocabulary.")
 
-    logging.info("Creating event sentences")
+    logger.info("Creating event sentences")
     sent_out_simple = sent_out + '_simple'
 
     if not os.path.exists(sent_out):
@@ -387,14 +388,14 @@ def main(event_data, vocab_dir, sent_out):
         create_sentences(event_data, event_vocab, sent_out_pred_only,
                          include_frame=False)
     else:
-        logging.info(f"Will not overwrite {sent_out_pred_only}")
+        logger.info(f"Will not overwrite {sent_out_pred_only}")
 
     sent_out_with_frame = os.path.join(sent_out, 'sent_with_frames.gz')
     if not os.path.exists(sent_out_with_frame):
         create_sentences(event_data, event_vocab, sent_out_with_frame,
                          include_frame=True)
     else:
-        logging.info(f"Will not overwrite {sent_out_with_frame}")
+        logger.info(f"Will not overwrite {sent_out_with_frame}")
 
     sent_out_pred_only_simple = os.path.join(sent_out_simple,
                                              'sent_pred_only.gz')
@@ -402,7 +403,7 @@ def main(event_data, vocab_dir, sent_out):
         create_sentences(event_data, event_vocab, sent_out_pred_only_simple,
                          include_frame=False, simple_dep=True)
     else:
-        logging.info(f"Will not overwrite {sent_out_pred_only_simple}")
+        logger.info(f"Will not overwrite {sent_out_pred_only_simple}")
 
     sent_out_with_frame_simple = os.path.join(sent_out_simple,
                                               'sent_with_frames.gz')
@@ -410,7 +411,7 @@ def main(event_data, vocab_dir, sent_out):
         create_sentences(event_data, event_vocab, sent_out_with_frame_simple,
                          include_frame=True, simple_dep=True)
     else:
-        logging.info(f"Will not overwrite {sent_out_with_frame_simple}")
+        logger.info(f"Will not overwrite {sent_out_with_frame_simple}")
 
 
 if __name__ == '__main__':

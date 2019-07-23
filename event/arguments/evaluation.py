@@ -108,6 +108,12 @@ class ImplicitEval:
                     event_indexes, slot_indexes), coh_scores, candidate_meta),
                 key=itemgetter(0)), instance_meta):
             _, raw_scores, c_meta = zip(*result)
+
+            # print(event_idx, slot_idx)
+            # print(_, raw_scores, c_meta)
+            # print(ins_meta)
+            # input("result for one case.")
+
             self.add_result(
                 doc_id, event_idx, slot_idx, raw_scores, ins_meta, c_meta
             )
