@@ -124,7 +124,7 @@ class EventReader:
 
             events = []
 
-            eid_count = Counter()
+            entity_spans = defaultdict(set)
 
             entity_heads = {}
 
@@ -212,12 +212,15 @@ class EventReader:
                         if 'entity_type' in its_entity:
                             arg['ner'] = its_entity['entity_type']
 
-                    eid_count[arg_info['entityId']] += 1
+                    entity_spans[arg_info['entityId']].add(
+                        (arg['arg_start'], arg['arg_end'])
+                    )
+
                     event['arguments'].append(arg)
 
             for event in events:
                 for arg in event['arguments']:
-                    if eid_count[arg['entity_id']] > 1:
+                    if len(entity_spans[arg['entity_id']]) > 1:
                         arg['resolvable'] = True
 
             yield docid, events, entities, doc['sentences']

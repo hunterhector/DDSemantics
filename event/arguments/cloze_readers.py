@@ -344,9 +344,8 @@ class HashedClozeReader:
         dist_arg_list = []
 
         for doc_arg in doc_args:
-            if doc_arg['arg_start'] == true_arg['arg_start'] and doc_arg[
-                'arg_end'] == true_arg['arg_end']:
-                # We avoid the original argument mention.
+            if doc_arg['arg_start'] == true_arg['arg_start'] \
+                    and doc_arg['arg_end'] == true_arg['arg_end']:
                 continue
 
             # This is the target argument replaced by another entity.
@@ -494,8 +493,10 @@ class HashedClozeReader:
                         'arg_end': arg['arg_end'],
                         'fe': arg['fe'],
                         'source': arg['source'],
-                        'ner': arg.get('ner', 'NA'),
                     }
+
+                    if 'ner' in arg:
+                        doc_arg_info['ner'] = arg['ner']
 
                     if not self.auto_test:
                         doc_arg_info[self.gold_role_field] = arg[
@@ -528,12 +529,28 @@ class HashedClozeReader:
 
             for target_slot, test_stub, answer_eid in self.get_testable_args(
                     event_args):
-                print(test_stub)
-                print("Test stub")
+                # TODO: temporarily replacement of resolvable.
+                multi_mention = len(explicit_entity_positions[answer_eid]) > 1
 
-                if nid_detector.should_fill(event, target_slot, test_stub):
+                if nid_detector.should_fill(
+                        event, target_slot, test_stub) and multi_mention:
                     test_rank_list = self.create_slot_candidates(
                         test_stub, doc_args, pred_sent)
+
+                    # print(doc_args[:10])
+                    # input('doc_args')
+                    #
+                    # print(event['predicate_text'])
+                    # print(target_slot)
+                    # print(test_stub)
+                    # print(answer_eid)
+                    # pprint(test_rank_list[:10])
+                    # input('this test rank list.')
+                    #
+                    # for t in test_rank_list:
+                    #     if t[0]['entity_id'] == answer_eid:
+                    #         print(t)
+                    #         input("one correct answer")
 
                     # Prepare instance data for each possible instance.
                     if self.fix_slot_mode:
@@ -636,17 +653,12 @@ class HashedClozeReader:
                         'slot_indices': cloze_slot_indices,
                     }
 
-                    print(instance_meta)
-                    input('this instance.')
-
                     for context_eid, event_rep in enumerate(all_event_reps):
                         for key, value in event_rep.items():
                             try:
                                 common_data['context_' + key].append(value)
                             except KeyError:
                                 common_data['context_' + key] = [value]
-
-
 
                     if len(cloze_event_indices) > 0:
                         yield (instance_data, common_data,
@@ -1104,13 +1116,20 @@ class HashedClozeReader:
             # Replace with the new information.
             updated_slot_info['entity_id'] = swap_slot['entity_id']
             updated_slot_info['represent'] = swap_slot['represent']
+            updated_slot_info['text'] = swap_slot['text']
             updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
             updated_slot_info['source'] = swap_slot['source']
+            updated_slot_info['arg_start'] = swap_slot['arg_start']
+            updated_slot_info['arg_end'] = swap_slot['arg_end']
 
             if 'ner' in swap_slot:
                 updated_slot_info['ner'] = swap_slot['ner']
             elif 'ner' in updated_slot_info:
                 updated_slot_info.pop('ner')
+
+            # These attributes are harmless but confusing.
+            updated_slot_info.pop('resolvable')
+            updated_slot_info.pop('implicit')
 
             # Note: with the sentence Id we can have a better idea of where the
             # argument is from, but we cannot use it to extract features.
