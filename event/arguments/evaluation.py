@@ -182,9 +182,10 @@ class ImplicitEval:
         instance_res = {
             'event_index': event_idx,
             'predicate': ins_meta['predicate'],
+            'slot_name': self.slot_names[slot_idx],
             'slot_index': slot_idx,
             'gold_entity': ins_meta['gold_entity'],
-            'slot_name': self.slot_names[slot_idx],
+            'answers': ins_meta['answers'],
             'categorized_result': {},
         }
 

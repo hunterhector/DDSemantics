@@ -394,7 +394,7 @@ class ArgRunner(Configurable):
             auto_test=True,
         )
 
-    def self_study_model(self, basic_para, load_checkpoint=False):
+    def self_study_model(self, basic_para, suffix, load_checkpoint=False):
         if load_checkpoint:
             # Checkpoint test.
             logger.info(
@@ -416,7 +416,7 @@ class ArgRunner(Configurable):
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
                 basic_para.log_dir, self.model.name,
-                f'self_test_{basic_para.self_test_size}',
+                f'self_test_{basic_para.self_test_size}_{suffix}',
             ),
             auto_test=True,
         )
@@ -435,7 +435,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, 'baselines', w2v_baseline.name, 'concat_max'
+                basic_para.log_dir, w2v_baseline.name, 'test', 'concat_max',
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -449,8 +449,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, 'baselines',
-                w2v_baseline.name, 'concat_top3'
+                basic_para.log_dir, w2v_baseline.name, 'test', 'concat_top3'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -464,7 +463,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, 'baselines', w2v_baseline.name, 'sum_max'
+                basic_para.log_dir, w2v_baseline.name, 'test', 'sum_max'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -478,7 +477,7 @@ class ArgRunner(Configurable):
             w2v_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, 'baselines', w2v_baseline.name, 'sum_top3',
+                basic_para.log_dir, w2v_baseline.name, 'test', 'sum_top3',
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -490,8 +489,7 @@ class ArgRunner(Configurable):
             most_freq_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, 'baselines', most_freq_baseline.name,
-                'default',
+                basic_para.log_dir, most_freq_baseline.name, 'test', 'default',
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -503,7 +501,7 @@ class ArgRunner(Configurable):
             random_baseline, data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, 'baselines', random_baseline.name, 'default'
+                basic_para.log_dir, random_baseline.name, 'test', 'default'
             ),
             gold_field_name=basic_para.gold_field_name
         )
@@ -663,7 +661,8 @@ class ArgRunner(Configurable):
                         f"Overall avg. loss {total_loss / batch_count:.5f}"
                     )
 
-                    self.self_study_model(basic_para)
+                    if basic_para.self_test_size > 0:
+                        self.self_study_model(basic_para, f'epoch_{epoch}')
 
                     recent_loss = 0
 
@@ -746,13 +745,13 @@ def main(conf):
 
     runner = ArgRunner(config=conf)
 
-    if basic_para.self_test_size > 0:
-        # Some simple self test.
-        runner.self_study_baseline(basic_para)
-        runner.self_study_model(basic_para)
-
     if basic_para.run_baselines:
         runner.run_baselines(basic_para)
+        # if basic_para.self_test_size > 0:
+        #     logger.info("Then run the baselines on auto created test data.")
+        #     # Some simple self test.
+        #     runner.self_study_baseline(basic_para)
+        #     runner.self_study_model(basic_para, 'pre')
 
     if basic_para.do_training:
         runner.train(basic_para, resume=True)

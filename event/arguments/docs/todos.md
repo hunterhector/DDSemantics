@@ -1,19 +1,25 @@
 # List of TODOs 
 
-1. Bug: The same phrase is assigned with different heads and entity id in the
-same text, this should be an inconsistent in head finding.
-    - In: NYT_ENG_20060527.0212, span (2716, 2771) has two mentions: 
-    lose or restaurant
+1. Bugs:
+    1. Training missing key.
+    1. Key error when converting the Semeval data.
+    1. The test case from the GC data seem to have two problems:
+        1. The dep for testing is too simplified (only prep)
+        1. Some answers seem to be wrong too.
+1. ~~Bug: The same phrase is assigned with different heads and entity id in the
+same text, this should be an inconsistent in head finding.~~
+    - ~~In: NYT_ENG_20060527.0212, span (2716, 2771) has two mentions: 
+    lose or restaurant~~
 1. During training, two verbs may share the same exact span, this could be an
  important source of information, but the standard way of creating cloze task
   is to remove the span, hence the information is lost.
 1. Baseline, our embedding max method should be at least as strong as the G&C paper 
 baseline.
-    - Sometimes the system predict "from", this is because the training data 
-    contains "IN" as arguments, they should be removed from the generated data.
-    - Top responses are always the same thing, this may because the same entity
+    - ~~Sometimes the system predict "from", this is because the training data 
+    contains "IN" as arguments, they should be removed from the generated data.~~
+    - ~~Top responses are always the same thing, this may because the same entity
     mention is in multiple arguments' slot, but we should reduce that at 
-    evaluation time. The span should be there.
+    evaluation time. The span should be there.~~
     - Multiple results are available in the gold entity, the current result file
      only show the head of the first one, not very informative.
     
@@ -21,7 +27,7 @@ baseline.
     - ~~Add F1~~
     - ~~Add Dice (partial argument overlap)~~
     - ~~Add a score with gold candidates~~
-    - Only score candidates with in 2 sentence back and current sentence
+    - ~~Only score candidates with in 2 sentence back and current sentence~~
 1. Design core experiments: pooling, attention, distance
 1. Distance features
     - Distance cutoff baseline

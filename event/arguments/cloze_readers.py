@@ -537,21 +537,6 @@ class HashedClozeReader:
                     test_rank_list = self.create_slot_candidates(
                         test_stub, doc_args, pred_sent)
 
-                    # print(doc_args[:10])
-                    # input('doc_args')
-                    #
-                    # print(event['predicate_text'])
-                    # print(target_slot)
-                    # print(test_stub)
-                    # print(answer_eid)
-                    # pprint(test_rank_list[:10])
-                    # input('this test rank list.')
-                    #
-                    # for t in test_rank_list:
-                    #     if t[0]['entity_id'] == answer_eid:
-                    #         print(t)
-                    #         input("one correct answer")
-
                     # Prepare instance data for each possible instance.
                     if self.fix_slot_mode:
                         instance_data = {'events': [], 'distances': [],
