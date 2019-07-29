@@ -704,8 +704,6 @@ class HashedClozeReader:
         eid_count = Counter()
         event_subset = []
 
-        logger.info("Parsing doc " + doc_info['docid'])
-
         for evm_index, event in enumerate(doc_info['events']):
             if evm_index == self.para.max_events:
                 # Skip the rest if the document is too long.
@@ -1113,8 +1111,9 @@ class HashedClozeReader:
                 updated_slot_info.pop('ner')
 
             # These attributes are harmless but confusing.
-            updated_slot_info.pop('resolvable')
-            updated_slot_info.pop('implicit')
+
+            updated_slot_info.pop('resolvable', None)
+            updated_slot_info.pop('implicit', None)
 
             # Note: with the sentence Id we can have a better idea of where the
             # argument is from, but we cannot use it to extract features.
