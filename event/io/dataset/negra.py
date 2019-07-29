@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 import logging
 import os
 from operator import itemgetter
+import html
 
 # Some small differences between FrameNet v1.4 and v1.5
 frame_changes = {
@@ -193,7 +194,8 @@ class NeGraXML(DataLoader):
             if i == len(sent_token_nodes) - 1:
                 sep = '\n'
 
-            word = token_node.attributes['word']
+            word = html.unescape(token_node.attributes['word'])
+
             self.text += word
             self.text += sep
 
