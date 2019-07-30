@@ -443,6 +443,8 @@ class HashedClozeReader:
             args = list(fe_args.items())
         return args
 
+
+
     def get_one_test_doc(self, doc_info, nid_detector):
         """
         Parse and get one test document.
@@ -521,16 +523,34 @@ class HashedClozeReader:
             except KeyError:
                 eid_to_mentions[arg['entity_id']] = [arg]
 
+        print(f"doc arg at entity 5 is {eid_to_mentions[5]}")
+
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
             pred_idx = event['predicate']
             event_args = event['args']
             arg_list = self.get_args_as_list(event_args, False)
 
+            # There are two ways to create test cases.
+            # 1. The automatic cloze method: a test case is by removing one
+            # phrase, all mentions with the same eid should be considered as
+            # answers. The target slot is simply the dep (preposition)
+            # 2. The true test case: a test case if we have an implicit=True,
+            # the target slot should be a field in data (prespecified). We then
+            # need to map the target slot (e.g. i_arg1 -> obj). The answer are
+            # all arguments with the same field attribute then.
+
+            # Parameters needed to support the two mode:
+            # 1. specifying the mode.
+            # 2. target slot name
+            # 3. the mapping (probably provided in the class)
+
             for target_slot, test_stub, answer_eid in self.get_testable_args(
                     event_args):
                 # TODO: temporarily replacement of resolvable.
                 multi_mention = len(explicit_entity_positions[answer_eid]) > 1
+
+                answers = []
 
                 if nid_detector.should_fill(
                         event, target_slot, test_stub) and multi_mention:
@@ -632,6 +652,9 @@ class HashedClozeReader:
                         'gold_entity': answer_eid,
                         'answers': answers,
                     })
+
+                    print(instance_meta)
+                    input('check instance meta')
 
                     common_data = {
                         'event_indices': cloze_event_indices,
