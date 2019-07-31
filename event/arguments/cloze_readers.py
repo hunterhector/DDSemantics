@@ -343,11 +343,12 @@ class HashedClozeReader:
         # Replace the target slot with other entities in the doc.
         dist_arg_list = []
 
+        # NOTE: we have removed the check of "original span". It means that if
+        # the system can predict the original phrase then it will be fine.
+        # This might be OK since the model should not have access to the
+        # original span. And this is only to create a self-test, not in training
+        # or real testing.
         for doc_arg in doc_args:
-            if doc_arg['arg_start'] == true_arg['arg_start'] \
-                    and doc_arg['arg_end'] == true_arg['arg_end']:
-                continue
-
             # This is the target argument replaced by another entity.
             update_arg = self.replace_slot_detail(true_arg, doc_arg, True)
 
@@ -359,55 +360,163 @@ class HashedClozeReader:
         # Sort the rank list based on the distance to the target evm.
         dist_arg_list.sort(key=itemgetter(0))
         dists, sorted_arg_list = zip(*dist_arg_list)
+
+        if self.para.use_ghost:
+            sorted_arg_list.append(({}, ghost_entity_id))
+
         return sorted_arg_list
 
-    def get_testable_args(self, event_args):
-        """
-        Create arg cloze test with answers for easy evaluation.
-        :param event_args:
-        :return:
-        """
+    @staticmethod
+    def answers_via_eid(answer_eid, eid_to_mentions):
+        answers = []
+        # if answer_eid == ghost_entity_id:
+        #     answers.append(
+        #         {
+        #             'span': (-1, -1),
+        #             'text': ghost_entity_text,
+        #         }
+        #     )
+        # else:
+        if answer_eid not in eid_to_mentions:
+            # logger.warning(
+            #     f"Answer entity id [{answer_eid}] is not found "
+            #     f"in the mapping of document "
+            #     f"[{doc_info['doc_id']}]")
+            return None
+
+        for mention in eid_to_mentions[answer_eid]:
+            answers.append({
+                'span': (
+                    mention['arg_start'],
+                    mention['arg_end']
+                ),
+                'text': mention['arg_phrase'],
+            })
+
+        return answers
+
+    @staticmethod
+    def answer_from_arg(arg):
+        return {
+            'span': (arg['arg_start'], arg['arg_end']),
+            'text': arg['arg_phrase']
+        }
+
+    def get_test_cases(self, event_args, eid_to_mentions=None):
         test_cases = []
 
-        if self.fix_slot_mode:
-            for slot in self.slot_names:
-                arg_info = event_args[slot]
+        # First organize the roles by the gold role name.
+        arg_by_slot = defaultdict(list)
+        for dep_slot in self.slot_names:
+            args_per_dep = event_args[dep_slot]
 
-                if len(arg_info) == 0:
+            if self.gold_role_field is None:
+                arg_by_slot[dep_slot].extend(args_per_dep)
+            else:
+                for arg in args_per_dep:
+                    if self.gold_role_field in arg:
+                        gold_role = arg[self.gold_role_field]
+                        if not gold_role == 'NA':
+                            arg_by_slot[gold_role].append(arg)
+
+        for gold_slot, args in arg_by_slot.items():
+            if len(args) == 0:
+                # The case where there is no argument to fill in here.
+                test_stub = {
+                    'resolvable': False,
+                    'implicit': False,
+                    'dep': gold_slot,
+                }
+
+                answers = [{
+                    'span': (-1, -1),
+                    'text': ghost_entity_text,
+                }]
+
+                test_cases.append([gold_slot, test_stub, answers])
+            else:
+                answers = []
+
+                for arg in args:
+                    if self.auto_test:
+                        if arg['resolvable']:
+                            answers.extend(
+                                self.answers_via_eid(
+                                    arg['entity_id'],
+                                    eid_to_mentions
+                                )
+                            )
+                    else:
+                        if arg['implicit'] and arg['source'] == 'gold' \
+                                and not arg['incorporated']:
+                            answers.append(self.answer_from_arg(arg))
+
+                if answers:
+                    # test_stub = {
+                    #     'text': arg['text'],
+                    #     'arg_phrase': arg['arg_phrase'],
+                    #     'arg_start': arg['arg_start'],
+                    #     'arg_end': arg['arg_end'],
+                    #     'resolvable': True,
+                    #     'implicit': True,
+                    #     'dep': arg['dep'],
+                    # }
                     test_stub = {
-                        'resolvable': False,
-                        'implicit': False,
-                        'dep': slot,
+                        'resolvable': True,
+                        'implicit': True,
                     }
-                    test_cases.append([slot, test_stub, ghost_entity_id])
-                else:
-                    for arg in arg_info:
-                        testable = False
-                        if self.auto_test:
-                            if arg['resolvable']:
-                                testable = True
-                        else:
-                            if arg['implicit'] and arg['source'] == 'gold' \
-                                    and not arg['incorporated']:
-                                testable = True
 
-                        if testable:
-                            test_stub = {
-                                'text': arg['text'],
-                                'arg_phrase': arg['arg_phrase'],
-                                'arg_start': arg['arg_start'],
-                                'arg_end': arg['arg_end'],
-                                'resolvable': True,
-                                'implicit': True,
-                                'dep': arg['dep'],
-                            }
-
-                            test_cases.append(
-                                [slot, test_stub, arg['entity_id']])
-        else:
-            raise NotImplementedError("Dynamic slot mode not ready yet.")
+                    test_cases.append([gold_slot, test_stub, answers])
 
         return test_cases
+
+    # def get_testable_args(self, event_args):
+    #     """
+    #     Create arg cloze test with answers for easy evaluation.
+    #     :param event_args:
+    #     :return:
+    #     """
+    #     test_cases = []
+    #
+    #     if self.fix_slot_mode:
+    #         for slot in self.slot_names:
+    #             arg_info = event_args[slot]
+    #
+    #             if len(arg_info) == 0:
+    #                 test_stub = {
+    #                     'resolvable': False,
+    #                     'implicit': False,
+    #                     'dep': slot,
+    #                 }
+    #                 test_cases.append([slot, test_stub, ghost_entity_id])
+    #             else:
+    #                 for arg in arg_info:
+    #                     testable = False
+    #                     if self.auto_test:
+    #                         if arg['resolvable']:
+    #                             testable = True
+    #                     else:
+    #                         if arg['implicit'] and arg['source'] == 'gold' \
+    #                                 and not arg['incorporated']:
+    #                             testable = True
+    #
+    #                     if testable:
+    #                         test_stub = {
+    #                             'text': arg['text'],
+    #                             'arg_phrase': arg['arg_phrase'],
+    #                             'arg_start': arg['arg_start'],
+    #                             'arg_end': arg['arg_end'],
+    #                             'resolvable': True,
+    #                             'implicit': True,
+    #                             'dep': arg['dep'],
+    #                         }
+    #
+    #                         test_cases.append(
+    #                             [slot, test_stub, arg['entity_id']])
+    #     else:
+    #         raise NotImplementedError("Dynamic slot mode not ready yet.")
+    #
+    #     return test_cases
 
     def get_args_as_list(self, event_args, ignore_implicit):
         """
@@ -442,8 +551,6 @@ class HashedClozeReader:
                             fe_args[fe] = a
             args = list(fe_args.items())
         return args
-
-
 
     def get_one_test_doc(self, doc_info, nid_detector):
         """
@@ -515,15 +622,15 @@ class HashedClozeReader:
                             'sentence_id']
 
         doc_args = [v for v in arg_mentions.values()]
-        eid_to_mentions = {}
 
-        for arg in doc_args:
-            try:
-                eid_to_mentions[arg['entity_id']].append(arg)
-            except KeyError:
-                eid_to_mentions[arg['entity_id']] = [arg]
-
-        print(f"doc arg at entity 5 is {eid_to_mentions[5]}")
+        eid_to_mentions = None
+        if self.auto_test:
+            eid_to_mentions = {}
+            for arg in doc_args:
+                try:
+                    eid_to_mentions[arg['entity_id']].append(arg)
+                except KeyError:
+                    eid_to_mentions[arg['entity_id']] = [arg]
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
@@ -540,20 +647,11 @@ class HashedClozeReader:
             # need to map the target slot (e.g. i_arg1 -> obj). The answer are
             # all arguments with the same field attribute then.
 
-            # Parameters needed to support the two mode:
-            # 1. specifying the mode.
-            # 2. target slot name
-            # 3. the mapping (probably provided in the class)
-
-            for target_slot, test_stub, answer_eid in self.get_testable_args(
-                    event_args):
-                # TODO: temporarily replacement of resolvable.
-                multi_mention = len(explicit_entity_positions[answer_eid]) > 1
-
-                answers = []
-
-                if nid_detector.should_fill(
-                        event, target_slot, test_stub) and multi_mention:
+            # TODO: there are some fields referred in the replace_slot method,
+            #  but some are not added in the get_test_case here.
+            for target_slot, test_stub, answers in self.get_test_cases(
+                    event_args, eid_to_mentions):
+                if nid_detector.should_fill(event, target_slot, test_stub):
                     test_rank_list = self.create_slot_candidates(
                         test_stub, doc_args, pred_sent)
 
@@ -601,7 +699,7 @@ class HashedClozeReader:
                             self.slot_names.index(target_slot)
                         )
 
-                        if answer_eid == ghost_entity_id:
+                        if filler_eid == ghost_entity_id:
                             candidate_meta.append(
                                 {
                                     'entity': ghost_entity_text,
@@ -620,36 +718,10 @@ class HashedClozeReader:
                                 'source': cand_arg['source'],
                             })
 
-                    answers = []
-                    if answer_eid == ghost_entity_id:
-                        answers.append(
-                            {
-                                'span': (-1, -1),
-                                'text': ghost_entity_text,
-                            }
-                        )
-                    else:
-                        if answer_eid not in eid_to_mentions:
-                            logger.warning(
-                                f"Answer entity id [{answer_eid}] is not found "
-                                f"in the mapping of document "
-                                f"[{doc_info['doc_id']}]")
-                            continue
-
-                        for mention in eid_to_mentions[answer_eid]:
-                            answers.append({
-                                'span': (
-                                    mention['arg_start'],
-                                    mention['arg_end']
-                                ),
-                                'text': mention['arg_phrase'],
-                            })
-
                     instance_meta.append({
                         'predicate': event['predicate_text'],
                         'predicate_idx': pred_idx,
                         'target_slot': target_slot,
-                        'gold_entity': answer_eid,
                         'answers': answers,
                     })
 

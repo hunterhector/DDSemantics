@@ -128,12 +128,12 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 hashed_arg_list.append(hashed_arg)
 
                 if hashed_arg['implicit']:
-                    implicit_slots_all.add(arg['propbank_role'])
+                    implicit_slots_all.add(arg['gold_role'])
 
                     if not hashed_arg['incorporated']:
-                        implicit_slots_no_incorp.add(arg['propbank_role'])
+                        implicit_slots_no_incorp.add(arg['gold_role'])
                         if not hashed_arg['succeeding']:
-                            implicit_slots_preceed.add(arg['propbank_role'])
+                            implicit_slots_preceed.add(arg['gold_role'])
             full_args[slot] = hashed_arg_list
 
         ###### Debug the argument counts ###########

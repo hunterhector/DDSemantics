@@ -176,9 +176,9 @@ class EventReader:
                     else:
                         represent = arg_info['text']
 
-                    propbank_role = arg_info.get('propbankRole', 'NA')
-                    if not propbank_role == 'NA':
-                        propbank_role = propbank_role.lower()
+                    gold_role = arg_info.get('goldRole', 'NA')
+                    if not gold_role == 'NA':
+                        gold_role = gold_role.lower()
 
                     # TODO: can automate the field mapping here.
                     arg = {
@@ -192,7 +192,7 @@ class EventReader:
                         'sentence_id': arg_info['sentenceId'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
-                        'propbank_role': propbank_role,
+                        'gold_role': gold_role,
                         'text': arg_info['text'],
                         'represent': represent,
                         'source': arg_info.get('source', 'NA'),

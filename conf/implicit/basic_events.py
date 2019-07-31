@@ -74,4 +74,4 @@ c.Basic.run_baselines = False
 c.Basic.do_training = True
 c.Basic.self_test_size = -1
 c.Basic.do_test = True
-c.Basic.gold_field_name = 'propbank_role'
+c.Basic.gold_field_name = 'gold_role'

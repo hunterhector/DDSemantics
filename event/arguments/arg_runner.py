@@ -253,6 +253,7 @@ class ArgRunner(Configurable):
         torch.save(state, check_path)
         return check_path
 
+    @torch.no_grad()
     def validation(self, dev_lines, dev_sampler):
         dev_loss = 0
         num_batches = 0
@@ -261,26 +262,25 @@ class ArgRunner(Configurable):
         logger.info(f'Validation with {len(dev_lines)} lines.')
         dev_sampler.reset()
 
-        with torch.no_grad():
-            for batch_data, debug_data in self.reader.read_train_batch(
-                    dev_lines, dev_sampler):
-                batch_instance, batch_common, b_size, mask = batch_data
+        for batch_data, debug_data in self.reader.read_train_batch(
+                dev_lines, dev_sampler):
+            batch_instance, batch_common, b_size, mask = batch_data
 
-                loss = self._get_loss(batch_instance, batch_common, mask)
+            loss = self._get_loss(batch_instance, batch_common, mask)
 
-                if not loss:
-                    raise ValueError('Error in computing loss.')
-                dev_loss += loss.item()
+            if not loss:
+                raise ValueError('Error in computing loss.')
+            dev_loss += loss.item()
 
-                num_batches += 1
-                num_instances += b_size
+            num_batches += 1
+            num_instances += b_size
 
-            logger.info("Validation loss is [%.4f] on [%d] batches, [%d] "
-                        "instances. Average loss is [%.4f]." % (
-                            dev_loss, num_batches, num_instances,
-                            dev_loss / num_batches))
+        logger.info("Validation loss is [%.4f] on [%d] batches, [%d] "
+                    "instances. Average loss is [%.4f]." % (
+                        dev_loss, num_batches, num_instances,
+                        dev_loss / num_batches))
 
-            return dev_loss, num_batches, num_instances
+        return dev_loss, num_batches, num_instances
 
     def debug(self):
         checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
@@ -509,7 +509,8 @@ class ArgRunner(Configurable):
     def test(self, test_in, eval_dir, gold_field_name):
         logger.info("Test on [%s]." % test_in)
         self.__load_best()
-        self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir,
+        self.__test(self.model, data_gen(test_in), self.nid_detector,
+                    eval_dir=eval_dir,
                     gold_field_name=gold_field_name)
 
     def train(self, basic_para, resume=False):
@@ -747,11 +748,6 @@ def main(conf):
 
     if basic_para.run_baselines:
         runner.run_baselines(basic_para)
-        # if basic_para.self_test_size > 0:
-        #     logger.info("Then run the baselines on auto created test data.")
-        #     # Some simple self test.
-        #     runner.self_study_baseline(basic_para)
-        #     runner.self_study_model(basic_para, 'pre')
 
     if basic_para.do_training:
         runner.train(basic_para, resume=True)
