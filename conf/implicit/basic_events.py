@@ -24,6 +24,8 @@ c.ArgModelPara.vote_pooling = 'kernel'
 c.ArgModelPara.num_distance_features = 9
 c.ArgModelPara.arg_representation_method = 'fix_slots'
 
+c.ArgModelPara.frame_formalism = 'propbank'
+
 # How to detect Null Instantiation.
 c.ArgModelPara.nid_method = 'gold'
 c.ArgModelPara.use_ghost = False
@@ -54,6 +56,9 @@ c.ImplicitArgResources.word_embedding_path = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.pickle.wv.vectors.npy')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.voc')
+
+c.ImplicitArgResources.nombank_arg_slot_map = 'resources/nombankArgMap.tsv'
+c.ImplicitArgResources.framenet_frame_path = '~/resources/fndata-1.5/frame'
 
 # Runner parameters
 c.Basic.train_in = os.path.join(base, c.ImplicitArgResources.raw_corpus_name,

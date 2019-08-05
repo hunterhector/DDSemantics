@@ -61,7 +61,13 @@ class HashedClozeReader:
             self.typed_event_vocab.unk_fe, None
         )
 
-        self.slot_names = ['subj', 'obj', 'prep', ]
+        self.frame_formalism = self.para.slot_frame_formalism
+
+        # The cloze data are organized by the following slots.
+        self.cloze_data_slot_names = ['subj', 'obj', 'prep', ]
+
+        self.frame_slots = {}
+        self.slot_dep_map = {}
 
         self.instance_keys = []
 
@@ -339,7 +345,7 @@ class HashedClozeReader:
 
         return features_by_eid
 
-    def create_slot_candidates(self, true_arg, doc_args, pred_sent):
+    def create_slot_candidates(self, test_stub, doc_args, pred_sent):
         # Replace the target slot with other entities in the doc.
         dist_arg_list = []
 
@@ -350,7 +356,7 @@ class HashedClozeReader:
         # or real testing.
         for doc_arg in doc_args:
             # This is the target argument replaced by another entity.
-            update_arg = self.replace_slot_detail(true_arg, doc_arg, True)
+            update_arg = self.replace_slot_detail(test_stub, doc_arg, True)
 
             dist_arg_list.append((
                 abs(pred_sent - doc_arg['sentence_id']),
@@ -402,12 +408,12 @@ class HashedClozeReader:
             'text': arg['arg_phrase']
         }
 
-    def get_test_cases(self, event_args, eid_to_mentions=None):
+    def get_test_cases(self, pred_type, event_args, eid_to_mentions=None):
         test_cases = []
 
         # First organize the roles by the gold role name.
         arg_by_slot = defaultdict(list)
-        for dep_slot in self.slot_names:
+        for dep_slot in self.cloze_data_slot_names:
             args_per_dep = event_args[dep_slot]
 
             if self.gold_role_field is None:
@@ -452,15 +458,6 @@ class HashedClozeReader:
                             answers.append(self.answer_from_arg(arg))
 
                 if answers:
-                    # test_stub = {
-                    #     'text': arg['text'],
-                    #     'arg_phrase': arg['arg_phrase'],
-                    #     'arg_start': arg['arg_start'],
-                    #     'arg_end': arg['arg_end'],
-                    #     'resolvable': True,
-                    #     'implicit': True,
-                    #     'dep': arg['dep'],
-                    # }
                     test_stub = {
                         'resolvable': True,
                         'implicit': True,
@@ -469,54 +466,6 @@ class HashedClozeReader:
                     test_cases.append([gold_slot, test_stub, answers])
 
         return test_cases
-
-    # def get_testable_args(self, event_args):
-    #     """
-    #     Create arg cloze test with answers for easy evaluation.
-    #     :param event_args:
-    #     :return:
-    #     """
-    #     test_cases = []
-    #
-    #     if self.fix_slot_mode:
-    #         for slot in self.slot_names:
-    #             arg_info = event_args[slot]
-    #
-    #             if len(arg_info) == 0:
-    #                 test_stub = {
-    #                     'resolvable': False,
-    #                     'implicit': False,
-    #                     'dep': slot,
-    #                 }
-    #                 test_cases.append([slot, test_stub, ghost_entity_id])
-    #             else:
-    #                 for arg in arg_info:
-    #                     testable = False
-    #                     if self.auto_test:
-    #                         if arg['resolvable']:
-    #                             testable = True
-    #                     else:
-    #                         if arg['implicit'] and arg['source'] == 'gold' \
-    #                                 and not arg['incorporated']:
-    #                             testable = True
-    #
-    #                     if testable:
-    #                         test_stub = {
-    #                             'text': arg['text'],
-    #                             'arg_phrase': arg['arg_phrase'],
-    #                             'arg_start': arg['arg_start'],
-    #                             'arg_end': arg['arg_end'],
-    #                             'resolvable': True,
-    #                             'implicit': True,
-    #                             'dep': arg['dep'],
-    #                         }
-    #
-    #                         test_cases.append(
-    #                             [slot, test_stub, arg['entity_id']])
-    #     else:
-    #         raise NotImplementedError("Dynamic slot mode not ready yet.")
-    #
-    #     return test_cases
 
     def get_args_as_list(self, event_args, ignore_implicit):
         """
@@ -528,7 +477,7 @@ class HashedClozeReader:
         """
         args = []
         if self.fix_slot_mode:
-            for slot in self.slot_names:
+            for slot in self.cloze_data_slot_names:
                 for arg in event_args[slot]:
                     if ignore_implicit and arg.get('implicit', False):
                         continue
@@ -551,6 +500,24 @@ class HashedClozeReader:
                             fe_args[fe] = a
             args = list(fe_args.items())
         return args
+
+    def get_predicate_slots(self, event, map_to_dep=False):
+        """
+        Get the possible slots for a predicate. For example, in Propbank format,
+        the slot would be a
+        :param event:
+        :return:
+        """
+        if self.frame_formalism == 'FrameNet':
+            frame = event['frame']
+            return self.frame_slots[frame]
+
+        elif self.frame_formalism == 'Propbank':
+            slots = ['arg0', 'arg1', 'arg2', 'arg3']
+            if map_to_dep:
+                pred = event['predicate']
+                slots = [self.slot_dep_map[pred][s] for s in slots]
+            return slots
 
     def get_one_test_doc(self, doc_info, nid_detector):
         """
@@ -652,6 +619,11 @@ class HashedClozeReader:
             for target_slot, test_stub, answers in self.get_test_cases(
                     event_args, eid_to_mentions):
                 if nid_detector.should_fill(event, target_slot, test_stub):
+
+                    print(target_slot)
+                    print(test_stub)
+                    input('how do we get the dep?')
+
                     test_rank_list = self.create_slot_candidates(
                         test_stub, doc_args, pred_sent)
 
@@ -696,7 +668,7 @@ class HashedClozeReader:
 
                         cloze_event_indices.append(evm_index)
                         cloze_slot_indices.append(
-                            self.slot_names.index(target_slot)
+                            self.cloze_data_slot_names.index(target_slot)
                         )
 
                         if filler_eid == ghost_entity_id:
@@ -943,7 +915,7 @@ class HashedClozeReader:
                                                 arg_index)
                 inside_sample = self.inside_cloze(sampler, arg_list, arg_index)
 
-                slot_index = self.slot_names.index(slot) if \
+                slot_index = self.cloze_data_slot_names.index(slot) if \
                     self.fix_slot_mode else slot
 
                 if cross_sample:

@@ -149,3 +149,12 @@ def append_num_to_path(file_path, suffix=0):
         else:
             os.rename(file_path, new_path)
 
+def load_framenet_slots(framenet_path):
+    pass
+
+def load_nombank_dep_map(nombank_map_path):
+    with open(nombank_map_path) as nombank_map:
+        for line in nombank_map:
+            if not line.startswith('#'):
+                fields = line.strip().split()
+

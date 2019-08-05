@@ -1,6 +1,6 @@
 # List of TODOs 
 
-1. Rename propbank_role to slot_name
+1. ~~Rename propbank_role to slot_name~~
 1. The test case from the GC data seem to have two problems:
     1. The dep for testing is too simplified (only prep)
     1. Some answers seem to be wrong too.

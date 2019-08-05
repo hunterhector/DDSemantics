@@ -140,6 +140,10 @@ class ArgRunner(Configurable):
         # may change the embedding size (adding some extra words)
         self.reader = HashedClozeReader(self.resources, self.para)
 
+        if self.para.slot_frame_formalism == 'FrameNet':
+
+
+
         self.model_dir = os.path.join(self.basic_para.model_dir,
                                       self.basic_para.model_name)
         self.debug_dir = os.path.join(self.basic_para.debug_dir,
@@ -305,7 +309,7 @@ class ArgRunner(Configurable):
                gold_field_name=None, eval_dir=None):
         self.model.eval()
 
-        evaluator = ImplicitEval(self.reader.slot_names, eval_dir)
+        evaluator = ImplicitEval(self.reader.cloze_data_slot_names, eval_dir)
         instance_count = 0
 
         self.reader.auto_test = auto_test

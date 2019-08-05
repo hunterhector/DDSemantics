@@ -76,6 +76,10 @@ class ArgModelPara(Configurable):
     # num_event_components = Int(
     #     help='Number of components per event').tag(config=True)
     use_frame = Bool(help='Whether to use frame in the model.').tag(config=True)
+    slot_frame_formalism = Unicode(
+        help='Which frame formalism is to predict the slots, currently support '
+             'FrameNet and Propbank', default_value='Propbank'
+    ).tag(config=True)
     num_extracted_features = Int(help='Feature size').tag(config=True)
 
     encode_distance = Unicode(
