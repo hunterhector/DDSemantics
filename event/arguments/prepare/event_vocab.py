@@ -10,6 +10,7 @@ from event.arguments.prepare.slot_processor import get_simple_dep
 
 logger = logging.getLogger(__name__)
 
+
 class TypedEventVocab:
     unk_predicate = 'unk_predicate-pred'
     unk_arg_word = 'unk_argument'
@@ -132,6 +133,8 @@ class TypedEventVocab:
         arg_rep = self.make_arg(entity_rep, arg_dep)
         return arg_rep
 
+    # TODO: This will only use the verb form if the nominal form does not
+    #  presented. Not sure which representation works better here.
     def get_pred_rep(self, event):
         pred = self.get_vocab_word(event['predicate'], 'predicate')
 

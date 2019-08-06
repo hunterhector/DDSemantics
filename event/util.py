@@ -8,6 +8,7 @@ import sys
 from traitlets.config.loader import KeyValueConfigLoader
 from traitlets.config.loader import PyFileConfigLoader
 import hashlib
+import xml.etree.ElementTree as ET
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -148,13 +149,4 @@ def append_num_to_path(file_path, suffix=0):
             append_num_to_path(file_path, suffix + 1)
         else:
             os.rename(file_path, new_path)
-
-def load_framenet_slots(framenet_path):
-    pass
-
-def load_nombank_dep_map(nombank_map_path):
-    with open(nombank_map_path) as nombank_map:
-        for line in nombank_map:
-            if not line.startswith('#'):
-                fields = line.strip().split()
 

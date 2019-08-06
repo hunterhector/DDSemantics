@@ -21,6 +21,9 @@ c.ArgModelPara.vote_method = 'cosine'
 c.ArgModelPara.vote_pooling = 'kernel'
 # c.ArgModelPara.encode_distance = 'gaussian'
 c.ArgModelPara.num_distance_features = 9
+c.ArgModelPara.arg_representation_method = 'role_dynamic'
+
+c.ArgModelPara.frame_formalism = 'FrameNet'
 
 # How to detect Null Instantiation.
 c.ArgModelPara.nid_method = 'gold'
@@ -34,15 +37,16 @@ else:
 raw_corpus_name = 'gigaword_frames'
 
 c.ImplicitArgResources.event_embedding_path = os.path.join(
-    base, raw_corpus_name,
-    'embeddings/event_frame_embeddings_min500.pickle.wv.vectors.npy')
+    base, raw_corpus_name, 'embeddings',
+    'event_frame_embeddings_min500.pickle.wv.vectors.npy')
 c.ImplicitArgResources.event_vocab_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/event_frame_embeddings_min500.voc')
+    base, raw_corpus_name, 'embeddings', 'event_embeddings_with_frame.voc')
 
 c.ImplicitArgResources.word_embedding_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/word_embeddings.pickle.wv.vectors.npy')
+    base, raw_corpus_name, 'embeddings',
+    'word_embeddings.pickle.wv.vectors.npy')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/word_embeddings.voc')
+    base, raw_corpus_name, 'embeddings', 'word_embeddings.voc')
 c.ImplicitArgResources.raw_lookup_path = os.path.join(
     base, raw_corpus_name, 'vocab/')
 

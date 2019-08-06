@@ -63,11 +63,15 @@ class HashedClozeReader:
 
         self.frame_formalism = self.para.slot_frame_formalism
 
+        if self.para.slot_frame_formalism == 'FrameNet':
+            self.frame_slots = resources.framenet_slots
+        elif self.para.slot_frame_formalism == 'Propbank':
+            self.frame_slots = resources.nombank_slots
+        else:
+            raise ValueError("Unknown frame formalism.")
+
         # The cloze data are organized by the following slots.
         self.cloze_data_slot_names = ['subj', 'obj', 'prep', ]
-
-        self.frame_slots = {}
-        self.slot_dep_map = {}
 
         self.instance_keys = []
 
@@ -408,7 +412,7 @@ class HashedClozeReader:
             'text': arg['arg_phrase']
         }
 
-    def get_test_cases(self, pred_type, event_args, eid_to_mentions=None):
+    def get_test_cases(self, event_args, eid_to_mentions=None):
         test_cases = []
 
         # First organize the roles by the gold role name.
@@ -501,23 +505,29 @@ class HashedClozeReader:
             args = list(fe_args.items())
         return args
 
-    def get_predicate_slots(self, event, map_to_dep=False):
+    def get_predicate_slots(self, event):
         """
         Get the possible slots for a predicate. For example, in Propbank format,
-        the slot would be a
+        the slot would be arg0 to arg4 (and there are mapping to specific
+        dependencies). In FrameNet format, the slots are determined from the
+        frames.
         :param event:
         :return:
         """
         if self.frame_formalism == 'FrameNet':
-            frame = event['frame']
-            return self.frame_slots[frame]
-
+            frame = event('frame', None)
+            if not frame == -1 and frame in self.frame_slots:
+                return self.frame_slots.get(frame, None)
         elif self.frame_formalism == 'Propbank':
-            slots = ['arg0', 'arg1', 'arg2', 'arg3']
-            if map_to_dep:
-                pred = event['predicate']
-                slots = [self.slot_dep_map[pred][s] for s in slots]
-            return slots
+            slots = ['arg0', 'arg1', 'arg2', 'arg3', 'arg4']
+            pred = event['predicate']
+            if pred in self.frame_slots:
+                slots = [x for x in [self.frame_slots[pred][s] for s in slots]
+                         if not x == '-']
+                return slots
+
+        # Return an empty list set since we cannot handle this.
+        return []
 
     def get_one_test_doc(self, doc_info, nid_detector):
         """
@@ -613,6 +623,12 @@ class HashedClozeReader:
             # the target slot should be a field in data (prespecified). We then
             # need to map the target slot (e.g. i_arg1 -> obj). The answer are
             # all arguments with the same field attribute then.
+
+            available_slots = self.get_predicate_slots(event)
+            print(available_slots, 'for', event['predicate_text'])
+
+            input('checking available slots for event, in mode: ',
+                  self.frame_formalism)
 
             # TODO: there are some fields referred in the replace_slot method,
             #  but some are not added in the get_test_case here.

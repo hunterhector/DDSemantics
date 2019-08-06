@@ -37,6 +37,7 @@ from event.util import (
 )
 from time import localtime, strftime
 import numpy as np
+from event import util
 
 logger = logging.getLogger(__name__)
 
@@ -139,10 +140,6 @@ class ArgRunner(Configurable):
         # Important, reader should be initialized earlier, because reader config
         # may change the embedding size (adding some extra words)
         self.reader = HashedClozeReader(self.resources, self.para)
-
-        if self.para.slot_frame_formalism == 'FrameNet':
-
-
 
         self.model_dir = os.path.join(self.basic_para.model_dir,
                                       self.basic_para.model_name)

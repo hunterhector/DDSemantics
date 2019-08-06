@@ -93,7 +93,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
     hashed_doc['entities'] = hashed_entities
 
     for event in events:
-        pred = event['predicate']
         frame = event['frame']
 
         pid = event_emb_vocab.get_index(
@@ -113,7 +112,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         implicit_slots_all = set()
 
         # Debug purpose.
-        raw_pred = data_utils.nombank_pred_text(pred)
+        raw_pred = data_utils.nombank_pred_text(event['predicate'])
 
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
