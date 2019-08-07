@@ -8,6 +8,9 @@ import numpy as np
 import logging
 from event.arguments.prepare.event_vocab import TypedEventVocab
 from event.arguments.prepare.event_vocab import EmbbedingVocab
+from event.arguments.prepare.hash_cloze_data import HashParam
+from event.arguments.prepare.hash_cloze_data import SlotHandler
+
 import xml.etree.ElementTree as ET
 import os
 
@@ -26,6 +29,9 @@ class ImplicitArgResources(Configurable):
     word_vocab_path = Unicode(help='Word Vocab').tag(config=True)
 
     raw_lookup_path = Unicode(help='Raw Lookup Vocab.').tag(config=True)
+
+    min_vocab_count = Int(help='The min vocab cutoff threshold.',
+                          default_value=50).tag(config=True)
 
     nombank_arg_slot_map = Unicode(
         help='A map from predicate and slots to the prespective dependency '
@@ -55,13 +61,43 @@ class ImplicitArgResources(Configurable):
         self.typed_event_vocab = TypedEventVocab(self.raw_lookup_path)
         logger.info("Loaded typed vocab, including oov words.")
 
-        if self.nombank_arg_slot_map:
-            self.nombank_slots = load_nombank_dep_map(
-                self.nombank_arg_slot_map, self.typed_event_vocab)
+        hash_params = HashParam(**kwargs)
 
-        if self.framenet_frame_path:
-            self.framenet_slots = load_framenet_slots(
-                self.framenet_frame_path, self.event_embed_vocab)
+        self.slot_handler = SlotHandler(hash_params.frame_files,
+                                   hash_params.frame_dep_map,
+                                   hash_params.dep_frame_map,
+                                   hash_params.nom_map)
+
+        # print(slot_handler.nombank_mapping)
+        #
+        # for f, slot in slot_handler.frame_priority.items():
+        #     print(f)
+        #     print(slot)
+        #     break
+        #
+        # for k in slot_handler.frame_deps:
+        #     print(k)
+        #     break
+        #
+        # for k in slot_handler.dep_frames:
+        #     print(k)
+        #     break
+        #
+        # print(slot_handler.frame_deps.get(("Bringing", "Carrier"), []))
+        #
+        # most_freq_dep = slot_handler.get_most_freq_dep('take', 'Bringing',
+        #                                                'Carrier')
+        # print(most_freq_dep)
+        #
+        # input('check slot handler')
+        #
+        # if self.nombank_arg_slot_map:
+        #     self.nombank_slots = load_nombank_dep_map(
+        #         self.nombank_arg_slot_map, self.typed_event_vocab)
+        #
+        # if self.framenet_frame_path:
+        #     self.framenet_slots = load_framenet_slots(
+        #         self.framenet_frame_path, self.event_embed_vocab)
 
     @staticmethod
     def count_predicates(vocab_file):
@@ -77,29 +113,33 @@ class ImplicitArgResources(Configurable):
 def load_framenet_slots(framenet_path, event_emb_vocab):
     frame_slots = {}
 
+    ns = {'fn': 'http://framenet.icsi.berkeley.edu'}
+
+    num_unseen = 0
+
     for frame_file in os.listdir(framenet_path):
+        if not frame_file.endswith('.xml'):
+            continue
+
         with open(os.path.join(framenet_path, frame_file)) as frame_data:
             tree = ET.parse(frame_data)
             root = tree.getroot()
 
-            print(root)
-
             frame = root.attrib['name']
             fid = event_emb_vocab.get_index(frame, None)
-            print(frame, fid)
 
-            print(root.children)
             all_fes = []
-            for fe_node in root:
+            for fe_node in root.findall('fn:FE', ns):
                 fe = fe_node.attrib['name']
-                print(fe)
+                all_fes.append(fe.lower())
 
-                all_fes.append(fe)
+            if not fid == -1:
+                frame_slots[fid] = all_fes
+            else:
+                num_unseen += 1
 
-            frame_slots[frame] = all_fes
-
-    print(frame_slots)
-    input('loading is done.')
+    logging.info(f"Loaded {len(frame_slots)} frames, {num_unseen} frames are "
+                 f"not seen in the parsed dataset.")
 
     return frame_slots
 
@@ -115,7 +155,8 @@ def load_nombank_dep_map(nombank_map_path, typed_event_vocab):
                 noun, verb = fields[0:2]
 
                 pred = typed_event_vocab.get_pred_rep(
-                    {'predicate': noun, 'verb_form': verb})
+                    {'predicate': noun, 'verb_form': verb}
+                )
 
                 key_values = zip(slot_names, fields[2:])
 
@@ -124,5 +165,7 @@ def load_nombank_dep_map(nombank_map_path, typed_event_vocab):
                     'noun': noun,
                     'slots': dict(key_values)
                 }
+
+    logging.info("Loaded Nombank frame mapping.")
 
     return nombank_map

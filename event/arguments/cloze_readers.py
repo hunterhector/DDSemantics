@@ -10,6 +10,7 @@ from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list
 from pprint import pprint
 from operator import itemgetter
+import copy
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +64,12 @@ class HashedClozeReader:
 
         self.frame_formalism = self.para.slot_frame_formalism
 
+        self.slot_handler = resources.slot_handler
+
         if self.para.slot_frame_formalism == 'FrameNet':
-            self.frame_slots = resources.framenet_slots
+            self.frame_slots = resources.slot_handler.frame_priority
         elif self.para.slot_frame_formalism == 'Propbank':
-            self.frame_slots = resources.nombank_slots
+            self.frame_slots = resources.slot_handler.nombank_mapping
         else:
             raise ValueError("Unknown frame formalism.")
 
@@ -379,20 +382,8 @@ class HashedClozeReader:
     @staticmethod
     def answers_via_eid(answer_eid, eid_to_mentions):
         answers = []
-        # if answer_eid == ghost_entity_id:
-        #     answers.append(
-        #         {
-        #             'span': (-1, -1),
-        #             'text': ghost_entity_text,
-        #         }
-        #     )
-        # else:
         if answer_eid not in eid_to_mentions:
-            # logger.warning(
-            #     f"Answer entity id [{answer_eid}] is not found "
-            #     f"in the mapping of document "
-            #     f"[{doc_info['doc_id']}]")
-            return None
+            return answers
 
         for mention in eid_to_mentions[answer_eid]:
             answers.append({
@@ -412,14 +403,14 @@ class HashedClozeReader:
             'text': arg['arg_phrase']
         }
 
-    def get_test_cases(self, event_args, eid_to_mentions=None):
+    def get_test_cases(self, event_args, slot_names, eid_to_mentions=None):
         test_cases = []
 
         # First organize the roles by the gold role name.
         arg_by_slot = defaultdict(list)
-        for dep_slot in self.cloze_data_slot_names:
-            args_per_dep = event_args[dep_slot]
 
+        # Reorganize the arguments by the slot names.
+        for dep_slot, args_per_dep in event_args.items():
             if self.gold_role_field is None:
                 arg_by_slot[dep_slot].extend(args_per_dep)
             else:
@@ -429,45 +420,86 @@ class HashedClozeReader:
                         if not gold_role == 'NA':
                             arg_by_slot[gold_role].append(arg)
 
-        for gold_slot, args in arg_by_slot.items():
-            if len(args) == 0:
-                # The case where there is no argument to fill in here.
-                test_stub = {
-                    'resolvable': False,
-                    'implicit': False,
-                    'dep': gold_slot,
-                }
+        # There are different types of slots, given the scenario, some of them
+        # can be considered as test cases.
+        # 1. Empty slots, these are not fillable, but can be test case for
+        # the system to determine whether to fill.
+        # 2. Slot with explicit arguments:
+        #    a. In auto-test mode, these can be used to test if resolvable.
+        #    b. In real test mode, we don't need to fill the explict slots.
+        # 3. Slot with implicit arguments:
+        #    a. This is only in real-test mode, where the implicit argument
+        #       is the main test target.
+        # 4. Slot is not empty, but there are no other arguments besides this
+        # one, so it is good to make a empty case.
 
-                answers = [{
-                    'span': (-1, -1),
-                    'text': ghost_entity_text,
-                }]
+        empty_slots = []
 
-                test_cases.append([gold_slot, test_stub, answers])
-            else:
-                answers = []
+        no_fill_stub = [
+            {
+                'resolvable': False,
+                'implicit': False,
+            },
+            [{
+                'span': (-1, -1),
+                'text': ghost_entity_text,
+            }],
+        ]
 
-                for arg in args:
-                    if self.auto_test:
-                        if arg['resolvable']:
-                            answers.extend(
-                                self.answers_via_eid(
-                                    arg['entity_id'],
-                                    eid_to_mentions
-                                )
+        for slot in slot_names:
+            if slot not in arg_by_slot:
+                # Case 1
+                empty_slots.append(slot)
+                continue
+
+            answers = []
+
+            # Take the annotated args in this slot.
+            args = arg_by_slot[slot]
+
+            for arg in args:
+                if self.auto_test:
+                    if arg['resolvable']:
+                        # Case 2a
+                        answers.extend(
+                            self.answers_via_eid(
+                                arg['entity_id'],
+                                eid_to_mentions
                             )
+                        )
+                else:
+                    if arg['implicit'] and arg['source'] == 'gold' \
+                            and not arg['incorporated']:
+                        # Case 3
+                        answers.append(self.answer_from_arg(arg))
+
+            if answers:
+                test_stub = {
+                    'resolvable': True,
+                    'implicit': True,
+                }
+                test_cases.append([slot, test_stub, answers])
+            else:
+                if self.auto_test:
+                    # Case 4:
+                    # In auto test mode, this slot is not resolvable, so it is
+                    # good to make a non-fillable test case.
+                    test_cases.append([slot] + copy.deepcopy(no_fill_stub))
+                else:
+                    for arg in args:
+                        if arg['source'] == 'gold' and not arg['implicit']:
+                            # Case 2b: there are explicit arguments so we do not
+                            # make a test case here.
+                            break
                     else:
-                        if arg['implicit'] and arg['source'] == 'gold' \
-                                and not arg['incorporated']:
-                            answers.append(self.answer_from_arg(arg))
+                        # Case 4 in gold standard way.
+                        test_cases.append([slot] + copy.deepcopy(no_fill_stub))
 
-                if answers:
-                    test_stub = {
-                        'resolvable': True,
-                        'implicit': True,
-                    }
-
-                    test_cases.append([gold_slot, test_stub, answers])
+        if not self.auto_test:
+            # If not auto test, then we need to system to learn to determine
+            # when it should fill a slot.
+            for slot in empty_slots:
+                test_cases.append([slot] + copy.deepcopy(no_fill_stub))
 
         return test_cases
 
@@ -481,12 +513,13 @@ class HashedClozeReader:
         """
         args = []
         if self.fix_slot_mode:
-            for slot in self.cloze_data_slot_names:
-                for arg in event_args[slot]:
-                    if ignore_implicit and arg.get('implicit', False):
-                        continue
-                    else:
-                        args.append((slot, arg))
+            for slot, slot_args in event_args.items():
+                if len(slot_args) > 0:
+                    for arg in slot_args:
+                        if ignore_implicit and arg.get('implicit', False):
+                            continue
+                        else:
+                            args.append((slot, arg))
                         break
                 else:
                     args.append((slot, {}))
@@ -505,6 +538,29 @@ class HashedClozeReader:
             args = list(fe_args.items())
         return args
 
+    def get_dep_from_slot(self, event, slot):
+        """
+        Given the predicate and a slot, how do we get the dependency to
+        create a dep-word.
+        :param event:
+        :param slot:
+        :return:
+        """
+        dep = 'unk_dep'
+        if self.frame_formalism == 'FrameNet':
+            fid = event['frame']
+
+            if not fid == -1:
+                frame = get_actual_frame
+                dep = self.slot_handler.get_most_freq_dep(
+                    event['predicate'], frame, slot)
+        elif self.frame_formalism == 'Propbank':
+            pred_word = event['predicate']
+            verb_form, role_map = self.slot_handler.nombank_mapping[pred_word]
+            dep = role_map[slot]
+
+        return dep
+
     def get_predicate_slots(self, event):
         """
         Get the possible slots for a predicate. For example, in Propbank format,
@@ -515,9 +571,9 @@ class HashedClozeReader:
         :return:
         """
         if self.frame_formalism == 'FrameNet':
-            frame = event('frame', None)
+            frame = event['frame']
             if not frame == -1 and frame in self.frame_slots:
-                return self.frame_slots.get(frame, None)
+                return self.frame_slots[frame]
         elif self.frame_formalism == 'Propbank':
             slots = ['arg0', 'arg1', 'arg2', 'arg3', 'arg4']
             pred = event['predicate']
@@ -600,9 +656,8 @@ class HashedClozeReader:
 
         doc_args = [v for v in arg_mentions.values()]
 
-        eid_to_mentions = None
+        eid_to_mentions = {}
         if self.auto_test:
-            eid_to_mentions = {}
             for arg in doc_args:
                 try:
                     eid_to_mentions[arg['entity_id']].append(arg)
@@ -625,19 +680,16 @@ class HashedClozeReader:
             # all arguments with the same field attribute then.
 
             available_slots = self.get_predicate_slots(event)
-            print(available_slots, 'for', event['predicate_text'])
 
-            input('checking available slots for event, in mode: ',
-                  self.frame_formalism)
-
-            # TODO: there are some fields referred in the replace_slot method,
-            #  but some are not added in the get_test_case here.
             for target_slot, test_stub, answers in self.get_test_cases(
-                    event_args, eid_to_mentions):
+                    event_args, available_slots, eid_to_mentions):
+
                 if nid_detector.should_fill(event, target_slot, test_stub):
 
+                    print(event['predicate_text'], event['frame'])
                     print(target_slot)
                     print(test_stub)
+                    print(answers)
                     input('how do we get the dep?')
 
                     test_rank_list = self.create_slot_candidates(

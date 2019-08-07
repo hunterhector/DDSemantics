@@ -77,7 +77,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         'docid': docid,
         'events': [],
     }
-    gold_slot_name = hash_params.gold_field_name
 
     hashed_entities = {}
     entity_represents = {}
@@ -102,8 +101,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         # TODO: many args are mapped in the "prep" slot, but some of them are
         # different implicit slots.
         mapped_args = slot_handler.organize_args(event)
-
-        sent_offset = sent_starts[event['sentence_id']]
 
         full_args = {}
 
@@ -234,29 +231,30 @@ def hash_data():
     )
 
 
-if __name__ == '__main__':
-    class HashParam(Configurable):
-        event_vocab = Unicode(
-            help='Event and Frame Vocabulary.').tag(config=True)
-        word_vocab = Unicode(
-            help='Vocabulary for normal words.').tag(config=True)
-        component_vocab_dir = Unicode(
-            help='Directory containing vocab for each component'
-        ).tag(config=True)
-        nom_map = Unicode(help='NomBank mapping file').tag(config=True)
-        frame_dep_map = Unicode(
-            help='Mapping from predicate dependencies to frame elements.'
-        ).tag(config=True)
-        dep_frame_map = Unicode(
-            help='Mapping from frame elements to predicate dependencies.'
-        ).tag(config=True)
-        raw_data = Unicode(help='The dataset to hash.').tag(config=True)
-        frame_files = Unicode(help="Frame file data.").tag(config=True)
-        output_path = Unicode(
-            help='Output path of the hashed data.').tag(config=True)
-        gold_field_name = Unicode(help='THe gold standard field.').tag(
-            config=True)
+class HashParam(Configurable):
+    event_vocab = Unicode(
+        help='Event and Frame Vocabulary.').tag(config=True)
+    word_vocab = Unicode(
+        help='Vocabulary for normal words.').tag(config=True)
+    component_vocab_dir = Unicode(
+        help='Directory containing vocab for each component'
+    ).tag(config=True)
+    nom_map = Unicode(help='NomBank mapping file').tag(config=True)
+    frame_dep_map = Unicode(
+        help='Mapping from predicate dependencies to frame elements.'
+    ).tag(config=True)
+    dep_frame_map = Unicode(
+        help='Mapping from frame elements to predicate dependencies.'
+    ).tag(config=True)
+    raw_data = Unicode(help='The dataset to hash.').tag(config=True)
+    frame_files = Unicode(help="Frame file data.").tag(config=True)
+    output_path = Unicode(
+        help='Output path of the hashed data.').tag(config=True)
+    gold_field_name = Unicode(help='THe gold standard field.').tag(
+        config=True)
 
+
+if __name__ == '__main__':
 
     from event.util import load_mixed_configs, set_basic_log
 
