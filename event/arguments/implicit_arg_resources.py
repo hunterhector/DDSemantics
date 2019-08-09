@@ -64,9 +64,11 @@ class ImplicitArgResources(Configurable):
         hash_params = HashParam(**kwargs)
 
         self.slot_handler = SlotHandler(hash_params.frame_files,
-                                   hash_params.frame_dep_map,
-                                   hash_params.dep_frame_map,
-                                   hash_params.nom_map)
+                                        hash_params.frame_dep_map,
+                                        hash_params.dep_frame_map,
+                                        hash_params.nom_map)
+
+        hash_mappings()
 
         # print(slot_handler.nombank_mapping)
         #
@@ -108,6 +110,15 @@ class ImplicitArgResources(Configurable):
                 if word.endswith('-pred'):
                     pred_count += int(count)
         return pred_count
+
+
+def hash_mappings():
+    """
+    The mapping information in the slot handler are string based, we convert
+    them to the hashed version for easy reading.
+    :return:
+    """
+    self.slot_handler.
 
 
 def load_framenet_slots(framenet_path, event_emb_vocab):
