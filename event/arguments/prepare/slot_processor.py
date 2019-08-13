@@ -159,9 +159,10 @@ class SlotHandler:
         return fmap, counts
 
     def get_most_freq_dep(self, predicate, frame, fe):
-        for pred, dep, count in self.frame_deps.get((frame, fe), []):
-            if pred == predicate:
-                return dep
+        if (frame, fe) in self.frame_deps:
+            for pred, dep, count in self.frame_deps[(frame, fe)]:
+                if pred == predicate:
+                    return dep
         return None
 
     def impute_fe(self, arg_list, predicate, frame, dep_slots, fe_slots):

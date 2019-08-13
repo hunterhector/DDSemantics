@@ -67,39 +67,8 @@ class ImplicitArgResources(Configurable):
                                         hash_params.frame_dep_map,
                                         hash_params.dep_frame_map,
                                         hash_params.nom_map)
-
-        hash_mappings()
-
-        # print(slot_handler.nombank_mapping)
-        #
-        # for f, slot in slot_handler.frame_priority.items():
-        #     print(f)
-        #     print(slot)
-        #     break
-        #
-        # for k in slot_handler.frame_deps:
-        #     print(k)
-        #     break
-        #
-        # for k in slot_handler.dep_frames:
-        #     print(k)
-        #     break
-        #
-        # print(slot_handler.frame_deps.get(("Bringing", "Carrier"), []))
-        #
-        # most_freq_dep = slot_handler.get_most_freq_dep('take', 'Bringing',
-        #                                                'Carrier')
-        # print(most_freq_dep)
-        #
-        # input('check slot handler')
-        #
-        # if self.nombank_arg_slot_map:
-        #     self.nombank_slots = load_nombank_dep_map(
-        #         self.nombank_arg_slot_map, self.typed_event_vocab)
-        #
-        # if self.framenet_frame_path:
-        #     self.framenet_slots = load_framenet_slots(
-        #         self.framenet_frame_path, self.event_embed_vocab)
+        self.h_nom_map = self.hash_nom_mappings()
+        self.h_frame_dep_map, self.h_frame_fe_map = self.hash_frame_mappings()
 
     @staticmethod
     def count_predicates(vocab_file):
@@ -111,14 +80,50 @@ class ImplicitArgResources(Configurable):
                     pred_count += int(count)
         return pred_count
 
+    def hash_frame_mappings(self):
+        """
+        Hash the frame mapping, and map the frames to the most frequent
+        dependency.
+        :return:
+        """
+        h_frame_dep_map = {}
+        frame_deps = self.slot_handler.frame_deps
 
-def hash_mappings():
-    """
-    The mapping information in the slot handler are string based, we convert
-    them to the hashed version for easy reading.
-    :return:
-    """
-    self.slot_handler.
+        for (frame, fe), pred_deps in frame_deps.items():
+            fid = self.event_embed_vocab.get_index(frame, None)
+            for pred, dep, count in pred_deps:
+                pred_id = self.event_embed_vocab.get_index(
+                    self.typed_event_vocab.get_pred_rep({'predicate': pred}),
+                    None)
+                if (fid, fe, pred_id) not in h_frame_dep_map:
+                    # Map to the most frequent dependency type.
+                    h_frame_dep_map[(fid, fe, pred_id)] = dep
+
+        frame_prior = self.slot_handler.frame_priority
+        h_frame_fe_map = {}
+        for frame_name, fes in frame_prior.items():
+            fid = self.event_embed_vocab.get_index(frame_name, None)
+            h_frame_fe_map[fid] = [fe['fe_name'] for fe in fes]
+
+        return h_frame_dep_map, h_frame_fe_map
+
+    def hash_nom_mappings(self):
+        """
+        The mapping information in the slot handler are string based, we convert
+        them to the hashed version for easy reading.
+        :return:
+        """
+        nom_map = self.slot_handler.nombank_mapping
+        hashed_map = {}
+        for nom, (verb_form, arg_map) in nom_map.items():
+            pred = self.typed_event_vocab.get_pred_rep(
+                {'predicate': nom, 'verb_form': verb_form}
+            )
+
+            hashed_map[pred] = {}
+            for arg_role, dep in arg_map.items():
+                hashed_map[(pred, arg_role)] = dep
+        return hashed_map
 
 
 def load_framenet_slots(framenet_path, event_emb_vocab):

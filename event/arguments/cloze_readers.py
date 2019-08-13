@@ -64,10 +64,11 @@ class HashedClozeReader:
 
         self.frame_formalism = self.para.slot_frame_formalism
 
-        self.slot_handler = resources.slot_handler
+        self.frame_dep_map = resources.h_frame_dep_map
+        self.nom_dep_map = resources.h_nom_map
 
         if self.para.slot_frame_formalism == 'FrameNet':
-            self.frame_slots = resources.slot_handler.frame_priority
+            self.frame_slots = resources.h_frame_fe_map
         elif self.para.slot_frame_formalism == 'Propbank':
             self.frame_slots = resources.slot_handler.nombank_mapping
         else:
@@ -403,14 +404,14 @@ class HashedClozeReader:
             'text': arg['arg_phrase']
         }
 
-    def get_test_cases(self, event_args, slot_names, eid_to_mentions=None):
+    def get_test_cases(self, event, slot_names, eid_to_mentions=None):
         test_cases = []
 
         # First organize the roles by the gold role name.
         arg_by_slot = defaultdict(list)
 
         # Reorganize the arguments by the slot names.
-        for dep_slot, args_per_dep in event_args.items():
+        for dep_slot, args_per_dep in event['args'].items():
             if self.gold_role_field is None:
                 arg_by_slot[dep_slot].extend(args_per_dep)
             else:
@@ -433,29 +434,34 @@ class HashedClozeReader:
         # 4. Slot is not empty, but there are no other arguments besides this
         # one, so it is good to make a empty case.
 
-        empty_slots = []
-
-        no_fill_stub = [
-            {
-                'resolvable': False,
-                'implicit': False,
-            },
-            [{
-                'span': (-1, -1),
-                'text': ghost_entity_text,
-            }],
-        ]
-
         for slot in slot_names:
-            if slot not in arg_by_slot:
+            dep = self.get_dep_from_slot(event, slot)
+
+            no_fill_case = [
+                slot,
+                {
+                    'resolvable': False,
+                    'implicit': False,
+                    'dep': dep,
+                },
+                [{
+                    'span': (-1, -1),
+                    'text': ghost_entity_text,
+                }],
+            ]
+
+            # The gold role is lower-cased at hashing.
+            slot_lower = slot.lower()
+            if slot_lower not in arg_by_slot:
                 # Case 1
-                empty_slots.append(slot)
+                if not self.auto_test:
+                    test_cases.append(copy.deepcopy(no_fill_case))
                 continue
 
             answers = []
 
             # Take the annotated args in this slot.
-            args = arg_by_slot[slot]
+            args = arg_by_slot[slot_lower]
 
             for arg in args:
                 if self.auto_test:
@@ -477,6 +483,7 @@ class HashedClozeReader:
                 test_stub = {
                     'resolvable': True,
                     'implicit': True,
+                    'dep': dep,
                 }
                 test_cases.append([slot, test_stub, answers])
             else:
@@ -484,7 +491,7 @@ class HashedClozeReader:
                     # Case 4:
                     # In auto test mode, this slot is not resolvable, so it is
                     # good to make a non-fillable test case.
-                    test_cases.append([slot] + copy.deepcopy(no_fill_stub))
+                    test_cases.append([slot] + copy.deepcopy(no_fill_case))
                 else:
                     for arg in args:
                         if arg['source'] == 'gold' and not arg['implicit']:
@@ -492,14 +499,9 @@ class HashedClozeReader:
                             # make a test case here.
                             break
                     else:
-                        # Case 4 in gold standard way.
-                        test_cases.append([slot] + copy.deepcopy(no_fill_stub))
-
-        if not self.auto_test:
-            # If not auto test, then we need to system to learn to determine
-            # when it should fill a slot.
-            for slot in empty_slots:
-                test_cases.append([slot] + copy.deepcopy(no_fill_stub))
+                        # Case 4 when we make sure there is no gold standard
+                        # arg.
+                        test_cases.append([slot] + copy.deepcopy(no_fill_case))
 
         return test_cases
 
@@ -547,18 +549,17 @@ class HashedClozeReader:
         :return:
         """
         dep = 'unk_dep'
+
         if self.frame_formalism == 'FrameNet':
             fid = event['frame']
-
+            pred = event['predicate']
             if not fid == -1:
-                frame = get_actual_frame
-                dep = self.slot_handler.get_most_freq_dep(
-                    event['predicate'], frame, slot)
+                if (fid, slot, pred) in self.frame_dep_map:
+                    dep = self.frame_dep_map[(fid, slot, pred)]
         elif self.frame_formalism == 'Propbank':
-            pred_word = event['predicate']
-            verb_form, role_map = self.slot_handler.nombank_mapping[pred_word]
-            dep = role_map[slot]
-
+            pred = event['predicate']
+            if (pred, slot) in self.nom_dep_map:
+                dep = self.nom_dep_map[(pred, slot)]
         return dep
 
     def get_predicate_slots(self, event):
@@ -682,10 +683,9 @@ class HashedClozeReader:
             available_slots = self.get_predicate_slots(event)
 
             for target_slot, test_stub, answers in self.get_test_cases(
-                    event_args, available_slots, eid_to_mentions):
+                    event, available_slots, eid_to_mentions):
 
                 if nid_detector.should_fill(event, target_slot, test_stub):
-
                     print(event['predicate_text'], event['frame'])
                     print(target_slot)
                     print(test_stub)
