@@ -1,5 +1,5 @@
 from traitlets.config import Configurable
-from event.arguments.impicit_arg_params import ArgModelPara
+from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.arg_models import EventCoherenceModel
 from traitlets import (
     Unicode,

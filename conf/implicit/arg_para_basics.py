@@ -34,6 +34,10 @@ c.ArgModelPara.w2v_baseline_method = 'max_sim'  # max_sim, topk_average, average
 c.ArgModelPara.w2v_event_repr = 'concat'  # concat, sum
 c.ArgModelPara.w2v_baseline_avg_topk = 3  # only when topk_average
 
+# Important slot names.
+c.ArgModelPara.gold_field_name = 'gold_role'
+c.ArgModelPara.factor_role = 'fe'
+
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "
                    "variable: 'implicit_corpus'")
@@ -76,4 +80,5 @@ c.Basic.run_baselines = False
 c.Basic.do_training = True
 c.Basic.self_test_size = -1
 c.Basic.do_test = True
-c.Basic.gold_field_name = 'gold_role'
+
+

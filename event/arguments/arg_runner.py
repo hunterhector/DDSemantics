@@ -1,5 +1,5 @@
 from traitlets.config import Configurable
-from event.arguments.impicit_arg_params import ArgModelPara
+from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.arg_models import (
     EventCoherenceModel,
     BaselineEmbeddingModel,
@@ -303,14 +303,13 @@ class ArgRunner(Configurable):
         self.model.load_state_dict(checkpoint['state_dict'])
 
     def __test(self, model, test_lines, nid_detector, auto_test=False,
-               gold_field_name=None, eval_dir=None):
+               eval_dir=None):
         self.model.eval()
 
-        evaluator = ImplicitEval(self.reader.cloze_data_slot_names, eval_dir)
+        evaluator = ImplicitEval(self.reader.fix_slot_names, eval_dir)
         instance_count = 0
 
         self.reader.auto_test = auto_test
-        self.reader.gold_role_field = gold_field_name
 
         logger.info(f"Evaluation result will be stored at {eval_dir}")
 
@@ -361,7 +360,6 @@ class ArgRunner(Configurable):
                 basic_para.log_dir, random_baseline.name,
                 f'self_study_{basic_para.self_test_size}',
             ),
-            gold_field_name=basic_para.gold_field_name,
             auto_test=True,
         )
 
@@ -376,7 +374,6 @@ class ArgRunner(Configurable):
                 basic_para.log_dir, w2v_baseline.name,
                 f'self_study_{basic_para.self_test_size}',
             ),
-            gold_field_name=basic_para.gold_field_name,
             auto_test=True,
         )
 
@@ -391,7 +388,6 @@ class ArgRunner(Configurable):
                 basic_para.log_dir, most_freq_baseline.name,
                 f'self_study_{basic_para.self_test_size}',
             ),
-            gold_field_name=basic_para.gold_field_name,
             auto_test=True,
         )
 
@@ -438,7 +434,6 @@ class ArgRunner(Configurable):
             eval_dir=os.path.join(
                 basic_para.log_dir, w2v_baseline.name, 'test', 'concat_max',
             ),
-            gold_field_name=basic_para.gold_field_name
         )
 
         # Variation 2: topk, concat
@@ -452,7 +447,6 @@ class ArgRunner(Configurable):
             eval_dir=os.path.join(
                 basic_para.log_dir, w2v_baseline.name, 'test', 'concat_top3'
             ),
-            gold_field_name=basic_para.gold_field_name
         )
 
         # Variation 3: topk, sum
@@ -466,7 +460,6 @@ class ArgRunner(Configurable):
             eval_dir=os.path.join(
                 basic_para.log_dir, w2v_baseline.name, 'test', 'sum_max'
             ),
-            gold_field_name=basic_para.gold_field_name
         )
 
         # Variation 4: topk, sum
@@ -480,7 +473,6 @@ class ArgRunner(Configurable):
             eval_dir=os.path.join(
                 basic_para.log_dir, w2v_baseline.name, 'test', 'sum_top3',
             ),
-            gold_field_name=basic_para.gold_field_name
         )
 
         # Frequency baseline.
@@ -492,7 +484,6 @@ class ArgRunner(Configurable):
             eval_dir=os.path.join(
                 basic_para.log_dir, most_freq_baseline.name, 'test', 'default',
             ),
-            gold_field_name=basic_para.gold_field_name
         )
 
         # Random baseline.
@@ -504,19 +495,16 @@ class ArgRunner(Configurable):
             eval_dir=os.path.join(
                 basic_para.log_dir, random_baseline.name, 'test', 'default'
             ),
-            gold_field_name=basic_para.gold_field_name
         )
 
     def test(self, test_in, eval_dir, gold_field_name):
         logger.info("Test on [%s]." % test_in)
         self.__load_best()
         self.__test(self.model, data_gen(test_in), self.nid_detector,
-                    eval_dir=eval_dir,
-                    gold_field_name=gold_field_name)
+                    eval_dir=eval_dir)
 
     def train(self, basic_para, resume=False):
         train_in = basic_para.train_in
-
         target_pred_count = Counter()
 
         train_sampler = ClozeSampler()
@@ -762,7 +750,6 @@ def main(conf):
         runner.test(
             test_in=basic_para.test_in,
             eval_dir=result_dir,
-            gold_field_name=basic_para.gold_field_name
         )
 
 
@@ -793,8 +780,6 @@ if __name__ == '__main__':
         run_baselines = Bool(help='Run baseline.', default_value=False).tag(
             config=True)
         debug_mode = Bool(help='Debug mode', default_value=False).tag(
-            config=True)
-        gold_field_name = Unicode(help='Field name for the gold standard').tag(
             config=True)
 
 

@@ -11,6 +11,8 @@ from event.io.io_utils import pad_2d_list
 from pprint import pprint
 from operator import itemgetter
 import copy
+from event.arguments.implicit_arg_resources import ImplicitArgResources
+from event.arguments.implicit_arg_params import ArgModelPara
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ ghost_entity_id = -1
 
 
 class HashedClozeReader:
-    def __init__(self, resources, para):
+    def __init__(self, resources: ImplicitArgResources, para: ArgModelPara):
         """
         Reading the hashed dataset into cloze tasks.
         :param resources: Resources containing vocabulary and more.
@@ -74,8 +76,11 @@ class HashedClozeReader:
         else:
             raise ValueError("Unknown frame formalism.")
 
+        # Specify which role is used to modify the argument string in SRL.
+        self.factor_role = self.para.factor_role
+
         # The cloze data are organized by the following slots.
-        self.cloze_data_slot_names = ['subj', 'obj', 'prep', ]
+        self.fix_slot_names = ['subj', 'obj', 'prep', ]
 
         self.instance_keys = []
 
@@ -88,7 +93,7 @@ class HashedClozeReader:
             self.instance_keys = ('predicates', 'slots', 'slot_values',
                                   'distances', 'features',)
 
-        self.gold_role_field = None
+        self.gold_role_field = self.para.gold_field_name
         self.auto_test = False
         self.test_limit = 500
 
@@ -101,9 +106,9 @@ class HashedClozeReader:
             'event_indices': np.int64,
             'cross_event_indices': np.int64,
             'inside_event_indices': np.int64,
-            'slot_indices': np.int64,
-            'cross_slot_indices': np.int64,
-            'inside_slot_indices': np.int64,
+            'slot_indicators': np.int64,
+            'cross_slot_indicators': np.int64,
+            'inside_slot_indicators': np.int64,
             'events': np.int64,
             'slots': np.int64,
             'slot_values': np.int64,
@@ -121,9 +126,9 @@ class HashedClozeReader:
             'event_indices': 1,
             'cross_event_indices': 1,
             'inside_event_indices': 1,
-            'slot_indices': 1,
-            'cross_slot_indices': 1,
-            'inside_slot_indices': 1,
+            'slot_indicators': 1,
+            'cross_slot_indicators': 1,
+            'inside_slot_indicators': 1,
             'events': 2,
             'slots': 2,
             'slot_values': 2,
@@ -225,7 +230,7 @@ class HashedClozeReader:
                 if key.startswith('context_'):
                     if len(value) > max_context_size:
                         max_context_size = len(value)
-                if key == 'cross_slot_indices':
+                if key == 'cross_slot_indicators':
                     if len(value) > max_instance_size:
                         max_instance_size = len(value)
 
@@ -259,6 +264,18 @@ class HashedClozeReader:
                                             max_context_size, max_instance_size)
             yield train_batch, debug_data
             _clear()
+
+    def _get_slot_feature(self, slot):
+        """
+        Get the feature(s) related to the particular slot, based on the current
+        mode.
+        :param slot:
+        :return:
+        """
+        if self.fix_slot_mode:
+            return self.fix_slot_names.index(slot)
+        else:
+            return slot
 
     def _take_event_repr(self, predicate, frame_id, args):
         if self.fix_slot_mode:
@@ -317,6 +334,7 @@ class HashedClozeReader:
                     event_components.append(self.unobserved_fe)
                 event_components.append(self.unobserved_arg)
             else:
+                # Adding frame elements in argument representation.
                 if self.para.use_frame:
                     fe = arg['fe']
                     if fe == -1:
@@ -360,8 +378,8 @@ class HashedClozeReader:
         # NOTE: we have removed the check of "original span". It means that if
         # the system can predict the original phrase then it will be fine.
         # This might be OK since the model should not have access to the
-        # original span. And this is only to create a self-test, not in training
-        # or real testing.
+        # original span during real test time. At self-test stage, predicting
+        # the original span means the system is learning well.
         for doc_arg in doc_args:
             # This is the target argument replaced by another entity.
             update_arg = self.replace_slot_detail(test_stub, doc_arg, True)
@@ -514,35 +532,40 @@ class HashedClozeReader:
         :return:
         """
         args = []
-        if self.fix_slot_mode:
-            for slot, slot_args in event_args.items():
-                if len(slot_args) > 0:
-                    for arg in slot_args:
-                        if ignore_implicit and arg.get('implicit', False):
-                            continue
-                        else:
-                            args.append((slot, arg))
-                        break
+        # if self.frame_formalism == 'Propbank':
+        #     for slot, slot_args in event_args.items():
+        #         if len(slot_args) > 0:
+        #             for arg in slot_args:
+        #                 if ignore_implicit and arg.get('implicit', False):
+        #                     continue
+        #                 else:
+        #                     args.append((slot, arg))
+        #                 break
+        #         else:
+        #             args.append((slot, {}))
+        # else:
+        slot_args = {}
+        for slot, l_arg in event_args.items():
+            for a in l_arg:
+                if ignore_implicit and a.get('implicit', False):
+                    continue
                 else:
-                    args.append((slot, {}))
-        else:
-            fe_args = {}
-            for slot, l_arg in event_args.items():
-                for a in l_arg:
-                    if ignore_implicit and a.get('implicit', False):
-                        continue
+                    # Reading dynamic slots using the defined factor role.
+                    if self.factor_role:
+                        factor_role = a[self.factor_role]
                     else:
-                        # Reading dynamic slots using FEs.
-                        fe = a['fe']
-                        if fe not in fe_args:
-                            # Right now we just take one FE per slot.
-                            fe_args[fe] = a
-            args = list(fe_args.items())
+                        # If not defined, then used to dep slots as factor
+                        # role.
+                        factor_role = slot
+
+                    if factor_role not in slot_args:
+                        slot_args[factor_role] = a
+        args = list(slot_args.items())
         return args
 
     def get_dep_from_slot(self, event, slot):
         """
-        Given the predicate and a slot, how do we get the dependency to
+        Given the predicate and a slot, we compute the dependency used to
         create a dep-word.
         :param event:
         :param slot:
@@ -690,8 +713,9 @@ class HashedClozeReader:
                     print(target_slot)
                     print(test_stub)
                     print(answers)
-                    input('how do we get the dep?')
 
+                    # Fill the test_stub with all the possible args in this doc.
+                    # TODO: limit the distance here?
                     test_rank_list = self.create_slot_candidates(
                         test_stub, doc_args, pred_sent)
 
@@ -712,7 +736,7 @@ class HashedClozeReader:
                     instance_meta = []
 
                     cloze_event_indices = []
-                    cloze_slot_indices = []
+                    cloze_slot_indicator = []
 
                     limit = min(self.test_limit, len(test_rank_list))
 
@@ -720,10 +744,15 @@ class HashedClozeReader:
                         # Re-create the event arguments by adding the newly
                         # replaced one and the other old ones.
                         candidate_args = [(target_slot, cand_arg)]
+
                         # Add the remaining arguments.
                         for s, arg in arg_list:
-                            if not s == target_slot:
-                                candidate_args.append((s, arg))
+                            # TODO: some slots can be duplicating to the target slot?
+                            # TODO: the target is a string but s is not a hashed string yet.
+                            candidate_args.append((s, arg))
+
+                        pprint(candidate_args)
+                        input('take a look at the candidate args')
 
                         # Create the event instance representation.
                         self.assemble_instance(instance_data,
@@ -735,9 +764,16 @@ class HashedClozeReader:
                                                filler_eid)
 
                         cloze_event_indices.append(evm_index)
-                        cloze_slot_indices.append(
-                            self.cloze_data_slot_names.index(target_slot)
-                        )
+
+                        if self.fix_slot_mode:
+                            cloze_slot_indicator.append(
+                                self.fix_slot_names.index(target_slot)
+                            )
+                        else:
+                            # In a non fix slot mode, the first one is always
+                            # the candidate target, so this integer might not
+                            # be necessary.
+                            cloze_slot_indicator.append(0)
 
                         if filler_eid == ghost_entity_id:
                             candidate_meta.append(
@@ -770,7 +806,7 @@ class HashedClozeReader:
 
                     common_data = {
                         'event_indices': cloze_event_indices,
-                        'slot_indices': cloze_slot_indices,
+                        'slot_indicators': cloze_slot_indicator,
                     }
 
                     for context_eid, event_rep in enumerate(all_event_reps):
@@ -900,9 +936,9 @@ class HashedClozeReader:
 
         common_data = {
             'cross_event_indices': [],
-            'cross_slot_indices': [],
+            'cross_slot_indicators': [],
             'inside_event_indices': [],
-            'inside_slot_indices': [],
+            'inside_slot_indicators': [],
         }
 
         max_rep_value = 0
@@ -983,7 +1019,7 @@ class HashedClozeReader:
                                                 arg_index)
                 inside_sample = self.inside_cloze(sampler, arg_list, arg_index)
 
-                slot_index = self.cloze_data_slot_names.index(slot) if \
+                slot_index = self.fix_slot_names.index(slot) if \
                     self.fix_slot_mode else slot
 
                 if cross_sample:
@@ -1009,7 +1045,7 @@ class HashedClozeReader:
                     # the slot position. Otherwise, the slot_index is a way to
                     # represent the open-set slot types (such as FEs)
                     common_data['cross_event_indices'].append(evm_index)
-                    common_data['cross_slot_indices'].append(slot_index)
+                    common_data['cross_slot_indicators'].append(slot_index)
 
                 if inside_sample:
                     inside_args, inside_filler_id, swap_slot = inside_sample
@@ -1025,10 +1061,10 @@ class HashedClozeReader:
                                            current_sent, pred, event['frame'],
                                            arg_list, inside_filler_id)
                     common_data['inside_event_indices'].append(evm_index)
-                    common_data['inside_slot_indices'].append(slot_index)
+                    common_data['inside_slot_indicators'].append(slot_index)
 
-        if len(common_data['cross_slot_indices']) == 0 or \
-                len(common_data['inside_slot_indices']) == 0:
+        if len(common_data['cross_slot_indicators']) == 0 or \
+                len(common_data['inside_slot_indicators']) == 0:
             # Too few training instance.
             return None
 

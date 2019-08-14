@@ -117,3 +117,9 @@ class ArgModelPara(Configurable):
         config=True)
     w2v_event_repr = Unicode(help='Methods for creating the embedding.',
                              default_value='').tag(config=True)
+
+    gold_field_name = Unicode(help='Field name for the gold standard').tag(
+        config=True)
+    factor_role = Unicode(
+        help='The field name of the role that is used to modify the '
+             'argument string as factors').tag(config=True)
