@@ -4,16 +4,15 @@ from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
 from event.arguments.prepare import word_vocab
 from event.arguments import util
 from event.arguments.prepare.slot_processor import SlotHandler
-from collections import defaultdict, Counter
+from collections import Counter
 import json
 from traitlets import (
     Unicode
 )
-from traitlets.config.loader import PyFileConfigLoader
 from traitlets.config import Configurable
-import sys
 from pprint import pprint
 from event.io.dataset import utils as data_utils
+import logging
 
 
 def hash_context(word_emb_vocab, context):
@@ -24,8 +23,29 @@ def hash_context(word_emb_vocab, context):
             right]
 
 
+def get_propbank_role_index(slot_dep_map, role):
+    if role in slot_dep_map:
+        dep = slot_dep_map[role]
+        if dep == 'subj':
+            return 0
+        elif dep == 'obj':
+            return 1
+        else:
+            return 2
+    else:
+        return None
+
+
+def get_framenet_role_index(frame, role, event_emb_vocab, typed_event_vocab):
+    return event_emb_vocab.get_index(
+        typed_event_vocab.get_fe_rep(
+            frame, role, typed_event_vocab.oovs['fe']
+        )
+    )
+
+
 def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
-             typed_event_vocab, entity_represents):
+             typed_event_vocab, entity_represents, slot_dep_map=None):
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
 
@@ -50,6 +70,24 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
 
     hashed_arg = dict([(k, v) for (k, v) in arg.items()])
 
+    if 'gold_role' in hashed_arg:
+        if hash_params.frame_formalism == 'Propbank':
+            role_idx = get_propbank_role_index(
+                slot_dep_map, hashed_arg['gold_role'])
+            if role_idx is not None:
+                hashed_arg['gold_role_id'] = role_idx
+        elif hash_params.frame_formalism == 'Framenet':
+            hashed_arg['gold_role_id'] = event_emb_vocab.get_index(
+                typed_event_vocab.get_fe_rep(frame, hashed_arg['gold_role']),
+                typed_event_vocab.oovs['fe']
+            )
+
+            # TODO: since the frame here is not from gold, we somtimes cannot
+            # map the correct role here.
+            print(f"gold role id is {hashed_arg['gold_role_id']} "
+                  f"for {frame}:{hashed_arg['gold_role']} ")
+            input('wait')
+
     hashed_arg.pop('arg_context', None)
     hashed_arg.pop('role', None)
 
@@ -72,7 +110,7 @@ def overlap(begin1, end1, begin2, end2):
 
 
 def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
-                 typed_event_vocab, slot_handler, sent_starts):
+                 typed_event_vocab, slot_handler):
     hashed_doc = {
         'docid': docid,
         'events': [],
@@ -108,8 +146,12 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         implicit_slots_no_incorp = set()
         implicit_slots_all = set()
 
-        # Debug purpose.
         raw_pred = data_utils.nombank_pred_text(event['predicate'])
+
+        slot_dep_map = {}
+        if hash_params.frame_formalism == 'Propbank':
+            if raw_pred in slot_handler.nombank_mapping:
+                slot_dep_map = slot_handler.nombank_mapping[raw_pred][1]
 
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
@@ -118,18 +160,24 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
                 hashed_arg = hash_arg(
                     arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
-                    typed_event_vocab, entity_represents
+                    typed_event_vocab, entity_represents,
+                    slot_dep_map=slot_dep_map
                 )
 
                 hashed_arg_list.append(hashed_arg)
 
                 if hashed_arg['implicit']:
-                    implicit_slots_all.add(arg['gold_role'])
+                    if 'gold_role' not in arg:
+                        logging.warning(f'Gold role at filed '
+                                        f'{hash_params.gold_field_name} is NA.')
+                    else:
+                        gold_role = arg['gold_role']
+                        implicit_slots_all.add(gold_role)
 
-                    if not hashed_arg['incorporated']:
-                        implicit_slots_no_incorp.add(arg['gold_role'])
-                        if not hashed_arg['succeeding']:
-                            implicit_slots_preceed.add(arg['gold_role'])
+                        if not hashed_arg['incorporated']:
+                            implicit_slots_no_incorp.add(gold_role)
+                            if not hashed_arg['succeeding']:
+                                implicit_slots_preceed.add(gold_role)
             full_args[slot] = hashed_arg_list
 
         ###### Debug the argument counts ###########
@@ -188,7 +236,8 @@ def hash_data():
     print(f"{util.get_time()}: Start hashing")
     with gzip.open(hash_params.raw_data) as data_in, gzip.open(
             hash_params.output_path, 'w') as data_out:
-        for docid, events, entities, sentences in reader.read_events(data_in):
+        for docid, events, entities, sentences in reader.read_events(
+                data_in, hash_params.gold_field_name):
 
             offset = 0
             sent_starts = []
@@ -198,7 +247,7 @@ def hash_data():
 
             hashed_doc = hash_one_doc(
                 docid, events, entities, event_emb_vocab, word_emb_vocab,
-                typed_event_vocab, slot_handler, sent_starts)
+                typed_event_vocab, slot_handler)
 
             data_out.write((json.dumps(hashed_doc) + '\n').encode())
 
@@ -208,23 +257,6 @@ def hash_data():
             if doc_count % 1000 == 0:
                 print(f'{util.get_time()}: Hashed for {event_count} events in '
                       f'{doc_count} docs.\r', end='')
-
-            # for event, hashed_event in zip(events, hashed_doc['events']):
-            #     num_hashed_args = 0
-            #     for slot, l_arg in hashed_event['args'].items():
-            #         num_hashed_args += len(l_arg)
-            #
-            #     num_actual_args = len(event['arguments'])
-            #
-            #     if not num_hashed_args == num_actual_args:
-            #         print("=====Actual arguments======")
-            #         pprint(hashed_event['args'])
-            #         print("=====Hashed arguments======")
-            #         pprint(event['arguments'])
-            #
-            #         raise ValueError(
-            #             f'{num_hashed_args} hashed, '
-            #             f'{num_actual_args} can be found.')
 
     print(
         f'\nTotally {event_count} events and {doc_count} documents.'
@@ -250,8 +282,12 @@ class HashParam(Configurable):
     frame_files = Unicode(help="Frame file data.").tag(config=True)
     output_path = Unicode(
         help='Output path of the hashed data.').tag(config=True)
-    gold_field_name = Unicode(help='THe gold standard field.').tag(
+    gold_field_name = Unicode(help='The gold standard field.').tag(
         config=True)
+    frame_formalism = Unicode(
+        help='Which frame formalism is to predict the slots, currently support '
+             'FrameNet and Propbank', default_value='Propbank'
+    ).tag(config=True)
 
 
 if __name__ == '__main__':

@@ -116,7 +116,7 @@ class EventReader:
 
         return left_context, right_context
 
-    def read_events(self, data_in):
+    def read_events(self, data_in, gold_role_field):
         for line in data_in:
             doc = json.loads(line)
             doc_text = doc['text']
@@ -176,10 +176,6 @@ class EventReader:
                     else:
                         represent = arg_info['text']
 
-                    gold_role = arg_info.get('goldRole', 'NA')
-                    if not gold_role == 'NA':
-                        gold_role = gold_role.lower()
-
                     # TODO: can automate the field mapping here.
                     arg = {
                         'dep': revert_nmod(arg_info.get('dep', 'NA')),
@@ -192,11 +188,14 @@ class EventReader:
                         'sentence_id': arg_info['sentenceId'],
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
-                        'gold_role': gold_role,
                         'text': arg_info['text'],
                         'represent': represent,
                         'source': arg_info.get('source', 'NA'),
                     }
+
+                    gold_role = arg_info.get(gold_role_field, 'NA')
+                    if not gold_role == 'NA':
+                        arg['gold_role'] = gold_role
 
                     if 'isImplicit' in arg_info:
                         arg['implicit'] = arg_info['isImplicit']

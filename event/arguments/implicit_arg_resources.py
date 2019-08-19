@@ -67,8 +67,9 @@ class ImplicitArgResources(Configurable):
                                         hash_params.frame_dep_map,
                                         hash_params.dep_frame_map,
                                         hash_params.nom_map)
-        self.h_nom_map = self.hash_nom_mappings()
-        self.h_frame_dep_map, self.h_frame_fe_map = self.hash_frame_mappings()
+
+        self.h_nom_dep_map, self.h_nom_slots = self.hash_nom_mappings()
+        self.h_frame_dep_map, self.h_frame_slots = self.hash_frame_mappings()
 
     @staticmethod
     def count_predicates(vocab_file):
@@ -100,12 +101,22 @@ class ImplicitArgResources(Configurable):
                     h_frame_dep_map[(fid, fe, pred_id)] = dep
 
         frame_prior = self.slot_handler.frame_priority
-        h_frame_fe_map = {}
+
+        h_frame_slots = {}
+
         for frame_name, fes in frame_prior.items():
             fid = self.event_embed_vocab.get_index(frame_name, None)
-            h_frame_fe_map[fid] = [fe['fe_name'] for fe in fes]
+            h_frame_slots[fid] = []
 
-        return h_frame_dep_map, h_frame_fe_map
+            for fe in fes:
+                fe_name = fe['fe_name']
+                fe_id = self.event_embed_vocab.get_index(
+                    self.typed_event_vocab.get_fe_rep(frame_name, fe_name),
+                    self.typed_event_vocab.oovs['fe']
+                )
+                h_frame_slots[fid].append(fe_id)
+
+        return h_frame_dep_map, h_frame_slots
 
     def hash_nom_mappings(self):
         """
@@ -114,16 +125,24 @@ class ImplicitArgResources(Configurable):
         :return:
         """
         nom_map = self.slot_handler.nombank_mapping
-        hashed_map = {}
+
+        predicate_slots = {}
+        nom_dep_map = {}
+
         for nom, (verb_form, arg_map) in nom_map.items():
-            pred = self.typed_event_vocab.get_pred_rep(
+            pred_id = self.typed_event_vocab.get_pred_rep(
                 {'predicate': nom, 'verb_form': verb_form}
             )
 
-            hashed_map[pred] = {}
+            predicate_slots[pred_id] = []
+
             for arg_role, dep in arg_map.items():
-                hashed_map[(pred, arg_role)] = dep
-        return hashed_map
+                if not dep == '-':
+                    arg_index = int(arg_role[3:])
+                    predicate_slots[pred_id].append(arg_index)
+                    nom_dep_map[(pred_id, arg_index)] = dep
+
+        return nom_dep_map, predicate_slots
 
 
 def load_framenet_slots(framenet_path, event_emb_vocab):

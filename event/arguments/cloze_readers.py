@@ -67,12 +67,12 @@ class HashedClozeReader:
         self.frame_formalism = self.para.slot_frame_formalism
 
         self.frame_dep_map = resources.h_frame_dep_map
-        self.nom_dep_map = resources.h_nom_map
+        self.nom_dep_map = resources.h_nom_dep_map
 
         if self.para.slot_frame_formalism == 'FrameNet':
-            self.frame_slots = resources.h_frame_fe_map
+            self.frame_slots = resources.h_frame_slots
         elif self.para.slot_frame_formalism == 'Propbank':
-            self.frame_slots = resources.slot_handler.nombank_mapping
+            self.frame_slots = resources.h_nom_slots
         else:
             raise ValueError("Unknown frame formalism.")
 
@@ -328,7 +328,7 @@ class HashedClozeReader:
             fid = self.unk_frame_idx if frame_id == -1 else frame_id
             event_components.append(fid)
 
-        for slot, arg in args:
+        for _, arg in args:
             if len(arg) == 0:
                 if self.para.use_frame:
                     event_components.append(self.unobserved_fe)
@@ -422,7 +422,7 @@ class HashedClozeReader:
             'text': arg['arg_phrase']
         }
 
-    def get_test_cases(self, event, slot_names, eid_to_mentions=None):
+    def get_test_cases(self, event, possible_slots, eid_to_mentions=None):
         test_cases = []
 
         # First organize the roles by the gold role name.
@@ -452,7 +452,7 @@ class HashedClozeReader:
         # 4. Slot is not empty, but there are no other arguments besides this
         # one, so it is good to make a empty case.
 
-        for slot in slot_names:
+        for slot in possible_slots:
             dep = self.get_dep_from_slot(event, slot)
 
             no_fill_case = [
@@ -468,9 +468,7 @@ class HashedClozeReader:
                 }],
             ]
 
-            # The gold role is lower-cased at hashing.
-            slot_lower = slot.lower()
-            if slot_lower not in arg_by_slot:
+            if slot not in arg_by_slot:
                 # Case 1
                 if not self.auto_test:
                     test_cases.append(copy.deepcopy(no_fill_case))
@@ -479,7 +477,7 @@ class HashedClozeReader:
             answers = []
 
             # Take the annotated args in this slot.
-            args = arg_by_slot[slot_lower]
+            args = arg_by_slot[slot]
 
             for arg in args:
                 if self.auto_test:
@@ -531,19 +529,6 @@ class HashedClozeReader:
         :param ignore_implicit:
         :return:
         """
-        args = []
-        # if self.frame_formalism == 'Propbank':
-        #     for slot, slot_args in event_args.items():
-        #         if len(slot_args) > 0:
-        #             for arg in slot_args:
-        #                 if ignore_implicit and arg.get('implicit', False):
-        #                     continue
-        #                 else:
-        #                     args.append((slot, arg))
-        #                 break
-        #         else:
-        #             args.append((slot, {}))
-        # else:
         slot_args = {}
         for slot, l_arg in event_args.items():
             for a in l_arg:
@@ -599,12 +584,12 @@ class HashedClozeReader:
             if not frame == -1 and frame in self.frame_slots:
                 return self.frame_slots[frame]
         elif self.frame_formalism == 'Propbank':
-            slots = ['arg0', 'arg1', 'arg2', 'arg3', 'arg4']
             pred = event['predicate']
             if pred in self.frame_slots:
-                slots = [x for x in [self.frame_slots[pred][s] for s in slots]
-                         if not x == '-']
-                return slots
+                return self.frame_slots[pred]
+            else:
+                # If we do not have a specific mapping, return arg0 to arg2.
+                return [0, 1, 2]
 
         # Return an empty list set since we cannot handle this.
         return []
