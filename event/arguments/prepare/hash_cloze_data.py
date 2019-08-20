@@ -7,7 +7,7 @@ from event.arguments.prepare.slot_processor import SlotHandler
 from collections import Counter
 import json
 from traitlets import (
-    Unicode
+    Unicode, Bool
 )
 from traitlets.config import Configurable
 from pprint import pprint
@@ -82,12 +82,6 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
                 typed_event_vocab.oovs['fe']
             )
 
-            # TODO: since the frame here is not from gold, we somtimes cannot
-            # map the correct role here.
-            print(f"gold role id is {hashed_arg['gold_role_id']} "
-                  f"for {frame}:{hashed_arg['gold_role']} ")
-            input('wait')
-
     hashed_arg.pop('arg_context', None)
     hashed_arg.pop('role', None)
 
@@ -130,7 +124,11 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
     hashed_doc['entities'] = hashed_entities
 
     for event in events:
-        frame = event['frame']
+        if hash_params.use_gold_frame:
+            # The gold frame is stored at the event type section.
+            frame = event['event_type']
+        else:
+            frame = event['frame']
 
         pid = event_emb_vocab.get_index(
             typed_event_vocab.get_pred_rep(event), None)
@@ -169,7 +167,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 if hashed_arg['implicit']:
                     if 'gold_role' not in arg:
                         logging.warning(f'Gold role at filed '
-                                        f'{hash_params.gold_field_name} is NA.')
+                                        f'goldRole is NA.')
                     else:
                         gold_role = arg['gold_role']
                         implicit_slots_all.add(gold_role)
@@ -180,7 +178,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                                 implicit_slots_preceed.add(gold_role)
             full_args[slot] = hashed_arg_list
 
-        ###### Debug the argument counts ###########
         num_actual = len(event["arguments"])
         num_full_args = sum([len(l) for l in full_args.values()])
         num_mapped_args = sum([len(l) for l in mapped_args.values()])
@@ -193,15 +190,20 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
             pprint(full_args)
 
             raise ValueError("Incorrect argument numbers.")
-        ###### Debug the argument counts ###########
 
+        frame_key = None
         if event['is_target']:
-            stat_counters['predicate'][raw_pred] += 1
+            frame_key = raw_pred
+
+        if hash_params.use_gold_frame and not frame == 'Verbal':
+            frame_key = frame
+
+        if frame_key is not None:
+            stat_counters['predicate'][frame_key] += 1
             if len(implicit_slots_all) > 0:
-                stat_counters['implicit predicates'][raw_pred] += 1
-                stat_counters['implicit slots'][raw_pred] += len(
+                stat_counters['implicit predicates'][frame_key] += 1
+                stat_counters['implicit slots'][frame_key] += len(
                     implicit_slots_all)
-        ###### Debug the argument counts ###########
 
         context = hash_context(word_emb_vocab, event['predicate_context'])
 
@@ -237,7 +239,7 @@ def hash_data():
     with gzip.open(hash_params.raw_data) as data_in, gzip.open(
             hash_params.output_path, 'w') as data_out:
         for docid, events, entities, sentences in reader.read_events(
-                data_in, hash_params.gold_field_name):
+                data_in, 'goldRole'):
 
             offset = 0
             sent_starts = []
@@ -282,12 +284,13 @@ class HashParam(Configurable):
     frame_files = Unicode(help="Frame file data.").tag(config=True)
     output_path = Unicode(
         help='Output path of the hashed data.').tag(config=True)
-    gold_field_name = Unicode(help='The gold standard field.').tag(
-        config=True)
     frame_formalism = Unicode(
         help='Which frame formalism is to predict the slots, currently support '
              'FrameNet and Propbank', default_value='Propbank'
     ).tag(config=True)
+    use_gold_frame = Bool(
+        help='Use gold the gold frame produced by annotation',
+        default_value=False).tag(config=True)
 
 
 if __name__ == '__main__':

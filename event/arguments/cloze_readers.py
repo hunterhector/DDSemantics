@@ -649,7 +649,7 @@ class HashedClozeReader:
                     if 'ner' in arg:
                         doc_arg_info['ner'] = arg['ner']
 
-                    if not self.auto_test:
+                    if not self.auto_test and self.gold_role_field in arg:
                         doc_arg_info[self.gold_role_field] = arg[
                             self.gold_role_field
                         ]
@@ -694,10 +694,10 @@ class HashedClozeReader:
                     event, available_slots, eid_to_mentions):
 
                 if nid_detector.should_fill(event, target_slot, test_stub):
-                    print(event['predicate_text'], event['frame'])
-                    print(target_slot)
-                    print(test_stub)
-                    print(answers)
+                    # print(event['predicate_text'], event['frame'])
+                    # print(target_slot)
+                    # print(test_stub)
+                    # print(answers)
 
                     # Fill the test_stub with all the possible args in this doc.
                     # TODO: limit the distance here?
@@ -732,12 +732,11 @@ class HashedClozeReader:
 
                         # Add the remaining arguments.
                         for s, arg in arg_list:
-                            # TODO: some slots can be duplicating to the target slot?
-                            # TODO: the target is a string but s is not a hashed string yet.
-                            candidate_args.append((s, arg))
+                            if not s == target_slot:
+                                candidate_args.append((s, arg))
 
-                        pprint(candidate_args)
-                        input('take a look at the candidate args')
+                        # pprint(candidate_args)
+                        # input('take a look at the candidate args')
 
                         # Create the event instance representation.
                         self.assemble_instance(instance_data,

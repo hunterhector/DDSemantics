@@ -13,7 +13,7 @@ c.ArgModelPara.slot_frame_formalism = 'FrameNet'
 c.ArgModelPara.arg_representation_method = 'role_dynamic'
 
 
-c.Basic.test_in = os.path.join(base, 'semeval2010t10_test', 'processed',
+c.Basic.test_in = os.path.join(base, 'semeval2010t10_train', 'processed',
                                'cloze_hashed.json.gz')
 c.Basic.factor_role = 'fe'
 

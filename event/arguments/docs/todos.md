@@ -1,5 +1,12 @@
 # List of TODOs 
 
+1. Frame is incorrect:
+   1. I saw: ```[{'predicate': 'front', 'predicate_idx': 997, 'target_slot': 293, 'answers': [{'span': (172, 234), 'text': 'a low , dark house , pitchblack against a slate-coloured sky .'}]}]```
+   1. But predicate front should correspond to "Front_for".. whe target slot here is "Self_motion.Self_mover"
+1. We are using FrameName:FE_Name format for roles in framenet, but this make the data more sparse:
+   1. Distance is a frame element role name in Self_motion, but Self_motion:Distance is never observed
+   1. Distance is observed multiple times in other places, so it is reasonable to reuse it.
+   1. Concern: some Distance role are different, such as Time_Vector:Distance
 1. ~~Rename propbank_role to slot_name~~
 1. The test case from the GC data seem to have two problems:
     1. The dep for testing is too simplified (only prep)
