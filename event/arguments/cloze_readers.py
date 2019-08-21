@@ -690,14 +690,16 @@ class HashedClozeReader:
 
             available_slots = self.get_predicate_slots(event)
 
+            pprint(event)
+
             for target_slot, test_stub, answers in self.get_test_cases(
                     event, available_slots, eid_to_mentions):
 
                 if nid_detector.should_fill(event, target_slot, test_stub):
-                    # print(event['predicate_text'], event['frame'])
-                    # print(target_slot)
-                    # print(test_stub)
-                    # print(answers)
+                    print(event['predicate_text'], event['frame'])
+                    print(target_slot)
+                    print(test_stub)
+                    print(answers)
 
                     # Fill the test_stub with all the possible args in this doc.
                     # TODO: limit the distance here?
@@ -795,10 +797,14 @@ class HashedClozeReader:
 
                     for context_eid, event_rep in enumerate(all_event_reps):
                         for key, value in event_rep.items():
+                            print('Event rep value is ', value)
+                            print('Adding event rep with key ', key)
                             try:
                                 common_data['context_' + key].append(value)
                             except KeyError:
                                 common_data['context_' + key] = [value]
+
+                            input('check')
 
                     if len(cloze_event_indices) > 0:
                         yield (instance_data, common_data,
@@ -825,6 +831,7 @@ class HashedClozeReader:
 
                 # Create a pseudo batch with one instance.
                 for key, value in common_data.items():
+                    print(f'setting {key} with {value}')
                     vectorized = to_torch([value], self.__data_types[key])
                     b_common_data[key] = batch_combine(vectorized, self.device)
 

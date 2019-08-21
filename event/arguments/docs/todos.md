@@ -1,16 +1,12 @@
 # List of TODOs 
 
-1. Frame is incorrect:
-   1. I saw: ```[{'predicate': 'front', 'predicate_idx': 997, 'target_slot': 293, 'answers': [{'span': (172, 234), 'text': 'a low , dark house , pitchblack against a slate-coloured sky .'}]}]```
-   1. But predicate front should correspond to "Front_for".. whe target slot here is "Self_motion.Self_mover"
+1. ~~Frame is incorrect:~~
+   1. ~~I saw: ```[{'predicate': 'front', 'predicate_idx': 997, 'target_slot': 293, 'answers': [{'span': (172, 234), 'text': 'a low , dark house , pitchblack against a slate-coloured sky .'}]}]```~~
+   1. ~~It seems that the system have merged many different frames together~~
 1. We are using FrameName:FE_Name format for roles in framenet, but this make the data more sparse:
    1. Distance is a frame element role name in Self_motion, but Self_motion:Distance is never observed
    1. Distance is observed multiple times in other places, so it is reasonable to reuse it.
    1. Concern: some Distance role are different, such as Time_Vector:Distance
-1. ~~Rename propbank_role to slot_name~~
-1. The test case from the GC data seem to have two problems:
-    1. The dep for testing is too simplified (only prep)
-    1. Some answers seem to be wrong too.
 1. During training, two verbs may share the same exact span, this could be an
  important source of information, but the standard way of creating cloze task
   is to remove the span, hence the information is lost.
@@ -123,3 +119,7 @@ same text, this should be an inconsistent in head finding.~~
     - ~~the auto cloze data now points to "with", "by", "to", "on", "from"~~
     - ~~"who" can be pointed to the actual content, in fact, in gold, we sometimes 
     can see "who" being used as the i_arg, but we can find its appositive.~~
+1. ~~Rename propbank_role to slot_name~~
+1. ~~The test case from the GC data seem to have two problems:~~
+    1. ~~The dep for testing is too simplified (only prep)~~
+    1. ~~Some answers seem to be wrong too.~~

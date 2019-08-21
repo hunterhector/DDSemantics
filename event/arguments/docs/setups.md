@@ -40,3 +40,11 @@ Test set setups:
         1. Use different conf will use different vocab (filter or not) 
         1. ```python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash.py --HashParam.raw_data=cloze.json.gz --HashParam.output_path=cloze_hashed.json.gz```
         1. Or simply ```scripts/hash_test_data.sh```
+
+Data format:
+1. The data format for test data is messy because it is a mixture of system 
+output and gold standard output, for example:
+    1. Front is detected as "Front_for", the actual frame is "Part_orientational"
+    1. In the data (json) file, "Front_for" is put at the frame slot, where the 
+    actual frame is put at the "eventType" slot.
+    
