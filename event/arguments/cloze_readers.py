@@ -756,9 +756,9 @@ class HashedClozeReader:
                                 self.fix_slot_names.index(target_slot)
                             )
                         else:
-                            # In a non fix slot mode, the first one is always
-                            # the candidate target, so this integer might not
-                            # be necessary.
+                            # In dynamic slot mode, the first one is always
+                            # the candidate target, so we need a special marker
+                            # for it.
                             cloze_slot_indicator.append(0)
 
                         if filler_eid == ghost_entity_id:

@@ -193,7 +193,7 @@ class ArgCompositionModel(nn.Module):
         if self.arg_representation_method == 'fix_slots':
             self._setup_fix_slot_mlp(para)
         elif self.arg_representation_method == 'role_dynamic':
-            self._setup_role_based_attention(para)
+            self._setup_dynamic_repr_layer(para)
         else:
             raise ValueError(f"Unknown arg representation method"
                              f" {self.arg_representation_method}")
@@ -205,15 +205,18 @@ class ArgCompositionModel(nn.Module):
         self.arg_comp_layers = _config_mlp(
             emb_size, para.arg_composition_layer_sizes)
 
-    def _setup_role_based_attention(self, para):
-        self.attention_method = para.role_compose_attention_method
+    def _setup_dynamic_repr_layer(self, para):
+        self.arg_repr_attention = para.role_compose_attention_method
 
-        if self.attention_method == 'biaffine':
+        if self.arg_repr_attention == 'biaffine':
             self.role_attention_biaffine = nn.Linear(
                 para.event_embedding_dim,
                 para.event_embedding_dim
             )
-        elif self.attention_method == 'dotproduct':
+        elif self.arg_repr_attention == 'dotproduct':
+            pass
+        elif self.arg_repr_attention == 'mlp':
+            d
             pass
         else:
             raise NotImplementedError(
@@ -237,22 +240,26 @@ class ArgCompositionModel(nn.Module):
             return _mlp(self.arg_comp_layers, flatten_event_emb)
         elif self.arg_representation_method == 'role_dynamic':
             event_data = input[0]
+            # Note ``event_data['predicates']`` is still multi-dimensional
+            # since we can have a verb and a frame component.
             pred_emb = event_data['predicates']
             flatten_embedding_size = pred_emb.size()[-1] * pred_emb.size()[-2]
             flatten_event_emb = pred_emb.view(
                 pred_emb.size()[0], -1, flatten_embedding_size)
 
+            # batch x #instance x embedding_size
             slot_emb = event_data['slots']
+            # batch x #instance x unk_slot_num x embedding_size
             slot_values = event_data['slot_values']
 
-            if self.attention_method == 'biaffine':
+            if self.arg_repr_attention == 'biaffine':
                 att_slot_emb = torch.bmm(self.role_attention_biaffine(slot_emb),
                                          slot_values)
-            elif self.attention_method == 'dotproduct':
+            elif self.arg_repr_attention == 'dotproduct':
                 att_slot_emb = torch.bmm(slot_emb, slot_values)
             else:
                 raise NotImplementedError(
-                    f"Unknown attention method {self.attention_method}")
+                    f"Unknown attention method {self.arg_repr_attention}")
 
             combined_event_emb = torch.cat(
                 (flatten_event_emb, att_slot_emb), -1
@@ -288,9 +295,9 @@ class EventCoherenceModel(ArgCompatibleModel):
         super(EventCoherenceModel, self).__init__(para, resources, device,
                                                   model_name)
         logger.info(f"Pair composition network {model_name} started, "
-                     f"with {self.para.num_extracted_features} extracted"
-                     f" features and {self.para.num_distance_features} "
-                     f"distance features.")
+                    f"with {self.para.num_extracted_features} extracted"
+                    f" features and {self.para.num_distance_features} "
+                    f"distance features.")
 
         self.arg_composition_model = ArgCompositionModel(para, resources)
 
@@ -492,17 +499,19 @@ class EventCoherenceModel(ArgCompatibleModel):
         batch_features = batch_event_data['features']
 
         # batch x context_size x event_component
-        # batch x instance_size
-        batch_slots = batch_info['slot_indices']
+
         # batch x instance_size
         batch_event_indices = batch_info['event_indices']
+
+        if self.para.arg_representation_method == 'fix_slots':
+            # batch x instance_size
+            batch_slots = batch_info['slot_indicators']
 
         # Create one hot features from index.
         # batch x instance_size x num_slots
         slot_indicator = torch.zeros(
             batch_slots.shape[0], batch_slots.shape[1], self.num_slots
         ).to(self.device)
-
         slot_indicator.scatter_(2, batch_slots.unsqueeze(2), 1)
         l_extracted = [batch_features, slot_indicator]
 
