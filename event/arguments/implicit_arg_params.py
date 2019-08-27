@@ -57,11 +57,15 @@ class ArgModelPara(Configurable):
         help='The method used to represent the argument slots.').tag(
         config=True)
 
-    # If we use role_dynamic, then what's the attention method?
+    # If we use role_dynamic, then how is the role combined to the arg?
     # Choices:
     # 1. biaffine
     # 2. dot product
-    role_compose_attention_method = 'biaffine'
+    # 3. add
+    # 4. concat
+    arg_role_combine_func = 'biaffine'
+    # role_compose_attention_method = 'biaffine' : renamed
+
 
     arg_composition_layer_sizes = List(
         Int, default_value=[600, 300],

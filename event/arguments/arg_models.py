@@ -2,8 +2,13 @@ from torch import nn
 from torch.nn import functional as F
 import torch
 import logging
+from texar.torch.modules.encoders import TransformerEncoder
+from texar.torch.modules.embedders import EmbedderBase
+
 from event.nn.models import KernelPooling
 from event import torch_util
+from conf.texar import transformer_config
+from event.arguments.implicit_arg_params import ArgModelPara
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +190,81 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         return pooled
 
 
+class ArgPositionEmbedder(EmbedderBase):
+    """
+    Embedder for argument slots. This can be an embeder for the frame slots, or
+    an embeder for theargument positions as well.
+    """
+
+    def __init__(self, embeddings, hparams=None):
+        super().__init__(hparams=None)
+        # The embedding dimension.
+        self._dim = hparams.dim
+        self._embeddings = embeddings
+
+    @property
+    def output_size(self) -> int:
+        return self._dim
+
+    def forward(self, role_indices: torch.LongTensor) -> torch.Tensor:
+        """
+        Embed a list of slot role indices into the role embeddings.
+        :param role_indices: Input is the a tensor of the role ids, in the
+        shape of batch x sequence_length
+        :return: A embedded tensor of shape batch x sequence_length x embedding_dim
+        """
+        return self._embeddings(role_indices)
+
+
+class RoleArgCombineModule(nn.Module):
+    def __init__(self, role_combine_method, embedding_dim):
+        super().__init__()
+        self._role_combine_method = role_combine_method
+
+        self.combine_layers = None
+        if self._role_combine_method == 'biaffine':
+            self.combine_layers = nn.Linear(
+                embedding_dim, embedding_dim
+            )
+        elif self._role_combine_method == 'mlp':
+            self.combine_layers = _config_mlp(
+                embedding_dim * 2, embedding_dim)
+
+    def forward(self, role_repr, arg_repr):
+        if self._role_combine_method == 'biaffine':
+            return torch.bmm(self.combine_layers(role_repr), arg_repr)
+        elif self._role_combine_method == 'add':
+            return role_repr + arg_repr
+        elif self._role_combine_method == 'dot':
+            return role_repr * arg_repr
+        elif self._role_combine_method == 'mlp':
+            return _mlp(self.combine_layers, torch.cat(role_repr, arg_repr))
+
+
+class ArgRoleTransformer(nn.Module):
+    def __init__(self, para: ArgModelPara):
+        super().__init__()
+
+        # Texar module are subclass of Pytorch Modules.
+        self.transformer = TransformerEncoder(
+            hparams=transformer_config,
+        )
+        self.role_arg_combiner = RoleArgCombineModule(
+            para.arg_role_combine_func, para.event_embedding_dim)
+
+    def forward(self, role_repr, arg_repr):
+        """
+        Compute the transformer encoded output of roles and the args.
+        :param role_repr: A tensor of the role representations of shape
+            batch x num_roles x embedding_dim
+        :param arg_repr: A tensor of the arg representations of shape
+            batch x num_roles x embedding_dim
+        :return: The combined and pooled result of the argument and role pairs.
+        """
+        combined_arg_role = self.role_arg_combiner(role_repr, arg_repr)
+        return self.transformer(combined_arg_role)
+
+
 class ArgCompositionModel(nn.Module):
     def __init__(self, para, resources):
         super(ArgCompositionModel, self).__init__()
@@ -206,22 +286,7 @@ class ArgCompositionModel(nn.Module):
             emb_size, para.arg_composition_layer_sizes)
 
     def _setup_dynamic_repr_layer(self, para):
-        self.arg_repr_attention = para.role_compose_attention_method
-
-        if self.arg_repr_attention == 'biaffine':
-            self.role_attention_biaffine = nn.Linear(
-                para.event_embedding_dim,
-                para.event_embedding_dim
-            )
-        elif self.arg_repr_attention == 'dotproduct':
-            pass
-        elif self.arg_repr_attention == 'mlp':
-            d
-            pass
-        else:
-            raise NotImplementedError(
-                f"Not implemented role compose "
-                f"method {para.role_compose_attention_method}")
+        self.arg_role_comp_layers = ArgRoleTransformer(para)
 
         # 3 components: predicate, frame, and the combined arguments.
         num_components = 3

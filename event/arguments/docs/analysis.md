@@ -29,3 +29,12 @@
         - cost-of
     - first, we need to capture all the structures
     - second, we need to have reasoning mechanisms
+1. The usage of the Argument Index as a feature
+    - The feature should rank the negative argument higher than the positive
+    - When we are replacing the argument at the same slot, the argument index 
+    should make few contribution:
+        - Since the event representation is constructed with fixed slots, so
+          the information of each slot should be already fixed.
+        - The multi-layer network may cause some interaction of this feature.
+        - In the frame mode, the extra feature can be the FE vector.
+        - In the frame mode, the event representation is done auto-regressively.
