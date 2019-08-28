@@ -223,46 +223,60 @@ class RoleArgCombineModule(nn.Module):
 
         self.combine_layers = None
         if self._role_combine_method == 'biaffine':
-            self.combine_layers = nn.Linear(
-                embedding_dim, embedding_dim
-            )
+            self.combine_layers = Biaffine(embedding_dim, embedding_dim)
         elif self._role_combine_method == 'mlp':
-            self.combine_layers = _config_mlp(
-                embedding_dim * 2, embedding_dim)
+            self.combine_layers = MLP(embedding_dim * 2, embedding_dim)
 
     def forward(self, role_repr, arg_repr):
         if self._role_combine_method == 'biaffine':
-            return torch.bmm(self.combine_layers(role_repr), arg_repr)
+            return self.combine_layers(role_repr, arg_repr)
         elif self._role_combine_method == 'add':
             return role_repr + arg_repr
         elif self._role_combine_method == 'dot':
             return role_repr * arg_repr
         elif self._role_combine_method == 'mlp':
-            return _mlp(self.combine_layers, torch.cat(role_repr, arg_repr))
+            return self.combine_layers(role_repr, arg_repr)
+        elif self._role_combine_method == 'cat':
+            return torch.cat((role_repr, arg_repr), -1)
 
 
-class ArgRoleTransformer(nn.Module):
+class EventReprTransformer(nn.Module):
     def __init__(self, para: ArgModelPara):
         super().__init__()
 
         # Texar module are subclass of Pytorch Modules.
-        self.transformer = TransformerEncoder(
+        self._transformer = TransformerEncoder(
             hparams=transformer_config,
         )
-        self.role_arg_combiner = RoleArgCombineModule(
+        self._role_arg_combiner = RoleArgCombineModule(
             para.arg_role_combine_func, para.event_embedding_dim)
 
-    def forward(self, role_repr, arg_repr):
+        # Project the predicate and arguments through the MLP.
+        # self._pred_arg_mlp = _config_mlp(
+        #     para.event_embedding_dim * 3, para.arg_composition_layer_sizes
+        # )
+
+        self._pred_arg_mlp = MLP(para.event_embedding_dim * 3,
+                                 para.arg_composition_layer_sizes)
+
+    def forward(self, predicate_repr, role_repr, arg_repr):
         """
         Compute the transformer encoded output of roles and the args.
+        :param predicate_repr: A tensor of the predicate representation of shape
+            batch x embedding_dim
         :param role_repr: A tensor of the role representations of shape
             batch x num_roles x embedding_dim
         :param arg_repr: A tensor of the arg representations of shape
             batch x num_roles x embedding_dim
-        :return: The combined and pooled result of the argument and role pairs.
+        :return: The combined and pooled result of the argument and role pairs,
+        of shape batch x embedding_dim
         """
-        combined_arg_role = self.role_arg_combiner(role_repr, arg_repr)
-        return self.transformer(combined_arg_role)
+        combined_arg_role = self._role_arg_combiner(role_repr, arg_repr)
+        # Self-attention version of the args and roles, we now average it.
+        # shape: batch x length x embedding_size
+        self_att_args = self._transformer(combined_arg_role).mean(1)
+
+        return self._pred_arg_mlp(predicate_repr, self_att_args)
 
 
 class ArgCompositionModel(nn.Module):
@@ -271,9 +285,9 @@ class ArgCompositionModel(nn.Module):
         self.arg_representation_method = para.arg_representation_method
 
         if self.arg_representation_method == 'fix_slots':
-            self._setup_fix_slot_mlp(para)
+            self.arg_comp = self._setup_fix_slot_mlp(para)
         elif self.arg_representation_method == 'role_dynamic':
-            self._setup_dynamic_repr_layer(para)
+            self.arg_comp = EventReprTransformer(para)
         else:
             raise ValueError(f"Unknown arg representation method"
                              f" {self.arg_representation_method}")
@@ -282,34 +296,22 @@ class ArgCompositionModel(nn.Module):
         component_per = 2 if para.use_frame else 1
         num_event_components = (1 + para.num_slots) * component_per
         emb_size = num_event_components * para.event_embedding_dim
-        self.arg_comp_layers = _config_mlp(
-            emb_size, para.arg_composition_layer_sizes)
-
-    def _setup_dynamic_repr_layer(self, para):
-        self.arg_role_comp_layers = ArgRoleTransformer(para)
-
-        # 3 components: predicate, frame, and the combined arguments.
-        num_components = 3
-        emb_size = num_components * para.event_embedding_dim
-
-        self.arg_comp_layers = _config_mlp(
-            emb_size, para.arg_composition_layer_sizes
-        )
+        return MLP(emb_size, para.arg_composition_layer_sizes)
 
     def forward(self, *input):
         if self.arg_representation_method == 'fix_slots':
             event_emb = input[0]
             flatten_embedding_size = event_emb.size()[-1] * event_emb.size()[-2]
-            flatten_event_emb = event_emb.view(
+            flatten_pred_emb = event_emb.view(
                 event_emb.size()[0], -1, flatten_embedding_size)
-            return _mlp(self.arg_comp_layers, flatten_event_emb)
+            return self.arg_comp(flatten_pred_emb)
         elif self.arg_representation_method == 'role_dynamic':
             event_data = input[0]
             # Note ``event_data['predicates']`` is still multi-dimensional
             # since we can have a verb and a frame component.
             pred_emb = event_data['predicates']
             flatten_embedding_size = pred_emb.size()[-1] * pred_emb.size()[-2]
-            flatten_event_emb = pred_emb.view(
+            flatten_pred_emb = pred_emb.view(
                 pred_emb.size()[0], -1, flatten_embedding_size)
 
             # batch x #instance x embedding_size
@@ -317,42 +319,125 @@ class ArgCompositionModel(nn.Module):
             # batch x #instance x unk_slot_num x embedding_size
             slot_values = event_data['slot_values']
 
-            if self.arg_repr_attention == 'biaffine':
-                att_slot_emb = torch.bmm(self.role_attention_biaffine(slot_emb),
-                                         slot_values)
-            elif self.arg_repr_attention == 'dotproduct':
-                att_slot_emb = torch.bmm(slot_emb, slot_values)
-            else:
-                raise NotImplementedError(
-                    f"Unknown attention method {self.arg_repr_attention}")
+            return self.arg_comp(flatten_pred_emb, slot_emb, slot_values)
 
-            combined_event_emb = torch.cat(
-                (flatten_event_emb, att_slot_emb), -1
+
+class MLP(nn.Module):
+    def __init__(self, input_hidden_size, output_sizes):
+        super().__init__()
+        self.layers = nn.ModuleList
+        input_size = input_hidden_size
+        for output_size in output_sizes:
+            self.layers.append(nn.Linear(input_size, output_size))
+            input_size = output_size
+
+    def forward(self, *input_data, activation=F.relu):
+        _data = torch.cat(input_data, -1)
+
+        for layer in self.layers:
+            _data = activation(layer(_data))
+        return _data
+
+
+class Biaffine(nn.Module):
+    def __init__(self, size_l, size_b):
+        super(Biaffine, self).__init__()
+        self._m_affine = self.Linear(size_l, size_b)
+
+    def forward(self, tensor_l: torch.Tensor, tensor_r: torch.Tensor):
+        return torch.bmm(self._m_affine(tensor_l), tensor_r)
+
+
+class EventContextAttentionPool(nn.Module):
+    def __init__(self, para: ArgModelPara):
+        super().__init__()
+
+        # Config feature size.
+        self._vote_pool_type = para.vote_pooling
+        if self._vote_pool_type == 'kernel':
+            self._kp = KernelPooling()
+        elif self._vote_pool_type == 'topk':
+            self._pool_topk = para.pool_topk
+
+        self._vote_method = para.vote_method
+
+        if self._vote_method == 'biaffine':
+            self.event_vote_layer = nn.Linear(self.para.event_embedding_dim,
+                                              self.para.event_embedding_dim)
+        elif self._vote_method == 'mlp':
+            raise NotImplementedError("MLP not yet supported when voting.")
+
+    def _context_vote(self, nom_event_emb, nom_context_emb):
+        # First compute the trans matrix between events and the context.
+        context_trans = nom_context_emb.transpose(-2, -1)
+        if self._vote_method == 'cosine':
+            # Normalized dot product is cosine.
+            trans = torch.bmm(nom_event_emb, context_trans)
+        elif self._vote_method == 'biaffine':
+            trans = torch.bmm(self.biaffine_att_layer(nom_event_emb),
+                              context_trans)
+        elif self._vote_method == 'mlp':
+            raise NotImplementedError("MLP not yet supported when voting.")
+        else:
+            raise ValueError(
+                'Unknown vote computation method {}'.format(self._vote_method)
             )
+        return trans
 
-            return _mlp(self.arg_comp_layers, combined_event_emb)
+    def forward(self, event_emb, context_emb, self_avoid_mask):
+        """
+        Compute the contextual scores in the attentive way, i.e., computing
+        some cross scores between the two representations.
+        :param event_emb:
+        :param context_emb:
+        :param self_avoid_mask: mask of shape event_size x context_size, each
+        row is contain only one zero that indicate which context should not be
+        used.
+        :return:
+        """
+        nom_event_emb = F.normalize(event_emb, 2, -1)
+        nom_context_emb = F.normalize(context_emb, 2, -1)
 
+        trans = self._context_vote(nom_event_emb, nom_context_emb)
 
-def _config_mlp(input_hidden_size, output_sizes):
-    """
-    Set up some MLP layers.
-    :param input_hidden_size: The input feature size.
-    :param output_sizes: A list of output feature size, for each layer.
-    :return:
-    """
-    layers = []
-    input_size = input_hidden_size
-    for output_size in output_sizes:
-        layers.append(nn.Linear(input_size, output_size))
-        input_size = output_size
-    return nn.ModuleList(layers)
+        if self.__debug_show_shapes:
+            print("Event context similarity:")
+            print(trans.shape)
 
+            print("Avoidance mask:")
+            print(self_avoid_mask.shape)
+            print(self_avoid_mask.dtype)
 
-def _mlp(layers, input_data, activation=F.relu):
-    data = input_data
-    for layer in layers:
-        data = activation(layer(data))
-    return data
+            print("Using the mask")
+
+            print(trans.shape)
+            print(self_avoid_mask.shape)
+
+            print("Filter with selecting matrix")
+
+        # Make the self score zero.
+        trans = trans * self_avoid_mask
+
+        if self._vote_pool_type == 'kernel':
+            pooled_value = self._kp(trans)
+        elif self._vote_pool_type == 'max':
+            pooled_value, _ = trans.max(2, keepdim=True)
+        elif self._vote_pool_type == 'average':
+            pooled_value = trans.mean(2, keepdim=True)
+        elif self._vote_pool_type == 'topk':
+            if trans.shape[2] >= self._pool_topk:
+                pooled_value, _ = trans.topk(self._pool_topk, 2,
+                                             largest=True)
+            else:
+                added = torch.zeros(
+                    (trans.shape[0], trans.shape[1],
+                     self._pool_topk - trans.shape[2])).to(self.device)
+                pooled_value = torch.cat((trans, added), -1)
+        else:
+            raise ValueError(
+                'Unknown pool type {}'.format(self._vote_pool_type)
+            )
+        return pooled_value
 
 
 class EventCoherenceModel(ArgCompatibleModel):
@@ -365,16 +450,17 @@ class EventCoherenceModel(ArgCompatibleModel):
                     f"distance features.")
 
         self.arg_composition_model = ArgCompositionModel(para, resources)
+        self.context_vote_layer = EventContextAttentionPool(para)
 
-        composed_event_dim = para.arg_composition_layer_sizes[-1]
+        # Number of extracted features,
+        feature_size = self.para.num_extracted_features
 
-        self.event_composition_layers = _config_mlp(
-            composed_event_dim + para.num_extracted_features + 9,
-            para.event_composition_layer_sizes
-        )
-
-        # Number of extracted features, and dim for 1-hot slot position feature.
-        feature_size = self.para.num_extracted_features + self.num_slots
+        # Dim for 1-hot slot position feature.
+        if self.para.arg_representation_method == 'fix_slots':
+            feature_size += self.num_slots
+        else:
+            # Dim for the FE representation.
+            feature_size += self.para.event_embedding_dim
 
         # Config feature size.
         self._vote_pool_type = para.vote_pooling
@@ -395,20 +481,7 @@ class EventCoherenceModel(ArgCompatibleModel):
                 self.para.event_embedding_dim, 9
             )
 
-        self._vote_method = para.vote_method
-
-        if self._vote_method == 'biaffine':
-            # Use the linear layer to simulate the middle tensor.
-            self.biaffine_att_layer = nn.Linear(self.para.event_embedding_dim,
-                                                self.para.event_embedding_dim)
-        elif self._vote_method == 'mlp':
-            self.mlp_att = _config_mlp(self.para.event_embedding_dim * 2,
-                                       [1])
-
         self._linear_combine = nn.Linear(feature_size, 1)
-
-        # Method to generate coherent features.
-        self.coh = self._attentive_contextual_score
 
         if para.loss == 'cross_entropy':
             self.normalize_score = True
