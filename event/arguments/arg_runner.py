@@ -298,9 +298,13 @@ class ArgRunner(Configurable):
 
     def __load_best(self):
         best_model_path = os.path.join(self.model_dir, self.best_model_name)
-        logger.info("Loading best model from '{}'".format(best_model_path))
-        checkpoint = torch.load(best_model_path)
-        self.model.load_state_dict(checkpoint['state_dict'])
+        if os.path.exists(best_model_path):
+            logger.info("Loading best model from '{}'".format(best_model_path))
+            checkpoint = torch.load(best_model_path)
+            self.model.load_state_dict(checkpoint['state_dict'])
+        else:
+            logger.warning(
+                "Serialized model not existing, test without loading.")
 
     def __test(self, model, test_lines, nid_detector, auto_test=False,
                eval_dir=None):
@@ -497,7 +501,7 @@ class ArgRunner(Configurable):
             ),
         )
 
-    def test(self, test_in, eval_dir, gold_field_name):
+    def test(self, test_in, eval_dir):
         logger.info("Test on [%s]." % test_in)
         self.__load_best()
         self.__test(self.model, data_gen(test_in), self.nid_detector,

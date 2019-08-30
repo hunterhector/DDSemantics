@@ -23,6 +23,7 @@ c.ArgModelPara.loss = 'cross_entropy'
 c.ArgModelPara.vote_method = 'cosine'
 c.ArgModelPara.vote_pooling = 'kernel'
 # c.ArgModelPara.encode_distance = 'gaussian'
+c.ArgModelPara.arg_role_combine_func = ''
 c.ArgModelPara.num_distance_features = 9
 
 # How to detect Null Instantiation.

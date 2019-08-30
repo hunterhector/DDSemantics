@@ -60,12 +60,12 @@ class ArgModelPara(Configurable):
     # If we use role_dynamic, then how is the role combined to the arg?
     # Choices:
     # 1. biaffine
-    # 2. dot product
+    # 2. dot
     # 3. add
-    # 4. concat
-    arg_role_combine_func = 'biaffine'
-    # role_compose_attention_method = 'biaffine' : renamed
-
+    # 4. cat
+    arg_role_combine_func = Unicode(
+        help='Argument role combiner function.', default_value='biaffine'
+    ).tag(config=True)
 
     arg_composition_layer_sizes = List(
         Int, default_value=[600, 300],

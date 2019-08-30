@@ -7,8 +7,9 @@ from texar.torch.modules.embedders import EmbedderBase
 
 from event.nn.models import KernelPooling
 from event import torch_util
-from conf.texar import transformer_config
+from conf.implicit import texar_config
 from event.arguments.implicit_arg_params import ArgModelPara
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -240,24 +241,20 @@ class RoleArgCombineModule(nn.Module):
             return torch.cat((role_repr, arg_repr), -1)
 
 
-class EventReprTransformer(nn.Module):
+class DynamicEventReprModule(nn.Module):
     def __init__(self, para: ArgModelPara):
         super().__init__()
 
         # Texar module are subclass of Pytorch Modules.
         self._transformer = TransformerEncoder(
-            hparams=transformer_config,
+            hparams=texar_config.arg_transformer,
         )
         self._role_arg_combiner = RoleArgCombineModule(
             para.arg_role_combine_func, para.event_embedding_dim)
 
-        # Project the predicate and arguments through the MLP.
-        # self._pred_arg_mlp = _config_mlp(
-        #     para.event_embedding_dim * 3, para.arg_composition_layer_sizes
-        # )
-
         self._pred_arg_mlp = MLP(para.event_embedding_dim * 3,
                                  para.arg_composition_layer_sizes)
+        self.output_dim = para.arg_composition_layer_sizes[-1]
 
     def forward(self, predicate_repr, role_repr, arg_repr):
         """
@@ -286,8 +283,10 @@ class ArgCompositionModel(nn.Module):
 
         if self.arg_representation_method == 'fix_slots':
             self.arg_comp = self._setup_fix_slot_mlp(para)
+            self.output_dim = self.para.arg_composition_layer_sizes[-1]
         elif self.arg_representation_method == 'role_dynamic':
-            self.arg_comp = EventReprTransformer(para)
+            self.arg_comp = DynamicEventReprModule(para)
+            self.output_dim = self.arg_comp.output_dim
         else:
             raise ValueError(f"Unknown arg representation method"
                              f" {self.arg_representation_method}")
@@ -325,7 +324,7 @@ class ArgCompositionModel(nn.Module):
 class MLP(nn.Module):
     def __init__(self, input_hidden_size, output_sizes):
         super().__init__()
-        self.layers = nn.ModuleList
+        self.layers = nn.ModuleList()
         input_size = input_hidden_size
         for output_size in output_sizes:
             self.layers.append(nn.Linear(input_size, output_size))
@@ -342,10 +341,46 @@ class MLP(nn.Module):
 class Biaffine(nn.Module):
     def __init__(self, size_l, size_b):
         super(Biaffine, self).__init__()
-        self._m_affine = self.Linear(size_l, size_b)
+        self._m_affine = nn.Linear(size_l, size_b)
 
     def forward(self, tensor_l: torch.Tensor, tensor_r: torch.Tensor):
         return torch.bmm(self._m_affine(tensor_l), tensor_r)
+
+
+class PredicateWindowModule(nn.Module):
+    def __init__(self, para: ArgModelPara):
+        super().__init__()
+        self.event_to_var_layer = nn.Linear(
+            self.para.event_embedding_dim, para.num_distance_features
+        )
+        # Each distance measure will be rescaled into a probability score.
+        self.output_dim = para.num_distance_features
+
+        self.sqrt_2pie = math.sqrt(2 * math.pi)
+
+    def forward(self, predicates, distances):
+        """
+        Compute the probabilities of the instance given the distance and
+        predicate.
+        :param predicates: The tensor containing the predicates embeddings,
+        of shape batch x instance_size x embedding_dim
+        :param distances: The tensor containing the distance features,
+        of shape batch x instance_size x #distance_measures
+        :return:
+        """
+        # The intuition here is that the distance is dependent on the predicate,
+        # we assume that the probability factor follows a certain
+        # distribution regarding the distance to the current sentence, and the
+        # predicate determine the variance of the distribution.
+        # We do not intend to update the predicate representation here so we
+        # detach it.
+        variances = self.event_to_var_layer(predicates.detach())
+
+        dist_sq = distances * distances
+
+        # The gaussian based of the distance function.
+        return torch.exp(- 0.5 * dist_sq / variances) / (
+                self.sqrt_2pie * variances)
 
 
 class EventContextAttentionPool(nn.Module):
@@ -356,8 +391,15 @@ class EventContextAttentionPool(nn.Module):
         self._vote_pool_type = para.vote_pooling
         if self._vote_pool_type == 'kernel':
             self._kp = KernelPooling()
+            # The output dimensions are the K kernel values.
+            self.output_dim = self._kp.K
         elif self._vote_pool_type == 'topk':
             self._pool_topk = para.pool_topk
+            # The output dimensions are the top k values.
+            self.output_dim = para.pool_topk
+        else:
+            # The output dim is 1.
+            self.output_dim = 1
 
         self._vote_method = para.vote_method
 
@@ -441,7 +483,7 @@ class EventContextAttentionPool(nn.Module):
 
 
 class EventCoherenceModel(ArgCompatibleModel):
-    def __init__(self, para, resources, device, model_name):
+    def __init__(self, para: ArgModelPara, resources, device, model_name):
         super(EventCoherenceModel, self).__init__(para, resources, device,
                                                   model_name)
         logger.info(f"Pair composition network {model_name} started, "
@@ -449,11 +491,14 @@ class EventCoherenceModel(ArgCompatibleModel):
                     f" features and {self.para.num_distance_features} "
                     f"distance features.")
 
+        # Number of extracted discrete features.
+        feature_size = self.para.num_extracted_features
+
         self.arg_composition_model = ArgCompositionModel(para, resources)
         self.context_vote_layer = EventContextAttentionPool(para)
 
-        # Number of extracted features,
-        feature_size = self.para.num_extracted_features
+        feature_size += self.arg_composition_model.output_dim
+        feature_size += self.context_vote_layer.output_dim
 
         # Dim for 1-hot slot position feature.
         if self.para.arg_representation_method == 'fix_slots':
@@ -462,24 +507,10 @@ class EventCoherenceModel(ArgCompatibleModel):
             # Dim for the FE representation.
             feature_size += self.para.event_embedding_dim
 
-        # Config feature size.
-        self._vote_pool_type = para.vote_pooling
-        if self._vote_pool_type == 'kernel':
-            self._kp = KernelPooling()
-            feature_size += self._kp.K
-        elif self._vote_pool_type == 'average' or self._vote_pool_type == 'max':
-            feature_size += 1
-        elif self._vote_pool_type == 'topk':
-            self._pool_topk = para.pool_topk
-            feature_size += self._pool_topk
-
         self._use_distance = para.encode_distance
         if self._use_distance:
-            feature_size += para.num_distance_features
-            # Output 9 different var, corresponding to 9 distance measures.
-            self.event_to_var_layer = nn.Linear(
-                self.para.event_embedding_dim, 9
-            )
+            self.distance_module = PredicateWindowModule(para)
+            feature_size += self.distance_module.output_dim
 
         self._linear_combine = nn.Linear(feature_size, 1)
 
@@ -488,151 +519,8 @@ class EventCoherenceModel(ArgCompatibleModel):
         else:
             self.normalize_score = False
 
-        self.__debug_show_shapes = False
-
-    def debug(self):
-        self.__debug_show_shapes = True
-
-    def _encode_distance(self, predicates, distances):
-        """
-        Encode distance into event dependent kernels.
-        :param predicates:
-        :param distances:
-        :return:
-        """
-        if self.__debug_show_shapes:
-            print("Predicate size")
-            print(predicates.shape)
-
-        # d = num_distance_feature
-
-        # Our max distance maybe to large which cause overflow, maybe clamp
-        # before usage
-
-        # batch x event_size x d
-        dist_sq = distances * distances
-
-        # Output d variances (\sigma^2), each one for each distance.
-        # We detach predicates here, force the model to learn distance operation
-        #  in the fully connected layer (not learn from the predicates).
-
-        # raw_var = self.event_to_var_layer(predicates.detach())
-        # # Variances cannot be zero, so we use soft plus here.
-        # variances = F.softplus(raw_var)
-
-        log_var = self.event_to_var_layer(predicates.detach())
-
-        if self.__debug_show_shapes:
-            print("variance size")
-            # print(variances.shape)
-            print(log_var.shape)
-
-        # print(torch.min(raw_var))
-        # print(torch.min(variances))
-        print(torch.min(log_var))
-        # print(torch.min(- dist_sq / variances))
-        print(torch.min(- dist_sq / log_var))
-
-        input('---------------')
-
-        kernel_value = torch.exp(- dist_sq / variances)
-
-        print("Debugging distance encoding")
-        print(distances.shape)
-        print(torch.max(distances))
-        print(dist_sq.shape)
-        print(torch.max(dist_sq))
-        # print(variances.shape)
-        # print(torch.max(variances))
-        input('----------------------------')
-
-        if self.__debug_show_shapes:
-            print("distance kernel values")
-            print(kernel_value.shape)
-
-        return kernel_value
-
-    def _context_vote(self, nom_event_emb, nom_context_emb):
-        # First compute the trans matrix between events and the context.
-        if self._vote_method == 'cosine':
-            # Normalized dot product is cosine.
-            trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
-        elif self._vote_method == 'biaffine':
-            trans = torch.bmm(self.biaffine_att_layer(nom_event_emb),
-                              nom_context_emb.transpose(-2, -1))
-        elif self._vote_method == 'mlp':
-            raise ValueError('Unimplemented MLP error.')
-        else:
-            raise ValueError(
-                'Unknown vote computation method {}'.format(self._vote_method)
-            )
-        return trans
-
-    def _attentive_contextual_score(self, event_emb, context_emb,
-                                    self_avoid_mask):
-        """
-        Compute the contextual scores in the attentive way, i.e., computing
-        some cross scores between the two representations.
-        :param event_emb:
-        :param context_emb:
-        :param self_avoid_mask: mask of shape event_size x context_size, each
-        row is contain only one zero that indicate which context should not be
-        used.
-        :return:
-        """
-        if self.__debug_show_shapes:
-            print("Event Embedding shape")
-            print(event_emb.shape)
-            print("Context shape")
-            print(context_emb.shape)
-
-        nom_event_emb = F.normalize(event_emb, 2, -1)
-        nom_context_emb = F.normalize(context_emb, 2, -1)
-
-        trans = self._context_vote(nom_event_emb, nom_context_emb)
-
-        if self.__debug_show_shapes:
-            print("Event context similarity:")
-            print(trans.shape)
-
-            print("Avoidance mask:")
-            print(self_avoid_mask.shape)
-            print(self_avoid_mask.dtype)
-
-            print("Using the mask")
-
-            print(trans.shape)
-            print(self_avoid_mask.shape)
-
-            print("Filter with selecting matrix")
-
-        # Make the self score zero.
-        trans = trans * self_avoid_mask
-
-        if self._vote_pool_type == 'kernel':
-            pooled_value = self._kp(trans)
-        elif self._vote_pool_type == 'max':
-            pooled_value, _ = trans.max(2, keepdim=True)
-        elif self._vote_pool_type == 'average':
-            pooled_value = trans.mean(2, keepdim=True)
-        elif self._vote_pool_type == 'topk':
-            if trans.shape[2] >= self._pool_topk:
-                pooled_value, _ = trans.topk(self._pool_topk, 2, largest=True)
-            else:
-                added = torch.zeros(
-                    (trans.shape[0], trans.shape[1],
-                     self._pool_topk - trans.shape[2])).to(self.device)
-                pooled_value = torch.cat((trans, added), -1)
-        else:
-            raise ValueError(
-                'Unknown pool type {}'.format(self._vote_pool_type)
-            )
-        return pooled_value
-
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
-        # batch x instance_size x n_distance_features
-        batch_distances = batch_event_data['distances']
         # batch x instance_size x n_features
         batch_features = batch_event_data['features']
 
@@ -641,24 +529,33 @@ class EventCoherenceModel(ArgCompatibleModel):
         # batch x instance_size
         batch_event_indices = batch_info['event_indices']
 
-        if self.para.arg_representation_method == 'fix_slots':
-            # batch x instance_size
-            batch_slots = batch_info['slot_indicators']
+        # The slot is an embedding the represent the slot role.
+        # It can be a one-hot vector for fix slot, and dense embedding in
+        # dynamic view.
+        batch_slots = batch_info['slot_indicators']
 
-        # Create one hot features from index.
-        # batch x instance_size x num_slots
-        slot_indicator = torch.zeros(
-            batch_slots.shape[0], batch_slots.shape[1], self.num_slots
-        ).to(self.device)
-        slot_indicator.scatter_(2, batch_slots.unsqueeze(2), 1)
-        l_extracted = [batch_features, slot_indicator]
+        # if self.para.arg_representation_method == 'fix_slots':
+        #     # batch x instance_size
+        #     batch_slots = batch_info['slot_indicators']
+        # elif self.para.arg_representation_method == 'role_dynamic':
+        #     batch_slots = ba
+        #
+        # # Create one hot features from index.
+        # # batch x instance_size x num_slots
+        # slot_indicator = torch.zeros(
+        #     batch_slots.shape[0], batch_slots.shape[1], self.num_slots
+        # ).to(self.device)
+        # slot_indicator.scatter_(2, batch_slots.unsqueeze(2), 1)
 
-        # Add embedding dimension at the end.
+        l_extracted = [batch_features, batch_slots]
+
         if self.para.arg_representation_method == 'fix_slots':
             batch_event_rep = batch_event_data['events']
             batch_context = batch_info['context_events']
+
             context_emb = self.event_embedding(batch_context)
             event_emb = self.event_embedding(batch_event_rep)
+
             event_repr = self.arg_composition_model(event_emb)
             context_repr = self.arg_composition_model(context_emb)
 
@@ -681,27 +578,26 @@ class EventCoherenceModel(ArgCompatibleModel):
             raise ValueError(
                 f"Unknown compose method {self.para.arg_representation_method}")
 
+        # Compute the distance features using the predicate embedding.
         if self._use_distance:
+            # batch x instance_size x n_distance_features
+            batch_distances = batch_event_data['distances']
+
             # Adding distance features
-            distance_emb = self._encode_distance(pred_emb, batch_distances)
+            distance_emb = self.distance_module(pred_emb, batch_distances)
             l_extracted.append(distance_emb)
 
-            if self._use_distance and self.__debug_show_shapes:
-                print(distance_emb.shape)
-
-        # batch x instance_size x feature_size_1
-        extracted_features = torch.cat(l_extracted, -1)
-
+        # Now compute the coherent features with all context events.
         bs, event_size, _ = event_repr.shape
         bs, context_size, _ = context_repr.shape
         self_mask = self.self_event_mask(batch_event_indices, bs, event_size,
                                          context_size)
-
-        # Now compute the coherent features with all context events.
         coh_features = self.coh(event_repr, context_repr, self_mask)
 
-        # batch x instance_size x feature_size_2
-        all_features = torch.cat((extracted_features, coh_features), -1)
+        l_extracted.append(coh_features)
+
+        # batch x instance_size x feature_size
+        all_features = torch.cat(l_extracted, -1)
 
         # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)
