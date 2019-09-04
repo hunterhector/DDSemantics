@@ -23,29 +23,27 @@ def hash_context(word_emb_vocab, context):
             right]
 
 
-def get_propbank_role_index(slot_dep_map, role):
-    if role in slot_dep_map:
-        dep = slot_dep_map[role]
-        if dep == 'subj':
-            return 0
-        elif dep == 'obj':
-            return 1
-        else:
-            return 2
-    else:
-        return None
-
-
 def get_framenet_role_index(frame, role, event_emb_vocab, typed_event_vocab):
     return event_emb_vocab.get_index(
-        typed_event_vocab.get_fe_rep(
-            frame, role, typed_event_vocab.oovs['fe']
-        )
+        typed_event_vocab.get_fe_rep(frame, role), typed_event_vocab.oovs['fe']
     )
 
 
+def get_propbank_role_index(role):
+    role_idx = -1
+    if role.startswith('i_arg'):
+        role_idx = int(role.replace('i_arg', ''))
+    elif role.startswith('arg') and not role.startswith(
+            'argm') and not role.startswith('arga'):
+        role_idx = int(role.replace('arg', ''))
+
+    if role_idx > 3:
+        role_idx = -1
+    return role_idx
+
+
 def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
-             typed_event_vocab, entity_represents, slot_dep_map=None):
+             typed_event_vocab, entity_represents):
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
 
@@ -72,15 +70,12 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
 
     if 'gold_role' in hashed_arg:
         if hash_params.frame_formalism == 'Propbank':
-            role_idx = get_propbank_role_index(
-                slot_dep_map, hashed_arg['gold_role'])
-            if role_idx is not None:
-                hashed_arg['gold_role_id'] = role_idx
+            hashed_arg['gold_role_id'] = get_propbank_role_index(
+                hashed_arg['gold_role'])
         elif hash_params.frame_formalism == 'Framenet':
-            hashed_arg['gold_role_id'] = event_emb_vocab.get_index(
-                typed_event_vocab.get_fe_rep(frame, hashed_arg['gold_role']),
-                typed_event_vocab.oovs['fe']
-            )
+            hashed_arg['gold_role_id'] = \
+                get_framenet_role_index(frame, hashed_arg['gold_role'],
+                                        event_emb_vocab, typed_event_vocab)
 
     hashed_arg.pop('arg_context', None)
     hashed_arg.pop('role', None)
@@ -146,11 +141,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
         raw_pred = data_utils.nombank_pred_text(event['predicate'])
 
-        slot_dep_map = {}
-        if hash_params.frame_formalism == 'Propbank':
-            if raw_pred in slot_handler.nombank_mapping:
-                slot_dep_map = slot_handler.nombank_mapping[raw_pred][1]
-
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
             for arg_info in arg_info_list:
@@ -159,7 +149,6 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 hashed_arg = hash_arg(
                     arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents,
-                    slot_dep_map=slot_dep_map
                 )
 
                 hashed_arg_list.append(hashed_arg)

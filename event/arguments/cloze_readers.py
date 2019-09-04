@@ -422,7 +422,15 @@ class HashedClozeReader:
             'text': arg['arg_phrase']
         }
 
-    def get_test_cases(self, event, possible_slots, eid_to_mentions=None):
+    def get_auto_test_cases(self, event):
+        """
+        Create test cases automatically.
+        :param event:
+        :return:
+        """
+        raise NotImplementedError
+
+    def get_test_cases(self, event, possible_slots):
         test_cases = []
 
         # First organize the roles by the gold role name.
@@ -430,27 +438,17 @@ class HashedClozeReader:
 
         # Reorganize the arguments by the slot names.
         for dep_slot, args_per_dep in event['args'].items():
-            if self.gold_role_field is None:
-                arg_by_slot[dep_slot].extend(args_per_dep)
-            else:
-                for arg in args_per_dep:
-                    if self.gold_role_field in arg:
-                        gold_role = arg[self.gold_role_field]
-                        if not gold_role == 'NA':
-                            arg_by_slot[gold_role].append(arg)
+            for arg in args_per_dep:
+                if self.gold_role_field in arg:
+                    gold_role = arg[self.gold_role_field]
+                    if not gold_role == -1:
+                        arg_by_slot[gold_role].append(arg)
 
         # There are different types of slots, given the scenario, some of them
         # can be considered as test cases.
         # 1. Empty slots, these are not fillable, but can be test case for
         # the system to determine whether to fill.
-        # 2. Slot with explicit arguments:
-        #    a. In auto-test mode, these can be used to test if resolvable.
-        #    b. In real test mode, we don't need to fill the explict slots.
-        # 3. Slot with implicit arguments:
-        #    a. This is only in real-test mode, where the implicit argument
-        #       is the main test target.
-        # 4. Slot is not empty, but there are no other arguments besides this
-        # one, so it is good to make a empty case.
+        # 2. Slot with implicit arguments.
 
         for slot in possible_slots:
             dep = self.get_dep_from_slot(event, slot)
@@ -469,9 +467,6 @@ class HashedClozeReader:
             ]
 
             if slot not in arg_by_slot:
-                # Case 1
-                if not self.auto_test:
-                    test_cases.append(copy.deepcopy(no_fill_case))
                 continue
 
             answers = []
@@ -480,20 +475,10 @@ class HashedClozeReader:
             args = arg_by_slot[slot]
 
             for arg in args:
-                if self.auto_test:
-                    if arg['resolvable']:
-                        # Case 2a
-                        answers.extend(
-                            self.answers_via_eid(
-                                arg['entity_id'],
-                                eid_to_mentions
-                            )
-                        )
-                else:
-                    if arg['implicit'] and arg['source'] == 'gold' \
-                            and not arg['incorporated']:
-                        # Case 3
-                        answers.append(self.answer_from_arg(arg))
+                if arg['implicit'] and arg['source'] == 'gold' \
+                        and not arg['incorporated']:
+                    # Case 2
+                    answers.append(self.answer_from_arg(arg))
 
             if answers:
                 test_stub = {
@@ -503,21 +488,13 @@ class HashedClozeReader:
                 }
                 test_cases.append([slot, test_stub, answers])
             else:
-                if self.auto_test:
-                    # Case 4:
-                    # In auto test mode, this slot is not resolvable, so it is
-                    # good to make a non-fillable test case.
-                    test_cases.append([slot] + copy.deepcopy(no_fill_case))
+                for arg in args:
+                    if arg['source'] == 'gold' and not arg['implicit']:
+                        break
                 else:
-                    for arg in args:
-                        if arg['source'] == 'gold' and not arg['implicit']:
-                            # Case 2b: there are explicit arguments so we do not
-                            # make a test case here.
-                            break
-                    else:
-                        # Case 4 when we make sure there is no gold standard
-                        # arg.
-                        test_cases.append([slot] + copy.deepcopy(no_fill_case))
+                    # Case 4 when we make sure there is no gold standard
+                    # arg.
+                    test_cases.append([slot] + copy.deepcopy(no_fill_case))
 
         return test_cases
 
@@ -683,6 +660,7 @@ class HashedClozeReader:
             # 1. The automatic cloze method: a test case is by removing one
             # phrase, all mentions with the same eid should be considered as
             # answers. The target slot is simply the dep (preposition)
+
             # 2. The true test case: a test case if we have an implicit=True,
             # the target slot should be a field in data (prespecified). We then
             # need to map the target slot (e.g. i_arg1 -> obj). The answer are
@@ -690,8 +668,13 @@ class HashedClozeReader:
 
             available_slots = self.get_predicate_slots(event)
 
-            for target_slot, test_stub, answers in self.get_test_cases(
-                    event, available_slots, eid_to_mentions):
+            test_cases = self.get_auto_test_cases(event) if self.auto_test \
+                else self.get_test_cases(event, available_slots)
+            for target_slot, test_stub, answers in test_cases:
+                if test_stub['implicit']:
+                    print("Event is " + event['predicate_text'])
+                    print(target_slot, test_stub, answers)
+                    input('one target')
 
                 if nid_detector.should_fill(event, target_slot, test_stub):
                     # print(event['predicate_text'], event['frame'])
@@ -829,7 +812,9 @@ class HashedClozeReader:
 
                 # Create a pseudo batch with one instance.
                 for key, value in common_data.items():
-                    print(f'setting {key} with {value}')
+                    if key == 'context_slots':
+                        print(f'setting {key} with {value}')
+                        input('checking context slots.')
                     vectorized = to_torch([value], self.__data_types[key])
                     b_common_data[key] = batch_combine(vectorized, self.device)
 

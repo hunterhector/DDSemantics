@@ -106,7 +106,7 @@ class ImplicitArgResources(Configurable):
 
         for frame_name, fes in frame_prior.items():
             fid = self.event_embed_vocab.get_index(frame_name, None)
-            h_frame_slots[fid] = []
+            h_frame_slots[fid] = set()
 
             for fe in fes:
                 fe_name = fe['fe_name']
@@ -114,7 +114,7 @@ class ImplicitArgResources(Configurable):
                     self.typed_event_vocab.get_fe_rep(frame_name, fe_name),
                     self.typed_event_vocab.oovs['fe']
                 )
-                h_frame_slots[fid].append(fe_id)
+                h_frame_slots[fid].add(fe_id)
 
         return h_frame_dep_map, h_frame_slots
 

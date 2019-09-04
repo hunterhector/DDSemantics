@@ -283,7 +283,7 @@ class ArgCompositionModel(nn.Module):
 
         if self.arg_representation_method == 'fix_slots':
             self.arg_comp = self._setup_fix_slot_mlp(para)
-            self.output_dim = self.para.arg_composition_layer_sizes[-1]
+            self.output_dim = para.arg_composition_layer_sizes[-1]
         elif self.arg_representation_method == 'role_dynamic':
             self.arg_comp = DynamicEventReprModule(para)
             self.output_dim = self.arg_comp.output_dim
