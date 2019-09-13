@@ -163,6 +163,8 @@ class HashedClozeReader:
 
         for key, value in b_common_data.items():
             if key.startswith('context_'):
+                print(key, value)
+                input('checking to_torch')
                 padded = self.__batch_pad(key, value, max_context_size)
                 vectorized = to_torch(padded, self.__data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
@@ -884,7 +886,7 @@ class HashedClozeReader:
                         'arg_phrase': arg['arg_phrase'],
                         'represent': arg['represent'],
                         'text': arg['text'],
-                        'source': arg['source'],
+                        # 'source': arg['source'],
                         'sentence_id': arg['sentence_id'],
                         'arg_start': arg['arg_start'],
                         'arg_end': arg['arg_end'],
@@ -1246,7 +1248,7 @@ class HashedClozeReader:
             updated_slot_info['represent'] = swap_slot['represent']
             updated_slot_info['text'] = swap_slot['text']
             updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
-            updated_slot_info['source'] = swap_slot['source']
+            # updated_slot_info['source'] = swap_slot['source']
             updated_slot_info['arg_start'] = swap_slot['arg_start']
             updated_slot_info['arg_end'] = swap_slot['arg_end']
 
