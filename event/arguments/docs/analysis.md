@@ -38,3 +38,10 @@
         - The multi-layer network may cause some interaction of this feature.
         - In the frame mode, the extra feature can be the FE vector.
         - In the frame mode, the event representation is done auto-regressively.
+1. Unknown argument types    
+    - Some arguments are not predicted frequently by the system, currently two 
+    methods can be used to deal with it.
+      - Map some predicted ARG-M or prep to them
+      - Do not use the full frame element name (i.e. Self-motion.Distance -> Distance), 
+      this may help use using other frame's training instance to solve them. 
+    
