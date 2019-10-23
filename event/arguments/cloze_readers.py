@@ -93,11 +93,13 @@ class HashedClozeReader:
         # In fix slot mode we assume there is a fixed number of slots.
         if para.arg_representation_method == 'fix_slots':
             self.fix_slot_mode = True
-            self.instance_keys = ('events', 'distances', 'features')
+            self.instance_keys = ('event_component', 'distances', 'features')
         elif para.arg_representation_method == 'role_dynamic':
             self.fix_slot_mode = False
-            self.instance_keys = ('predicates', 'slots', 'slot_values',
+            self.instance_keys = ('predicate', 'slot', 'slot_values',
                                   'distances', 'features',)
+            self.__var_length = {'slot', 'slot_values', 'context_slot',
+                                 'context_slot_value'}
 
         self.gold_role_field = self.para.gold_field_name
         self.auto_test = False
@@ -142,11 +144,24 @@ class HashedClozeReader:
             'features': 2,
         }
 
+        # A set for data with variable length, we then will create paddings
+        # and length tensor for it.
+        self.__var_length = set()
+
         self.device = torch.device(
             "cuda" if para.use_gpu and torch.cuda.is_available() else "cpu"
         )
 
         logger.info("Reading data with device: " + str(self.device))
+
+    def __var_pad(self, key, data):
+        # TODO: pad the variable length variable.
+        #  1. find the max len
+        #  2. pad it and create one extra seq length variable.
+        if key in self.__var_length:
+            return self.__batch_pad(data, )
+        else:
+            return data
 
     def __batch_pad(self, key, data, pad_size):
         dim = self.__data_dim[key]
@@ -205,6 +220,7 @@ class HashedClozeReader:
 
         ins_mask = to_torch(mask, np.uint8).to(self.device)
 
+        # TODO: check if we need to include context mask?
         return instance_data, common_data, f_size, ins_mask
 
     def read_train_batch(self, data_in, sampler):
@@ -732,13 +748,13 @@ class HashedClozeReader:
 
                     # Prepare instance data for each possible instance.
                     if self.fix_slot_mode:
-                        instance_data = {'events': [], 'distances': [],
+                        instance_data = {'event_component': [], 'distances': [],
                                          'features': [], }
                     else:
                         instance_data = {
-                            'predicates': [],
-                            'slots': [],
-                            'slot_values': [],
+                            'predicate': [],
+                            'slot': [],
+                            'slot_value': [],
                             'distances': [],
                             'features': [],
                         }
@@ -854,6 +870,10 @@ class HashedClozeReader:
 
                 # Create a pseudo batch with one instance.
                 for key, value in common_data.items():
+                    import pdb
+                    pdb.set_trace()
+                    # TODO: The shape of slot is unknown, so we need a max time
+                    #   for the slots.
                     vectorized = to_torch([value], self.__data_types[key])
                     b_common_data[key] = batch_combine(vectorized, self.device)
 

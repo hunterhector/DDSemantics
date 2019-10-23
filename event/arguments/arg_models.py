@@ -326,7 +326,7 @@ class ArgCompositionModel(nn.Module):
             flatten_pred_emb = pred_emb.view(
                 pred_emb.size()[0], -1, flatten_embedding_size)
 
-            # batch x #instance x embedding_size
+            # batch x #instance x unk_slot_num x embedding_size
             slot_emb = event_data['slot']
             # batch x #instance x unk_slot_num x embedding_size
             slot_values = event_data['slot_value']
