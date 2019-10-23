@@ -30,12 +30,17 @@ ghost_entity_id = -1
 
 
 class HashedClozeReader:
+    """Reading the hashed dataset into cloze tasks.
+
+    Args:
+      resources: Resources containing vocabulary and more.
+      gpu: Whether to run on gpu.
+
+    Returns:
+
+    """
+
     def __init__(self, resources: ImplicitArgResources, para: ArgModelPara):
-        """
-        Reading the hashed dataset into cloze tasks.
-        :param resources: Resources containing vocabulary and more.
-        :param gpu: Whether to run on gpu.
-        """
         self.para = para
 
         self.event_emb_vocab = resources.event_embed_vocab
@@ -266,11 +271,14 @@ class HashedClozeReader:
             _clear()
 
     def _get_slot_feature(self, slot):
-        """
-        Get the feature(s) related to the particular slot, based on the current
+        """Get the feature(s) related to the particular slot, based on the current
         mode.
-        :param slot:
-        :return:
+
+        Args:
+          slot:
+
+        Returns:
+
         """
         if self.fix_slot_mode:
             return self.fix_slot_names.index(slot)
@@ -284,12 +292,15 @@ class HashedClozeReader:
             return self._take_dynamic_event_parts(predicate, frame_id, args)
 
     def _take_dynamic_event_parts(self, predicate, frame_id, args):
-        """
-        Take event information, with unknown number of slots.
-        :param predicate:
-        :param frame_id:
-        :param args:
-        :return:
+        """Take event information, with unknown number of slots.
+
+        Args:
+          predicate: frame_id:
+          args:
+          frame_id: 
+
+        Returns:
+
         """
         pred_components = [
             predicate,
@@ -312,13 +323,16 @@ class HashedClozeReader:
         }
 
     def _take_fixed_size_event_parts(self, predicate, frame_id, args):
-        """
-        Take event information from the data, one element per slot, hence the
+        """Take event information from the data, one element per slot, hence the
         size of the event parts is fixed.
-        :param predicate:
-        :param frame_id:
-        :param args:
-        :return:
+
+        Args:
+          predicate: frame_id:
+          args:
+          frame_id: 
+
+        Returns:
+
         """
         event_components = [
             predicate,
@@ -371,16 +385,18 @@ class HashedClozeReader:
 
     def create_slot_candidates(self, test_stub, doc_mentions, pred_sent,
                                distance_cap=float('inf')):
-        """
-        Create slot candidates from the document mentions.
+        """Create slot candidates from the document mentions.
 
-        :param test_stub: The test stub to be filled.
-        :param doc_mentions: The list of all document mentions.
-        :param pred_sent: The sentence where the predicate is in.
-        :param distance_cap: The distance cap for selecting the candidate
-            argument: arguments with a sentence distance larger than this
-            will be ignored. The default value is INFINITY (no cap).
-        :return:
+        Args:
+          test_stub: The test stub to be filled.
+          doc_mentions: The list of all document mentions.
+          pred_sent: The sentence where the predicate is in.
+          distance_cap: The distance cap for selecting the candidate
+        argument: arguments with a sentence distance larger than this
+        will be ignored. The default value is INFINITY (no cap).
+
+        Returns:
+
         """
         # List of Tuple (dist, argument candidates).
         dist_arg_list = []
@@ -435,10 +451,13 @@ class HashedClozeReader:
         }
 
     def get_auto_test_cases(self, event):
-        """
-        Create test cases automatically.
-        :param event:
-        :return:
+        """Create test cases automatically.
+
+        Args:
+          event:
+
+        Returns:
+
         """
         raise NotImplementedError
 
@@ -513,12 +532,15 @@ class HashedClozeReader:
         return test_cases
 
     def get_args_as_list(self, event_args, ignore_implicit):
-        """
-        Take a argument map and return a list version of it. It will take the
+        """Take a argument map and return a list version of it. It will take the
         first argument when multiple ones are presented at the slot.
-        :param event_args:
-        :param ignore_implicit:
-        :return:
+
+        Args:
+          event_args: ignore_implicit:
+          ignore_implicit: 
+
+        Returns:
+
         """
         slot_args = {}
         for slot, l_arg in event_args.items():
@@ -540,12 +562,15 @@ class HashedClozeReader:
         return args
 
     def get_dep_from_slot(self, event, slot):
-        """
-        Given the predicate and a slot, we compute the dependency used to
+        """Given the predicate and a slot, we compute the dependency used to
         create a dep-word.
-        :param event:
-        :param slot:
-        :return:
+
+        Args:
+          event:
+          slot: 
+
+        Returns:
+
         """
         dep = 'unk_dep'
 
@@ -562,13 +587,16 @@ class HashedClozeReader:
         return dep
 
     def get_predicate_slots(self, event):
-        """
-        Get the possible slots for a predicate. For example, in Propbank format,
+        """Get the possible slots for a predicate. For example, in Propbank format,
         the slot would be arg0 to arg4 (and there are mapping to specific
         dependencies). In FrameNet format, the slots are determined from the
         frames.
-        :param event:
-        :return:
+
+        Args:
+          event:
+
+        Returns:
+
         """
         if self.frame_formalism == 'FrameNet':
             frame = event['frame']
@@ -586,11 +614,14 @@ class HashedClozeReader:
         return []
 
     def get_one_test_doc(self, doc_info, nid_detector):
-        """
-        Parse and get one test document.
-        :param doc_info: The JSON data of one document.
-        :param nid_detector: NID detector to detect which slot to fill.
-        :return:
+        """Parse and get one test document.
+
+        Args:
+          doc_info: The JSON data of one document.
+          nid_detector: NID detector to detect which slot to fill.
+
+        Returns:
+
         """
         # Collect information such as features and entity positions.
         features_by_eid = self.collect_features(doc_info)
@@ -800,12 +831,15 @@ class HashedClozeReader:
                                candidate_meta, instance_meta)
 
     def read_test_docs(self, test_in, nid_detector):
-        """
-        Load test data. Importantly, this will create alternative cloze
+        """Load test data. Importantly, this will create alternative cloze
          filling for ranking.
-        :param test_in: supply lines as test data.
-        :param nid_detector: Null Instantiation Detector.
-        :return:
+
+        Args:
+          test_in: supply lines as test data.
+          nid_detector: Null Instantiation Detector.
+
+        Returns:
+
         """
         for line in test_in:
             doc_info = json.loads(line)
@@ -1058,13 +1092,16 @@ class HashedClozeReader:
 
     def get_target_distance_signature(self, entity_positions, sent_id,
                                       filler_eid):
-        """
-        Compute the distance signature of the instance's other mentions to the
+        """Compute the distance signature of the instance's other mentions to the
         sentence.
-        :param entity_positions:
-        :param sent_id:
-        :param filler_eid:
-        :return:
+
+        Args:
+          entity_positions: sent_id:
+          filler_eid:
+          sent_id: 
+
+        Returns:
+
         """
         distances = []
 
@@ -1107,14 +1144,17 @@ class HashedClozeReader:
 
     def get_distance_signature(
             self, current_evm_id, entity_positions, arg_list, sent_id):
-        """
-        Compute the distance signature of the instance's other mentions to the
+        """Compute the distance signature of the instance's other mentions to the
         sentence.
-        :param current_evm_id:
-        :param entity_positions:
-        :param arg_list:
-        :param sent_id:
-        :return:
+
+        Args:
+          current_evm_id: entity_positions:
+          arg_list: sent_id:
+          entity_positions: 
+          sent_id: 
+
+        Returns:
+
         """
         distances = []
 
@@ -1285,13 +1325,16 @@ class HashedClozeReader:
         return updated_slot_info
 
     def cross_cloze(self, sampler, arg_list, doc_args, target_arg_idx):
-        """
-        A negative cloze instance that use arguments from other events.
-        :param sampler: A random sampler.
-        :param arg_list: List of origin event arguments.
-        :param doc_args: List of arguments (partial info) in this doc.
-        :param target_arg_idx: The index for the slot to be replaced
-        :return:
+        """A negative cloze instance that use arguments from other events.
+
+        Args:
+          sampler: A random sampler.
+          arg_list: List of origin event arguments.
+          doc_args: List of arguments (partial info) in this doc.
+          target_arg_idx: The index for the slot to be replaced
+
+        Returns:
+
         """
         _, target_arg = arg_list[target_arg_idx]
 
@@ -1315,12 +1358,15 @@ class HashedClozeReader:
         return neg_instance, sample_res['entity_id']
 
     def inside_cloze(self, sampler, arg_list, arg_index):
-        """
-        A negative cloze instance that use arguments within the event.
-        :param sampler: A random sampler.
-        :param arg_list: The Arg List of the original event.
-        :param arg_index: The current index of the argument.
-        :return:
+        """A negative cloze instance that use arguments within the event.
+
+        Args:
+          sampler: A random sampler.
+          arg_list: The Arg List of the original event.
+          arg_index: The current index of the argument.
+
+        Returns:
+
         """
         if len(arg_list) < 2:
             return None

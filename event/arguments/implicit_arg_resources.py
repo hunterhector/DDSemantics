@@ -18,9 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImplicitArgResources(Configurable):
-    """
-    Resource class.
-    """
+    """Resource class."""
     raw_corpus_name = Unicode(help='Raw corpus name').tag(config=True)
     event_embedding_path = Unicode(help='Event Embedding path').tag(config=True)
     word_embedding_path = Unicode(help='Word Embedding path').tag(config=True)
@@ -82,10 +80,14 @@ class ImplicitArgResources(Configurable):
         return pred_count
 
     def hash_frame_mappings(self):
-        """
-        Hash the frame mapping, and map the frames to the most frequent
+        """Hash the frame mapping, and map the frames to the most frequent
         dependency.
         :return:
+
+        Args:
+
+        Returns:
+
         """
         h_frame_dep_map = {}
         frame_deps = self.slot_handler.frame_deps
@@ -119,10 +121,14 @@ class ImplicitArgResources(Configurable):
         return h_frame_dep_map, h_frame_slots
 
     def hash_nom_mappings(self):
-        """
-        The mapping information in the slot handler are string based, we convert
+        """The mapping information in the slot handler are string based, we convert
         them to the hashed version for easy reading.
         :return:
+
+        Args:
+
+        Returns:
+
         """
         nom_map = self.slot_handler.nombank_mapping
 

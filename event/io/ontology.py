@@ -248,9 +248,15 @@ class OntologyLoader:
             out.write('\n')
 
     def as_brat_conf(self, conf_path, visual_path=None):
-        """
-        Demonstrate how to convert ontology to a Brat config.
+        """Demonstrate how to convert ontology to a Brat config.
         :return:
+
+        Args:
+          conf_path: 
+          visual_path:  (Default value = None)
+
+        Returns:
+
         """
         from collections import defaultdict
         grouped_ent_types = defaultdict(list)

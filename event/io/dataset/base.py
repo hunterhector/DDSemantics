@@ -174,9 +174,11 @@ class Annotation:
         self.meta[name] = value
 
     def get_span_key(self):
-        """
-        Use spans as a key
-        :return:
+        """Use spans as a key
+        Args:
+
+        Returns:
+
         """
         return hash(tuple(self.spans))
 
@@ -207,10 +209,13 @@ class Annotation:
         self.spans = all_spans
 
     def merge(self, anno_b):
-        """
-        Merge with another annotation
-        :param anno_b:
-        :return:
+        """Merge with another annotation
+
+        Args:
+          anno_b:
+
+        Returns:
+
         """
         pass
 

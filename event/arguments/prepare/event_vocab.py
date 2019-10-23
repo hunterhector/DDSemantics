@@ -119,11 +119,15 @@ class TypedEventVocab:
         return self.make_arg(self.unk_arg_word, self.unk_dep)
 
     def get_arg_rep_no_dep(self, entity_rep):
-        """
-        Return the backoff version of the argument representation by using the
+        """Return the backoff version of the argument representation by using the
         unk_dep, but the actual entity.
-        :param entity_rep:
-        :return:
+
+        Args:
+          entity_rep:
+
+        Returns:
+          
+
         """
         return self.make_arg(entity_rep, self.unk_dep)
 
@@ -267,10 +271,14 @@ class EmbbedingVocab:
         return len(self.extras)
 
     def add_extra(self, name):
-        """
-        Add extra dimensions into the embedding vocab, used for special tokens.
-        :param name:
-        :return:
+        """Add extra dimensions into the embedding vocab, used for special
+        tokens.
+
+        Args:
+          name:
+
+        Returns:
+
         """
         if name in self.extras:
             raise ValueError(

@@ -30,12 +30,15 @@ class ClozeSampler:
         return random.choice(l)
 
     def sample_ignore_item(self, data, ignored_item):
-        """
-        Sample one item in the list, but ignore a provided one. If the list
+        """Sample one item in the list, but ignore a provided one. If the list
         contains less than 2 elements, nothing will be sampled.
-        :param data:
-        :param ignored_item:
-        :return:
+
+        Args:
+          data: ignored_item:
+          ignored_item: 
+
+        Returns:
+
         """
         if len(data) <= 1:
             return None

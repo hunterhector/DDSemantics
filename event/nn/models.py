@@ -6,8 +6,7 @@ from torch.nn.parameter import Parameter
 
 
 class KernelPooling(nn.Module):
-    """
-    kernel pooling layer
+    """kernel pooling layer
     init:
         v_mu: a 1-d dimension of mu's
         sigma: the sigma
@@ -16,6 +15,11 @@ class KernelPooling(nn.Module):
             a n-D tensor, last dimension is the one to enforce kernel pooling
     output:
         n-K tensor, K is the v_mu.size(), number of kernels
+
+    Args:
+
+    Returns:
+
     """
 
     def __init__(self, l_mu=None, l_sigma=None):

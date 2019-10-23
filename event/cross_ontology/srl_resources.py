@@ -1,24 +1,19 @@
-from traitlets.config import Configurable
-from traitlets import (
-    Int,
-    List,
-    Unicode,
-)
-import numpy as np
 import logging
-from event.arguments.prepare.event_vocab import load_vocab
-from collections import Counter
-from event.io import io_utils
-import torch
 import os
 import pickle
+
+import torch
+from traitlets import (
+    Unicode,
+)
+from traitlets.config import Configurable
+
+from event.io import io_utils
 from event.util import ensure_dir
 
 
 class SrlResources(Configurable):
-    """
-    Resource class.
-    """
+    """Resource class."""
     word_embedding_path = Unicode(help='Word Embedding path').tag(config=True)
     embedding_type = Unicode(help='Word Embedding type').tag(config=True)
     word_vocab_path = Unicode(help='Word vocabulary path').tag(config=True)

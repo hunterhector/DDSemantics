@@ -27,11 +27,14 @@ def get_tree_pointers(tree_pointer):
 
 
 def make_words_from_pointer(tree, tree_pointer):
-    """
-    Create words from tree pointer (NLTK).
-    :param tree: The tree for the whole sentence.
-    :param tree_pointer: The tree pointer that point to some nodes.
-    :return:
+    """Create words from tree pointer (NLTK).
+
+    Args:
+      tree: The tree for the whole sentence.
+      tree_pointer: The tree pointer that point to some nodes.
+
+    Returns:
+
     """
     pointers = get_tree_pointers(tree_pointer)
 

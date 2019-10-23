@@ -27,9 +27,7 @@ import traceback
 
 
 class ZeroShotEventResources(Configurable):
-    """
-    Resource class.
-    """
+    """Resource class."""
     event_embedding_path = Unicode(help='Event Embedding path').tag(config=True)
     word_embedding_path = Unicode(help='Word Embedding path').tag(config=True)
 

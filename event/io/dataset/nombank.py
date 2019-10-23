@@ -26,9 +26,7 @@ import sys
 
 
 class NomBank(DataLoader):
-    """
-    Loading Nombank data and implicit argument annotations.
-    """
+    """Loading Nombank data and implicit argument annotations."""
 
     def __init__(self, params, corpus, with_doc=False):
         super().__init__(params, corpus, with_doc)

@@ -1,14 +1,12 @@
 import argparse
+import hashlib
 import logging
 import os
-import gzip
-import unicodedata
 import sys
+import unicodedata
 
 from traitlets.config.loader import KeyValueConfigLoader
 from traitlets.config.loader import PyFileConfigLoader
-import hashlib
-import xml.etree.ElementTree as ET
 
 
 class OptionPerLineParser(argparse.ArgumentParser):
@@ -94,12 +92,15 @@ def load_mixed_configs():
 
 
 def load_multi_configs(file_args, cmd_args):
-    """
-    This method try to mimics the behavior of the sub_config. It currently only
-    take one base and one main.
-    :param file_args:
-    :param cmd_args:
-    :return:
+    """This method try to mimics the behavior of the sub_config. It currently
+    only take one base and one main.
+
+    Args:
+      file_args:
+      cmd_args: 
+
+    Returns:
+
     """
     cl_conf = load_command_line_config(cmd_args)
 
@@ -149,4 +150,3 @@ def append_num_to_path(file_path, suffix=0):
             append_num_to_path(file_path, suffix + 1)
         else:
             os.rename(file_path, new_path)
-

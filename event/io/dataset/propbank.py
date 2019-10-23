@@ -18,9 +18,7 @@ from collections import Counter
 
 
 class PropBank(DataLoader):
-    """
-    Load PropBank data.
-    """
+    """Load PropBank data."""
 
     def __init__(self, params, corpus, with_doc=False):
         super().__init__(params, corpus)

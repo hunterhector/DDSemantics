@@ -82,9 +82,7 @@ class NullArgDetector:
 
 
 class GoldNullArgDetector(NullArgDetector):
-    """
-    A Null arg detector that look at gold standard.
-    """
+    """A Null arg detector that look at gold standard."""
 
     def __init__(self):
         super().__init__()
@@ -94,9 +92,7 @@ class GoldNullArgDetector(NullArgDetector):
 
 
 class AllArgDetector(NullArgDetector):
-    """
-    A Null arg detector that returns everything.
-    """
+    """A Null arg detector that returns everything."""
 
     def __init__(self):
         super().__init__()
@@ -106,9 +102,7 @@ class AllArgDetector(NullArgDetector):
 
 
 class ResolvableArgDetector(NullArgDetector):
-    """
-    A Null arg detector that returns true for resolvable arguments.
-    """
+    """A Null arg detector that returns true for resolvable arguments."""
 
     def __init__(self):
         super().__init__()
@@ -118,9 +112,7 @@ class ResolvableArgDetector(NullArgDetector):
 
 
 class TrainableNullArgDetector(NullArgDetector):
-    """
-    A Null arg detector that is trained to predict.
-    """
+    """A Null arg detector that is trained to predict."""
 
     def __index__(self):
         super(NullArgDetector, self).__init__()
