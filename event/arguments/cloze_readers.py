@@ -99,30 +99,29 @@ class HashedClozeReader:
         self.test_limit = 500
 
         self.__data_types = {
-            # 'context': np.int64,
-            'context_events': np.int64,
-            'context_slots': np.int64,
-            'context_slot_values': np.int64,
-            'context_predicates': np.int64,
+            'context_event_component': np.int64,
+            'context_slot': np.int64,
+            'context_slot_value': np.int64,
+            'context_predicate': np.int64,
             'event_indices': np.int64,
             'cross_event_indices': np.int64,
             'inside_event_indices': np.int64,
             'slot_indicators': np.int64,
             'cross_slot_indicators': np.int64,
             'inside_slot_indicators': np.int64,
-            'events': np.int64,
-            'slots': np.int64,
-            'slot_values': np.int64,
-            'predicates': np.int64,
+            'event_component': np.int64,
+            'slot': np.int64,
+            'slot_value': np.int64,
+            'predicate': np.int64,
             'distances': np.float32,
             'features': np.float32,
         }
 
         self.__data_dim = {
             # 'context': 2,
-            'context_events': 2,
-            'context_slots': 2,
-            'context_slot_values': 2,
+            'context_event_component': 2,
+            'context_slot': 2,
+            'context_slot_value': 2,
             'context_predicates': 2,
             'event_indices': 1,
             'cross_event_indices': 1,
@@ -130,10 +129,10 @@ class HashedClozeReader:
             'slot_indicators': 1,
             'cross_slot_indicators': 1,
             'inside_slot_indicators': 1,
-            'events': 2,
-            'slots': 2,
-            'slot_values': 2,
-            'predicates': 2,
+            'event_component': 2,
+            'slot': 2,
+            'slot_value': 2,
+            'predicate': 2,
             'distances': 2,
             'features': 2,
         }
@@ -307,9 +306,9 @@ class HashedClozeReader:
             slot_value_comps.append(arg['arg_role'])
 
         return {
-            'predicates': pred_components,
-            'slots': slot_comps,
-            'slot_values': slot_value_comps,
+            'predicate': pred_components,
+            'slot': slot_comps,
+            'slot_value': slot_value_comps,
         }
 
     def _take_fixed_size_event_parts(self, predicate, frame_id, args):
@@ -349,7 +348,7 @@ class HashedClozeReader:
             pdb.set_trace()
 
         return {
-            'events': event_components,
+            'event_component': event_components,
         }
 
     def parse_hashed(self):

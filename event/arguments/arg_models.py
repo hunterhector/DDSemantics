@@ -126,7 +126,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
 
     def forward(self, batch_event_data, batch_info):
         # batch x instance_size x event_component
-        batch_event_rep = batch_event_data['events']
+        batch_event_rep = batch_event_data['event_components']
 
         # batch x context_size x event_component
         batch_context = batch_info['context_events']
@@ -245,6 +245,7 @@ class DynamicEventReprModule(nn.Module):
     def __init__(self, para: ArgModelPara):
         super().__init__()
 
+        # Use Texar Transformer.
         # Texar module are subclass of Pytorch Modules.
         self._transformer = TransformerEncoder(
             hparams=texar_config.arg_transformer,
@@ -297,26 +298,38 @@ class ArgCompositionModel(nn.Module):
         emb_size = num_event_components * para.event_embedding_dim
         return MLP(emb_size, para.arg_composition_layer_sizes)
 
-    def forward(self, *input):
+    def forward(self, event_data):
+        """
+
+        Args:
+          event_data: 
+
+        Returns:
+
+        """
         if self.arg_representation_method == 'fix_slots':
-            event_emb = input[0]
-            flatten_embedding_size = event_emb.size()[-1] * event_emb.size()[-2]
-            flatten_pred_emb = event_emb.view(
-                event_emb.size()[0], -1, flatten_embedding_size)
+            # In fixed slot mode, the argument composition is simply done via
+            # a MLP since the dimension is fixed.
+            flatten_embedding_size = event_data.size()[-1
+                                     ] * event_data.size()[-2]
+            flatten_pred_emb = event_data.view(
+                event_data.size()[0], -1, flatten_embedding_size)
             return self.arg_comp(flatten_pred_emb)
         elif self.arg_representation_method == 'role_dynamic':
-            event_data = input[0]
-            # Note ``event_data['predicates']`` is still multi-dimensional
+            # In dynamic slot mode, the argument composition is done via a
+            # model that can take in the unknown number of slots.
+
+            # Note ``event_data['predicate']`` still need to be flatten
             # since we can have a verb and a frame component.
-            pred_emb = event_data['predicates']
+            pred_emb = event_data['predicate']
             flatten_embedding_size = pred_emb.size()[-1] * pred_emb.size()[-2]
             flatten_pred_emb = pred_emb.view(
                 pred_emb.size()[0], -1, flatten_embedding_size)
 
             # batch x #instance x embedding_size
-            slot_emb = event_data['slots']
+            slot_emb = event_data['slot']
             # batch x #instance x unk_slot_num x embedding_size
-            slot_values = event_data['slot_values']
+            slot_values = event_data['slot_value']
 
             return self.arg_comp(flatten_pred_emb, slot_emb, slot_values)
 
@@ -520,11 +533,17 @@ class EventCoherenceModel(ArgCompatibleModel):
             self.normalize_score = False
 
     def forward(self, batch_event_data, batch_info):
-        # batch x instance_size x event_component
+        """
+
+        Args:
+          batch_event_data: 
+          batch_info: 
+
+        Returns:
+
+        """
         # batch x instance_size x n_features
         batch_features = batch_event_data['features']
-
-        # batch x context_size x event_component
 
         # batch x instance_size
         batch_event_indices = batch_info['event_indices']
@@ -550,7 +569,9 @@ class EventCoherenceModel(ArgCompatibleModel):
         l_extracted = [batch_features, batch_slots]
 
         if self.para.arg_representation_method == 'fix_slots':
-            batch_event_rep = batch_event_data['events']
+            # batch x instance_size x event_component
+            batch_event_rep = batch_event_data['event_components']
+            # batch x context_size x event_component
             batch_context = batch_info['context_events']
 
             context_emb = self.event_embedding(batch_context)
@@ -561,16 +582,18 @@ class EventCoherenceModel(ArgCompatibleModel):
 
             pred_emb = event_emb[:, :, 1, :]
         elif self.para.arg_representation_method == 'role_dynamic':
-            d_keys = 'predicates', 'slots', 'slot_values'
-            batch_embedded_event_data = {}
-            batch_embedded_context_event_data = {}
+            d_keys = 'predicate', 'frame', 'slots', 'slot_values'
+            batch_embedded_event_data = []
+            batch_embedded_context_event_data = []
+
             for k in d_keys:
-                batch_embedded_event_data[k] = self.event_embedding(
-                    batch_event_data[k])
-                batch_embedded_context_event_data[k] = self.event_embedding(
-                    batch_info["context_" + k]
-                )
-            pred_emb = batch_embedded_event_data['predicates']
+                batch_embedded_event_data.append(
+                    self.event_embedding(batch_event_data[k]))
+                batch_embedded_context_event_data.append(self.event_embedding(
+                    batch_info["context_" + k]))
+
+            pred_emb = batch_embedded_event_data[0]
+
             event_repr = self.arg_composition_model(batch_embedded_event_data)
             context_repr = self.arg_composition_model(
                 batch_embedded_context_event_data)
