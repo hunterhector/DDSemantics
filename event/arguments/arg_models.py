@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class ArgCompatibleModel(nn.Module):
+    """ """
+
     def __init__(self, para, resources, device, model_name):
         super(ArgCompatibleModel, self).__init__()
         self.para = para
@@ -33,13 +35,17 @@ class ArgCompatibleModel(nn.Module):
 
     def self_event_mask(self, batch_event_indices, batch_size, event_size,
                         context_size):
-        """
-        Return a matrix to mask out the scores from the current event.
-        :param batch_event_indices:
-        :param batch_size:
-        :param event_size:
-        :param context_size:
-        :return:
+        """Return a matrix to mask out the scores from the current event.
+
+        Args:
+          batch_event_indices: batch_size
+          event_size: context_size
+          batch_size: 
+          context_size: 
+
+        Returns:
+          
+
         """
         selector = batch_event_indices.unsqueeze(-1)
         one_zeros = torch.ones(
@@ -93,29 +99,53 @@ class ArgCompatibleModel(nn.Module):
 
 
 class RandomBaseline(ArgCompatibleModel):
+    """ """
+
     def __init__(self, para, resources, device):
         super(RandomBaseline, self).__init__(para, resources, device,
                                              'random_baseline')
 
     def forward(self, batch_event_data, batch_info):
+        """
+
+        Args:
+          batch_event_data: 
+          batch_info: 
+
+        Returns:
+
+        """
         batch_features = batch_event_data['features']
         a, b, c = batch_features.shape
         return torch.rand(a, b, 1)
 
 
 class MostFrequentModel(ArgCompatibleModel):
+    """ """
+
     def __init__(self, para, resources, device):
         super(MostFrequentModel, self).__init__(para, resources, device,
                                                 'most_freq_baseline')
         self.para = para
 
     def forward(self, batch_event_data, batch_info):
+        """
+
+        Args:
+          batch_event_data: 
+          batch_info: 
+
+        Returns:
+
+        """
         # batch x instance_size x n_features
         batch_features = batch_event_data['features']
         return batch_features[:, :, 7]
 
 
 class BaselineEmbeddingModel(ArgCompatibleModel):
+    """ """
+
     def __init__(self, para, resources, device):
         super(BaselineEmbeddingModel, self).__init__(para, resources, device,
                                                      'w2v_baseline')
@@ -125,6 +155,15 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         self._avg_topk = para.w2v_baseline_avg_topk
 
     def forward(self, batch_event_data, batch_info):
+        """
+
+        Args:
+          batch_event_data: 
+          batch_info: 
+
+        Returns:
+
+        """
         # batch x instance_size x event_component
         batch_event_rep = batch_event_data['event_components']
 
@@ -192,9 +231,13 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
 
 
 class ArgPositionEmbedder(EmbedderBase):
-    """
-    Embedder for argument slots. This can be an embeder for the frame slots, or
+    """Embedder for argument slots. This can be an embeder for the frame slots, or
     an embeder for theargument positions as well.
+
+    Args:
+
+    Returns:
+
     """
 
     def __init__(self, embeddings, hparams=None):
@@ -205,19 +248,29 @@ class ArgPositionEmbedder(EmbedderBase):
 
     @property
     def output_size(self) -> int:
+        """ """
         return self._dim
 
     def forward(self, role_indices: torch.LongTensor) -> torch.Tensor:
-        """
-        Embed a list of slot role indices into the role embeddings.
-        :param role_indices: Input is the a tensor of the role ids, in the
+        """Embed a list of slot role indices into the role embeddings.
+
+        Args:
+          role_indices: Input is the a tensor of the role ids, in the
         shape of batch x sequence_length
-        :return: A embedded tensor of shape batch x sequence_length x embedding_dim
+          role_indices: torch.LongTensor:
+          role_indices: torch.LongTensor:
+          role_indices: torch.LongTensor: 
+
+        Returns:
+          : A embedded tensor of shape batch x sequence_length x embedding_dim
+
         """
         return self._embeddings(role_indices)
 
 
 class RoleArgCombineModule(nn.Module):
+    """ """
+
     def __init__(self, role_combine_method, embedding_dim):
         super().__init__()
         self._role_combine_method = role_combine_method
@@ -229,6 +282,15 @@ class RoleArgCombineModule(nn.Module):
             self.combine_layers = MLP(embedding_dim * 2, embedding_dim)
 
     def forward(self, role_repr, arg_repr):
+        """
+
+        Args:
+          role_repr: 
+          arg_repr: 
+
+        Returns:
+
+        """
         if self._role_combine_method == 'biaffine':
             return self.combine_layers(role_repr, arg_repr)
         elif self._role_combine_method == 'add':
@@ -242,6 +304,8 @@ class RoleArgCombineModule(nn.Module):
 
 
 class DynamicEventReprModule(nn.Module):
+    """ """
+
     def __init__(self, para: ArgModelPara):
         super().__init__()
 
@@ -258,16 +322,21 @@ class DynamicEventReprModule(nn.Module):
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
     def forward(self, predicate_repr, role_repr, arg_repr):
-        """
-        Compute the transformer encoded output of roles and the args.
-        :param predicate_repr: A tensor of the predicate representation of shape
+        """Compute the transformer encoded output of roles and the args.
+
+        Args:
+          predicate_repr: A tensor of the predicate representation of shape
             batch x embedding_dim
-        :param role_repr: A tensor of the role representations of shape
+          role_repr: A tensor of the role representations of shape
             batch x num_roles x embedding_dim
-        :param arg_repr: A tensor of the arg representations of shape
+          arg_repr: A tensor of the arg representations of shape
             batch x num_roles x embedding_dim
-        :return: The combined and pooled result of the argument and role pairs,
-        of shape batch x embedding_dim
+
+        Returns:
+          : The combined and pooled result of the argument and role pairs,
+          : The combined and pooled result of the argument and role pairs,
+          of shape batch x embedding_dim
+
         """
         combined_arg_role = self._role_arg_combiner(role_repr, arg_repr)
         # Self-attention version of the args and roles, we now average it.
@@ -278,6 +347,8 @@ class DynamicEventReprModule(nn.Module):
 
 
 class ArgCompositionModel(nn.Module):
+    """ """
+
     def __init__(self, para, resources):
         super(ArgCompositionModel, self).__init__()
         self.arg_representation_method = para.arg_representation_method
@@ -293,6 +364,14 @@ class ArgCompositionModel(nn.Module):
                              f" {self.arg_representation_method}")
 
     def _setup_fix_slot_mlp(self, para):
+        """
+
+        Args:
+          para: 
+
+        Returns:
+
+        """
         component_per = 2 if para.use_frame else 1
         num_event_components = (1 + para.num_slots) * component_per
         emb_size = num_event_components * para.event_embedding_dim
@@ -335,6 +414,8 @@ class ArgCompositionModel(nn.Module):
 
 
 class MLP(nn.Module):
+    """ """
+
     def __init__(self, input_hidden_size, output_sizes):
         super().__init__()
         self.layers = nn.ModuleList()
@@ -344,6 +425,15 @@ class MLP(nn.Module):
             input_size = output_size
 
     def forward(self, *input_data, activation=F.relu):
+        """
+
+        Args:
+          *input_data: 
+          activation: (Default value = F.relu)
+
+        Returns:
+
+        """
         _data = torch.cat(input_data, -1)
 
         for layer in self.layers:
@@ -352,15 +442,32 @@ class MLP(nn.Module):
 
 
 class Biaffine(nn.Module):
+    """ """
+
     def __init__(self, size_l, size_b):
         super(Biaffine, self).__init__()
         self._m_affine = nn.Linear(size_l, size_b)
 
     def forward(self, tensor_l: torch.Tensor, tensor_r: torch.Tensor):
+        """
+
+        Args:
+          tensor_l: torch.Tensor:
+          tensor_r: torch.Tensor:
+          tensor_l: torch.Tensor:
+          tensor_r: torch.Tensor:
+          tensor_l: torch.Tensor: 
+          tensor_r: torch.Tensor: 
+
+        Returns:
+
+        """
         return torch.bmm(self._m_affine(tensor_l), tensor_r)
 
 
 class PredicateWindowModule(nn.Module):
+    """ """
+
     def __init__(self, para: ArgModelPara):
         super().__init__()
         self.event_to_var_layer = nn.Linear(
@@ -372,14 +479,17 @@ class PredicateWindowModule(nn.Module):
         self.sqrt_2pie = math.sqrt(2 * math.pi)
 
     def forward(self, predicates, distances):
-        """
-        Compute the probabilities of the instance given the distance and
+        """Compute the probabilities of the instance given the distance and
         predicate.
-        :param predicates: The tensor containing the predicates embeddings,
+
+        Args:
+          predicates: The tensor containing the predicates embeddings,
         of shape batch x instance_size x embedding_dim
-        :param distances: The tensor containing the distance features,
+          distances: The tensor containing the distance features,
         of shape batch x instance_size x #distance_measures
-        :return:
+
+        Returns:
+
         """
         # The intuition here is that the distance is dependent on the predicate,
         # we assume that the probability factor follows a certain
@@ -397,6 +507,8 @@ class PredicateWindowModule(nn.Module):
 
 
 class EventContextAttentionPool(nn.Module):
+    """ """
+
     def __init__(self, para: ArgModelPara):
         super().__init__()
 
@@ -423,6 +535,15 @@ class EventContextAttentionPool(nn.Module):
             raise NotImplementedError("MLP not yet supported when voting.")
 
     def _context_vote(self, nom_event_emb, nom_context_emb):
+        """
+
+        Args:
+          nom_event_emb: 
+          nom_context_emb: 
+
+        Returns:
+
+        """
         # First compute the trans matrix between events and the context.
         context_trans = nom_context_emb.transpose(-2, -1)
         if self._vote_method == 'cosine':
@@ -440,15 +561,18 @@ class EventContextAttentionPool(nn.Module):
         return trans
 
     def forward(self, event_emb, context_emb, self_avoid_mask):
-        """
-        Compute the contextual scores in the attentive way, i.e., computing
+        """Compute the contextual scores in the attentive way, i.e., computing
         some cross scores between the two representations.
-        :param event_emb:
-        :param context_emb:
-        :param self_avoid_mask: mask of shape event_size x context_size, each
+
+        Args:
+          event_emb: context_emb:
+          self_avoid_mask: mask of shape event_size x context_size, each
         row is contain only one zero that indicate which context should not be
         used.
-        :return:
+          context_emb: 
+
+        Returns:
+
         """
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
@@ -496,6 +620,8 @@ class EventContextAttentionPool(nn.Module):
 
 
 class EventCoherenceModel(ArgCompatibleModel):
+    """ """
+
     def __init__(self, para: ArgModelPara, resources, device, model_name):
         super(EventCoherenceModel, self).__init__(para, resources, device,
                                                   model_name)
