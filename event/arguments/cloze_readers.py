@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from event.arguments.util import (batch_combine, to_torch)
-from event.io.io_utils import pad_2d_list
+from event.io.io_utils import pad_2d_list, pad_last_axis
 from pprint import pprint
 from operator import itemgetter
 import copy
@@ -90,6 +90,10 @@ class HashedClozeReader:
 
         self.instance_keys = []
 
+        # A set for data with variable length, we then will create paddings
+        # and length tensor for it.
+        self.__unk_length = set()
+
         # In fix slot mode we assume there is a fixed number of slots.
         if para.arg_representation_method == 'fix_slots':
             self.fix_slot_mode = True
@@ -98,7 +102,7 @@ class HashedClozeReader:
             self.fix_slot_mode = False
             self.instance_keys = ('predicate', 'slot', 'slot_values',
                                   'distances', 'features',)
-            self.__var_length = {'slot', 'slot_values', 'context_slot',
+            self.__unk_length = {'slot', 'slot_values', 'context_slot',
                                  'context_slot_value'}
 
         self.gold_role_field = self.para.gold_field_name
@@ -109,7 +113,9 @@ class HashedClozeReader:
             'context_event_component': np.int64,
             'context_slot': np.int64,
             'context_slot_value': np.int64,
+            'context_slot_length': np.int64,
             'context_predicate': np.int64,
+            'context_frame': np.int64,
             'event_indices': np.int64,
             'cross_event_indices': np.int64,
             'inside_event_indices': np.int64,
@@ -119,7 +125,9 @@ class HashedClozeReader:
             'event_component': np.int64,
             'slot': np.int64,
             'slot_value': np.int64,
+            'slot_length': np.int64,
             'predicate': np.int64,
+            'frame': np.int64,
             'distances': np.float32,
             'features': np.float32,
         }
@@ -129,7 +137,9 @@ class HashedClozeReader:
             'context_event_component': 2,
             'context_slot': 2,
             'context_slot_value': 2,
+            'context_slot_length': 1,
             'context_predicates': 2,
+            'context_frame': 2,
             'event_indices': 1,
             'cross_event_indices': 1,
             'inside_event_indices': 1,
@@ -139,14 +149,12 @@ class HashedClozeReader:
             'event_component': 2,
             'slot': 2,
             'slot_value': 2,
+            'slot_length': 1,
             'predicate': 2,
+            'frame': 2,
             'distances': 2,
             'features': 2,
         }
-
-        # A set for data with variable length, we then will create paddings
-        # and length tensor for it.
-        self.__var_length = set()
 
         self.device = torch.device(
             "cuda" if para.use_gpu and torch.cuda.is_available() else "cpu"
@@ -154,14 +162,8 @@ class HashedClozeReader:
 
         logger.info("Reading data with device: " + str(self.device))
 
-    def __var_pad(self, key, data):
-        # TODO: pad the variable length variable.
-        #  1. find the max len
-        #  2. pad it and create one extra seq length variable.
-        if key in self.__var_length:
-            return self.__batch_pad(data, )
-        else:
-            return data
+    def __var_pad(self, key, data, pad_length):
+        pad_last_axis(data, self.__data_dim[key], pad_length)
 
     def __batch_pad(self, key, data, pad_size):
         dim = self.__data_dim[key]
@@ -169,11 +171,11 @@ class HashedClozeReader:
         if dim == 2:
             return [pad_2d_list(v, pad_size) for v in data]
         elif dim == 1:
-            return pad_2d_list(data, pad_size, dim=1)
+            return pad_2d_list(data, pad_size, axis=1)
         else:
             raise ValueError("Dimension unsupported %d" % dim)
 
-    def create_batch(self, b_common_data, b_instance_data,
+    def create_batch(self, b_common_data, b_instance_data, max_num_slots,
                      max_context_size, max_instance_size):
         instance_data = {}
         common_data = {}
@@ -231,12 +233,13 @@ class HashedClozeReader:
 
         max_context_size = 0
         max_instance_size = 0
+        max_num_slots = 0
         doc_count = 0
 
         def _clear():
             # Clear batch data.
-            nonlocal b_common_data, b_instance_data, max_context_size
-            nonlocal max_instance_size, doc_count
+            nonlocal b_common_data, b_instance_data, doc_count
+            nonlocal max_instance_size, max_context_size, max_num_slots
 
             # Reset counts.
             b_common_data.clear()
@@ -244,6 +247,7 @@ class HashedClozeReader:
 
             max_context_size = 0
             max_instance_size = 0
+            max_num_slots = 0
 
         for instance_data, common_data in self.parse_docs(data_in, sampler):
             for key, value in common_data.items():
@@ -254,6 +258,9 @@ class HashedClozeReader:
                 if key == 'cross_slot_indicators':
                     if len(value) > max_instance_size:
                         max_instance_size = len(value)
+                if key == 'slot':
+                    if len(value) > 0 and len(value[0]) > max_num_slots:
+                        max_num_slots = len(value[0])
 
             for ins_type, ins_data in instance_data.items():
                 for key, value in ins_data.items():
@@ -268,8 +275,8 @@ class HashedClozeReader:
                 }
 
                 train_batch = self.create_batch(
-                    b_common_data, b_instance_data, max_context_size,
-                    max_instance_size
+                    b_common_data, b_instance_data, max_num_slots,
+                    max_context_size, max_instance_size
                 )
 
                 yield train_batch, debug_data
@@ -281,8 +288,9 @@ class HashedClozeReader:
         # Yield the remaining data.
         if len(b_common_data) > 0:
             debug_data = {}
-            train_batch = self.create_batch(b_common_data, b_instance_data,
-                                            max_context_size, max_instance_size)
+            train_batch = self.create_batch(
+                b_common_data, b_instance_data, max_num_slots,
+                max_context_size, max_instance_size)
             yield train_batch, debug_data
             _clear()
 
@@ -318,10 +326,6 @@ class HashedClozeReader:
         Returns:
 
         """
-        pred_components = [
-            predicate,
-            self.unk_frame_idx if frame_id == -1 else frame_id,
-        ]
 
         slot_comps = []
         slot_value_comps = []
@@ -333,9 +337,11 @@ class HashedClozeReader:
             slot_value_comps.append(arg['arg_role'])
 
         return {
-            'predicate': pred_components,
+            'predicate': predicate,
+            'frame': self.unk_frame_idx if frame_id == -1 else frame_id,
             'slot': slot_comps,
             'slot_value': slot_value_comps,
+            'slot_length': len(slot_comps)
         }
 
     def _take_fixed_size_event_parts(self, predicate, frame_id, args):
@@ -753,8 +759,10 @@ class HashedClozeReader:
                     else:
                         instance_data = {
                             'predicate': [],
+                            'frame': [],
                             'slot': [],
                             'slot_value': [],
+                            'slot_length': [],
                             'distances': [],
                             'features': [],
                         }
@@ -868,13 +876,20 @@ class HashedClozeReader:
                 b_common_data = {}
                 b_instance_data = {}
 
+                max_slot_size = max(len(l) for l in instances['slot'])
+                max_c_slot_size = max(
+                    len(l) for l in common_data['context_slot'])
+
                 # Create a pseudo batch with one instance.
                 for key, value in common_data.items():
-                    import pdb
-                    pdb.set_trace()
-                    # TODO: The shape of slot is unknown, so we need a max time
-                    #   for the slots.
-                    vectorized = to_torch([value], self.__data_types[key])
+                    if key in self.__unk_length:
+                        if key.startswith('context_'):
+                            self.__var_pad(key, value, max_c_slot_size)
+                        else:
+                            self.__var_pad(key, value, max_slot_size)
+
+                    vectorized = to_torch([value],
+                                          self.__data_types[key])
                     b_common_data[key] = batch_combine(vectorized, self.device)
 
                 for key, value in instances.items():

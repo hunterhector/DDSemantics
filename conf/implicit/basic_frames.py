@@ -11,7 +11,7 @@ c.ArgModelPara.model_type = 'EventPairComposition'
 c.ArgModelPara.use_frame = True
 c.ArgModelPara.slot_frame_formalism = 'FrameNet'
 c.ArgModelPara.arg_representation_method = 'role_dynamic'
-c.ArgModelPara.arg_role_combine_func = 'biaffine'
+c.ArgModelPara.arg_role_combine_func = 'mlp'
 
 c.Basic.test_in = os.path.join(base, 'semeval2010t10_train', 'processed',
                                'cloze_hashed.json.gz')

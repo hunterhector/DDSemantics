@@ -1,7 +1,10 @@
+import logging
+import math
+import pdb
+
 from torch import nn
 from torch.nn import functional as F
 import torch
-import logging
 from texar.torch.modules.encoders import TransformerEncoder
 from texar.torch.modules.embedders import EmbedderBase
 
@@ -9,7 +12,6 @@ from event.nn.models import KernelPooling
 from event import torch_util
 from conf.implicit import texar_config
 from event.arguments.implicit_arg_params import ArgModelPara
-import math
 
 logger = logging.getLogger(__name__)
 
@@ -269,17 +271,21 @@ class ArgPositionEmbedder(EmbedderBase):
 
 
 class RoleArgCombineModule(nn.Module):
-    """ """
+    """
+    Combine the role and arguments embeddings.
+
+    Args:
+        role_combine_method:
+        embedding_dim:
+    """
 
     def __init__(self, role_combine_method, embedding_dim):
         super().__init__()
         self._role_combine_method = role_combine_method
 
-        self.combine_layers = None
-        if self._role_combine_method == 'biaffine':
-            self.combine_layers = Biaffine(embedding_dim, embedding_dim)
-        elif self._role_combine_method == 'mlp':
-            self.combine_layers = MLP(embedding_dim * 2, embedding_dim)
+        self.weighting_layers = None
+        if self._role_combine_method == 'mlp':
+            self.weighting_layers = MLP(embedding_dim * 2, [embedding_dim])
 
     def forward(self, role_repr, arg_repr):
         """
@@ -291,16 +297,19 @@ class RoleArgCombineModule(nn.Module):
         Returns:
 
         """
-        if self._role_combine_method == 'biaffine':
-            return self.combine_layers(role_repr, arg_repr)
-        elif self._role_combine_method == 'add':
-            return role_repr + arg_repr
-        elif self._role_combine_method == 'dot':
-            return role_repr * arg_repr
-        elif self._role_combine_method == 'mlp':
-            return self.combine_layers(role_repr, arg_repr)
+        if self._role_combine_method == 'add':
+            res = role_repr + arg_repr
         elif self._role_combine_method == 'cat':
-            return torch.cat((role_repr, arg_repr), -1)
+            res = torch.cat((role_repr, arg_repr), -1)
+        elif self._role_combine_method == 'mlp':
+            res = self.weighting_layers(role_repr, arg_repr)
+        elif self._role_combine_method == 'biaffine':
+            raise NotImplementedError("I'm unclear how biaffine work here.")
+        else:
+            raise NotImplementedError(
+                f"Unsupported type {self._role_combine_method}")
+
+        return res
 
 
 class DynamicEventReprModule(nn.Module):
@@ -321,16 +330,38 @@ class DynamicEventReprModule(nn.Module):
                                  para.arg_composition_layer_sizes)
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
-    def forward(self, predicate_repr, role_repr, arg_repr):
+    def multi_slot_combine_func(self, arg_repr, arg_mask):
+        """
+        Combine the variable length arguments into one fixed length vector.
+
+        Args:
+            arg_repr: The argument representations.
+            arg_mask: The argument mask.
+
+        Returns:
+
+        """
+        # A sum based combine function. This assumes that the padded value in
+        # arg_repr are all zero.
+        # TODO: make sure assumption is true.
+        return torch.sum(arg_repr, dim=2) / arg_mask.unsqueeze(-1).float()
+
+    def forward(self, event_data):
         """Compute the transformer encoded output of roles and the args.
 
         Args:
-          predicate_repr: A tensor of the predicate representation of shape
-            batch x embedding_dim
-          role_repr: A tensor of the role representations of shape
-            batch x num_roles x embedding_dim
-          arg_repr: A tensor of the arg representations of shape
-            batch x num_roles x embedding_dim
+          event_data: A dict to a series of tensors representing the predicate
+          and argument.
+
+            - predicate: A tensor of the predicate embedding of shape
+              batch x instance x embedding_dim
+            - frame: A tensor of the frame embedding of shape
+              batch x instance x embedding_dim
+            - slot: A tensor of the role representations of shape
+              batch x instance x num_roles (padded) x embedding_dim
+            - slot_value: A tensor of the arg representations of shape
+              batch x instance x num_roles (padded) x embedding_dim
+            - slot_length: A tensor containing the actual length of each
 
         Returns:
           : The combined and pooled result of the argument and role pairs,
@@ -338,79 +369,59 @@ class DynamicEventReprModule(nn.Module):
           of shape batch x embedding_dim
 
         """
-        combined_arg_role = self._role_arg_combiner(role_repr, arg_repr)
-        # Self-attention version of the args and roles, we now average it.
-        # shape: batch x length x embedding_size
-        self_att_args = self._transformer(combined_arg_role).mean(1)
+        # This combines the slot name and slot value, which mimics the
+        # positional encoding idea. The output shape is
+        # batch x #instance x #slots x embedding_dim.
+        combined_arg_role = self._role_arg_combiner(event_data['slot'],
+                                                    event_data['slot_value'])
 
-        return self._pred_arg_mlp(predicate_repr, self_att_args)
+        # We have the argument representation now, which is weighted by the
+        # slot names, now we pass them into the transformer.
+        b, i, s, e = combined_arg_role.shape
+
+        # Before passing to the transformer, we view the batch and instance
+        # dimension as the batch dimention only.
+        self_att_args = self._transformer(
+            combined_arg_role.view(b * i, s, e),
+            event_data['slot_length'].view(b * i, 1)
+        ).view(b, i, s, e)
+
+        combined_args = self.multi_slot_combine_func(
+            self_att_args, event_data['slot_length'])
+
+        return self._pred_arg_mlp(event_data['predicate'], event_data['frame'],
+                                  combined_args)
 
 
-class ArgCompositionModel(nn.Module):
+class FixedEventReprModule(nn.Module):
     """ """
 
-    def __init__(self, para, resources):
-        super(ArgCompositionModel, self).__init__()
-        self.arg_representation_method = para.arg_representation_method
-
-        if self.arg_representation_method == 'fix_slots':
-            self.arg_comp = self._setup_fix_slot_mlp(para)
-            self.output_dim = para.arg_composition_layer_sizes[-1]
-        elif self.arg_representation_method == 'role_dynamic':
-            self.arg_comp = DynamicEventReprModule(para)
-            self.output_dim = self.arg_comp.output_dim
-        else:
-            raise ValueError(f"Unknown arg representation method"
-                             f" {self.arg_representation_method}")
-
-    def _setup_fix_slot_mlp(self, para):
-        """
-
-        Args:
-          para: 
-
-        Returns:
-
-        """
+    def __init__(self, para: ArgModelPara):
+        super().__init__()
         component_per = 2 if para.use_frame else 1
         num_event_components = (1 + para.num_slots) * component_per
-        emb_size = num_event_components * para.event_embedding_dim
-        return MLP(emb_size, para.arg_composition_layer_sizes)
+        self.arg_comp = MLP(
+            para.event_embedding_dim * num_event_components,
+            para.arg_composition_layer_sizes
+        )
+        self.output_dim = para.arg_composition_layer_sizes[-1]
 
     def forward(self, event_data):
         """
 
         Args:
-          event_data: 
+          event_data:
 
         Returns:
 
         """
-        if self.arg_representation_method == 'fix_slots':
-            # In fixed slot mode, the argument composition is simply done via
-            # a MLP since the dimension is fixed.
-            flatten_embedding_size = event_data.size()[-1
-                                     ] * event_data.size()[-2]
-            flatten_pred_emb = event_data.view(
-                event_data.size()[0], -1, flatten_embedding_size)
-            return self.arg_comp(flatten_pred_emb)
-        elif self.arg_representation_method == 'role_dynamic':
-            # In dynamic slot mode, the argument composition is done via a
-            # model that can take in the unknown number of slots.
-
-            # Note ``event_data['predicate']`` still need to be flatten
-            # since we can have a verb and a frame component.
-            pred_emb = event_data['predicate']
-            flatten_embedding_size = pred_emb.size()[-1] * pred_emb.size()[-2]
-            flatten_pred_emb = pred_emb.view(
-                pred_emb.size()[0], -1, flatten_embedding_size)
-
-            # batch x #instance x unk_slot_num x embedding_size
-            slot_emb = event_data['slot']
-            # batch x #instance x unk_slot_num x embedding_size
-            slot_values = event_data['slot_value']
-
-            return self.arg_comp(flatten_pred_emb, slot_emb, slot_values)
+        # In fixed slot mode, the argument composition is simply done via
+        # a MLP since the dimension is fixed.
+        flatten_embedding_size = event_data.size()[-1
+                                 ] * event_data.size()[-2]
+        flatten_pred_emb = event_data.view(
+            event_data.size()[0], -1, flatten_embedding_size)
+        return self.arg_comp(flatten_pred_emb)
 
 
 class MLP(nn.Module):
@@ -442,10 +453,17 @@ class MLP(nn.Module):
 
 
 class Biaffine(nn.Module):
-    """ """
+    """
+    Biaffine layer (actually only bilinear now).
+
+    Args:
+        size_l:
+        size_b:
+    """
 
     def __init__(self, size_l, size_b):
         super(Biaffine, self).__init__()
+
         self._m_affine = nn.Linear(size_l, size_b)
 
     def forward(self, tensor_l: torch.Tensor, tensor_r: torch.Tensor):
@@ -454,15 +472,11 @@ class Biaffine(nn.Module):
         Args:
           tensor_l: torch.Tensor:
           tensor_r: torch.Tensor:
-          tensor_l: torch.Tensor:
-          tensor_r: torch.Tensor:
-          tensor_l: torch.Tensor: 
-          tensor_r: torch.Tensor: 
 
         Returns:
 
         """
-        return torch.bmm(self._m_affine(tensor_l), tensor_r)
+        return torch.bmm(self._m_affine(tensor_l), tensor_r.transpose(-2, -1))
 
 
 class PredicateWindowModule(nn.Module):
@@ -529,8 +543,8 @@ class EventContextAttentionPool(nn.Module):
         self._vote_method = para.vote_method
 
         if self._vote_method == 'biaffine':
-            self.event_vote_layer = nn.Linear(self.para.event_embedding_dim,
-                                              self.para.event_embedding_dim)
+            self.event_vote_layer = Biaffine(self.para.event_embedding_dim,
+                                             self.para.event_embedding_dim)
         elif self._vote_method == 'mlp':
             raise NotImplementedError("MLP not yet supported when voting.")
 
@@ -545,13 +559,11 @@ class EventContextAttentionPool(nn.Module):
 
         """
         # First compute the trans matrix between events and the context.
-        context_trans = nom_context_emb.transpose(-2, -1)
         if self._vote_method == 'cosine':
             # Normalized dot product is cosine.
-            trans = torch.bmm(nom_event_emb, context_trans)
+            trans = torch.bmm(nom_event_emb, nom_context_emb.transpose(-2, -1))
         elif self._vote_method == 'biaffine':
-            trans = torch.bmm(self.biaffine_att_layer(nom_event_emb),
-                              context_trans)
+            trans = self.event_vote_layer(nom_event_emb, nom_context_emb)
         elif self._vote_method == 'mlp':
             raise NotImplementedError("MLP not yet supported when voting.")
         else:
@@ -577,27 +589,17 @@ class EventContextAttentionPool(nn.Module):
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
 
+        # TODO: half of both matrixes are zero, probably something wrong.
         trans = self._context_vote(nom_event_emb, nom_context_emb)
 
-        if self.__debug_show_shapes:
-            print("Event context similarity:")
-            print(trans.shape)
-
-            print("Avoidance mask:")
-            print(self_avoid_mask.shape)
-            print(self_avoid_mask.dtype)
-
-            print("Using the mask")
-
-            print(trans.shape)
-            print(self_avoid_mask.shape)
-
-            print("Filter with selecting matrix")
+        pdb.set_trace()
 
         # Make the self score zero.
+        # TODO: self_avoid didn't work here.
         trans = trans * self_avoid_mask
 
         if self._vote_pool_type == 'kernel':
+            # TODO: kp gives nan.
             pooled_value = self._kp(trans)
         elif self._vote_pool_type == 'max':
             pooled_value, _ = trans.max(2, keepdim=True)
@@ -633,7 +635,14 @@ class EventCoherenceModel(ArgCompatibleModel):
         # Number of extracted discrete features.
         feature_size = self.para.num_extracted_features
 
-        self.arg_composition_model = ArgCompositionModel(para, resources)
+        if self.para.arg_representation_method == 'fix_slots':
+            self.arg_composition_model = FixedEventReprModule(para)
+        elif self.para.arg_representation_method == 'role_dynamic':
+            self.arg_composition_model = DynamicEventReprModule(para)
+        else:
+            raise ValueError(f"Unknown arg representation method"
+                             f" {self.arg_representation_method}")
+
         self.context_vote_layer = EventContextAttentionPool(para)
 
         feature_size += self.arg_composition_model.output_dim
@@ -658,6 +667,51 @@ class EventCoherenceModel(ArgCompatibleModel):
         else:
             self.normalize_score = False
 
+    def event_repr(self, batch_event_data, batch_info):
+        if self.para.arg_representation_method == 'fix_slots':
+            # batch x instance_size x event_component
+            batch_event_rep = batch_event_data['event_components']
+            # batch x context_size x event_component
+            batch_context = batch_info['context_events']
+
+            context_emb = self.event_embedding(batch_context)
+            event_emb = self.event_embedding(batch_event_rep)
+
+            event_repr = self.arg_composition_model(event_emb)
+            context_repr = self.arg_composition_model(context_emb)
+
+            pred_emb = event_emb[:, :, 1, :]
+        elif self.para.arg_representation_method == 'role_dynamic':
+            batch_event_repr_data = {}
+            batch_context_event_repr_data = {}
+
+            # Each value is of shape batch x instance_size,
+            # and will become embeddings:
+            # batch x instance_size x emb.
+            for k in 'predicate', 'frame', 'slot_value', 'slot':
+                batch_event_repr_data[k] = self.event_embedding(
+                    batch_event_data[k])
+                batch_context_event_repr_data[k] = self.event_embedding(
+                    batch_info["context_" + k])
+
+            # Some non-embedding items
+            # batch x instance_size
+            for k in ('slot_length',):
+                batch_event_repr_data[k] = batch_event_data[k]
+                batch_context_event_repr_data[k] = \
+                    batch_info["context_" + k]
+
+            pred_emb = batch_event_repr_data['predicate']
+
+            event_repr = self.arg_composition_model(batch_event_repr_data)
+            context_repr = self.arg_composition_model(
+                batch_context_event_repr_data)
+        else:
+            raise ValueError(
+                f"Unknown compose method {self.para.arg_representation_method}")
+
+        return pred_emb, event_repr, context_repr
+
     def forward(self, batch_event_data, batch_info):
         """
 
@@ -677,55 +731,15 @@ class EventCoherenceModel(ArgCompatibleModel):
         # The slot is an embedding the represent the slot role.
         # It can be a one-hot vector for fix slot, and dense embedding in
         # dynamic view.
+        # TODO: 1. what should be the indicator? 2. this is currently long,
+        #  which won't work
         batch_slots = batch_info['slot_indicators']
-
-        # if self.para.arg_representation_method == 'fix_slots':
-        #     # batch x instance_size
-        #     batch_slots = batch_info['slot_indicators']
-        # elif self.para.arg_representation_method == 'role_dynamic':
-        #     batch_slots = ba
-        #
-        # # Create one hot features from index.
-        # # batch x instance_size x num_slots
-        # slot_indicator = torch.zeros(
-        #     batch_slots.shape[0], batch_slots.shape[1], self.num_slots
-        # ).to(self.device)
-        # slot_indicator.scatter_(2, batch_slots.unsqueeze(2), 1)
 
         l_extracted = [batch_features, batch_slots]
 
-        if self.para.arg_representation_method == 'fix_slots':
-            # batch x instance_size x event_component
-            batch_event_rep = batch_event_data['event_components']
-            # batch x context_size x event_component
-            batch_context = batch_info['context_events']
-
-            context_emb = self.event_embedding(batch_context)
-            event_emb = self.event_embedding(batch_event_rep)
-
-            event_repr = self.arg_composition_model(event_emb)
-            context_repr = self.arg_composition_model(context_emb)
-
-            pred_emb = event_emb[:, :, 1, :]
-        elif self.para.arg_representation_method == 'role_dynamic':
-            d_keys = 'predicate', 'frame', 'slots', 'slot_values'
-            batch_embedded_event_data = []
-            batch_embedded_context_event_data = []
-
-            for k in d_keys:
-                batch_embedded_event_data.append(
-                    self.event_embedding(batch_event_data[k]))
-                batch_embedded_context_event_data.append(self.event_embedding(
-                    batch_info["context_" + k]))
-
-            pred_emb = batch_embedded_event_data[0]
-
-            event_repr = self.arg_composition_model(batch_embedded_event_data)
-            context_repr = self.arg_composition_model(
-                batch_embedded_context_event_data)
-        else:
-            raise ValueError(
-                f"Unknown compose method {self.para.arg_representation_method}")
+        # Compute the representation of events and context events.
+        pred_emb, event_repr, context_repr = self.event_repr(
+            batch_event_data, batch_info)
 
         # Compute the distance features using the predicate embedding.
         if self._use_distance:
@@ -741,9 +755,12 @@ class EventCoherenceModel(ArgCompatibleModel):
         bs, context_size, _ = context_repr.shape
         self_mask = self.self_event_mask(batch_event_indices, bs, event_size,
                                          context_size)
-        coh_features = self.coh(event_repr, context_repr, self_mask)
+        coh_features = self.context_vote_layer(event_repr, context_repr,
+                                               self_mask)
 
         l_extracted.append(coh_features)
+
+        pdb.set_trace()
 
         # batch x instance_size x feature_size
         all_features = torch.cat(l_extracted, -1)
@@ -753,5 +770,7 @@ class EventCoherenceModel(ArgCompatibleModel):
 
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
+
+        pdb.set_trace()
 
         return scores

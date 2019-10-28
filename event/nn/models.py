@@ -39,6 +39,8 @@ class KernelPooling(nn.Module):
         return
 
     def forward(self, in_tensor, mtx_score=None):
+        import pdb
+        pdb.set_trace()
         in_tensor = in_tensor.unsqueeze(-1)
         in_tensor = in_tensor.expand(in_tensor.size()[:-1] + (self.K,))
         score = -(in_tensor - self.v_mu) * (in_tensor - self.v_mu)
@@ -51,6 +53,7 @@ class KernelPooling(nn.Module):
         else:
             weighted_kernel_value = kernel_value
 
+        # TODO: The sum here causes nan.
         sum_kernel_value = torch.sum(weighted_kernel_value, dim=-2).clamp(
             min=1e-10)  # add freq/weight
         sum_kernel_value = torch.log(sum_kernel_value)
