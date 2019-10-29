@@ -39,8 +39,6 @@ class KernelPooling(nn.Module):
         return
 
     def forward(self, in_tensor, mtx_score=None):
-        import pdb
-        pdb.set_trace()
         in_tensor = in_tensor.unsqueeze(-1)
         in_tensor = in_tensor.expand(in_tensor.size()[:-1] + (self.K,))
         score = -(in_tensor - self.v_mu) * (in_tensor - self.v_mu)

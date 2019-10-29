@@ -35,20 +35,18 @@ class ArgCompatibleModel(nn.Module):
 
         self.__load_embeddings(resources)
 
-    def self_event_mask(self, batch_event_indices, batch_size, event_size,
-                        context_size):
+    def self_event_mask(self, batch_event_indices, context_size):
         """Return a matrix to mask out the scores from the current event.
 
         Args:
           batch_event_indices: batch_size
-          event_size: context_size
-          batch_size: 
-          context_size: 
+          context_size:
 
         Returns:
           
 
         """
+        batch_size, event_size = batch_event_indices.shape
         selector = batch_event_indices.unsqueeze(-1)
         one_zeros = torch.ones(
             batch_size, event_size, context_size, dtype=torch.float32,
@@ -207,10 +205,8 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         nom_event_emb = F.normalize(flat_event_emb, 2, -1)
         nom_context_emb = F.normalize(flat_context_emb, 2, -1)
 
-        bs, event_size, _ = batch_event_rep.shape
-        bs, context_size, _ = batch_context.shape
-        self_mask = self.self_event_mask(batch_event_indices, bs, event_size,
-                                         context_size)
+        _, context_size, _ = batch_context.shape
+        self_mask = self.self_event_mask(batch_event_indices, context_size)
 
         # Cosine similarities to the context.
         # batch x instance_size x context_size
@@ -330,7 +326,8 @@ class DynamicEventReprModule(nn.Module):
                                  para.arg_composition_layer_sizes)
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
-    def multi_slot_combine_func(self, arg_repr, arg_mask):
+    @staticmethod
+    def multi_slot_combine_func(arg_repr, arg_mask):
         """
         Combine the variable length arguments into one fixed length vector.
 
@@ -344,6 +341,7 @@ class DynamicEventReprModule(nn.Module):
         # A sum based combine function. This assumes that the padded value in
         # arg_repr are all zero.
         # TODO: make sure assumption is true.
+        # TODO: there are zero values in this arg_mask b
         return torch.sum(arg_repr, dim=2) / arg_mask.unsqueeze(-1).float()
 
     def forward(self, event_data):
@@ -369,6 +367,7 @@ class DynamicEventReprModule(nn.Module):
           of shape batch x embedding_dim
 
         """
+
         # This combines the slot name and slot value, which mimics the
         # positional encoding idea. The output shape is
         # batch x #instance x #slots x embedding_dim.
@@ -379,13 +378,19 @@ class DynamicEventReprModule(nn.Module):
         # slot names, now we pass them into the transformer.
         b, i, s, e = combined_arg_role.shape
 
+        # TODO: how should we fill the non-arg events? This requires us to find
+        #  review the padding and representations carefully.
+
         # Before passing to the transformer, we view the batch and instance
-        # dimension as the batch dimention only.
+        # dimension as the batch dimension only.
         self_att_args = self._transformer(
             combined_arg_role.view(b * i, s, e),
             event_data['slot_length'].view(b * i, 1)
         ).view(b, i, s, e)
 
+        slot_length = event_data['slot_length']
+        pdb.set_trace()
+        # INF comes after we apply this func.
         combined_args = self.multi_slot_combine_func(
             self_att_args, event_data['slot_length'])
 
@@ -577,11 +582,11 @@ class EventContextAttentionPool(nn.Module):
         some cross scores between the two representations.
 
         Args:
-          event_emb: context_emb:
+          event_emb:
+          context_emb:
           self_avoid_mask: mask of shape event_size x context_size, each
-        row is contain only one zero that indicate which context should not be
-        used.
-          context_emb: 
+            row is contain only one zero that indicate which context should not
+            be used.
 
         Returns:
 
@@ -592,14 +597,10 @@ class EventContextAttentionPool(nn.Module):
         # TODO: half of both matrixes are zero, probably something wrong.
         trans = self._context_vote(nom_event_emb, nom_context_emb)
 
-        pdb.set_trace()
-
         # Make the self score zero.
-        # TODO: self_avoid didn't work here.
         trans = trans * self_avoid_mask
 
         if self._vote_pool_type == 'kernel':
-            # TODO: kp gives nan.
             pooled_value = self._kp(trans)
         elif self._vote_pool_type == 'max':
             pooled_value, _ = trans.max(2, keepdim=True)
@@ -703,7 +704,10 @@ class EventCoherenceModel(ArgCompatibleModel):
 
             pred_emb = batch_event_repr_data['predicate']
 
+            print('computing event representation')
             event_repr = self.arg_composition_model(batch_event_repr_data)
+
+            print('computing context representation')
             context_repr = self.arg_composition_model(
                 batch_context_event_repr_data)
         else:
@@ -751,15 +755,15 @@ class EventCoherenceModel(ArgCompatibleModel):
             l_extracted.append(distance_emb)
 
         # Now compute the coherent features with all context events.
-        bs, event_size, _ = event_repr.shape
-        bs, context_size, _ = context_repr.shape
-        self_mask = self.self_event_mask(batch_event_indices, bs, event_size,
-                                         context_size)
+        _, context_size, _ = context_repr.shape
+        self_mask = self.self_event_mask(batch_event_indices, context_size)
+
         coh_features = self.context_vote_layer(event_repr, context_repr,
                                                self_mask)
 
         l_extracted.append(coh_features)
 
+        print('all features')
         pdb.set_trace()
 
         # batch x instance_size x feature_size
@@ -771,6 +775,7 @@ class EventCoherenceModel(ArgCompatibleModel):
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
 
+        print('scores')
         pdb.set_trace()
 
         return scores
