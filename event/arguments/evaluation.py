@@ -4,10 +4,11 @@ from itertools import groupby
 from operator import itemgetter
 import logging
 from event import util
-
-from event.arguments.cloze_readers import ghost_entity_text
+import pdb
 from pprint import pprint
 from collections import Counter, defaultdict
+
+from event.arguments.cloze_readers import ghost_entity_text
 from event.io.dataset.utils import nombank_pred_text
 
 
@@ -109,10 +110,7 @@ class ImplicitEval:
                 key=itemgetter(0)), instance_meta):
             _, raw_scores, c_meta = zip(*result)
 
-            # print(event_idx, slot_idx)
-            # print(_, raw_scores, c_meta)
-            # print(ins_meta)
-            # input("result for one case.")
+            pdb.set_trace()
 
             self.add_result(
                 doc_id, event_idx, slot_idx, raw_scores, ins_meta, c_meta

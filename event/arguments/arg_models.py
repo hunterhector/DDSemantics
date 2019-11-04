@@ -338,10 +338,11 @@ class DynamicEventReprModule(nn.Module):
         Returns:
 
         """
-        # A sum based combine function. This assumes that the padded value in
-        # arg_repr are all zero.
-        # TODO: make sure assumption is true.
-        # TODO: there are zero values in this arg_mask b
+        # A sum based combine function.
+        # 1. Need to consider how padding affects the sum.
+        # 1. The arg_mask must be all nonzero, this is currently done by adding
+        #    special arguments when the arguments length is zero, when reading
+        #    data, otherwise there will be NANs.
         return torch.sum(arg_repr, dim=2) / arg_mask.unsqueeze(-1).float()
 
     def forward(self, event_data):
@@ -378,9 +379,6 @@ class DynamicEventReprModule(nn.Module):
         # slot names, now we pass them into the transformer.
         b, i, s, e = combined_arg_role.shape
 
-        # TODO: how should we fill the non-arg events? This requires us to find
-        #  review the padding and representations carefully.
-
         # Before passing to the transformer, we view the batch and instance
         # dimension as the batch dimension only.
         self_att_args = self._transformer(
@@ -388,8 +386,6 @@ class DynamicEventReprModule(nn.Module):
             event_data['slot_length'].view(b * i, 1)
         ).view(b, i, s, e)
 
-        slot_length = event_data['slot_length']
-        pdb.set_trace()
         # INF comes after we apply this func.
         combined_args = self.multi_slot_combine_func(
             self_att_args, event_data['slot_length'])
@@ -646,15 +642,19 @@ class EventCoherenceModel(ArgCompatibleModel):
 
         self.context_vote_layer = EventContextAttentionPool(para)
 
-        feature_size += self.arg_composition_model.output_dim
+        # feature_size += self.arg_composition_model.output_dim
         feature_size += self.context_vote_layer.output_dim
 
         # Dim for 1-hot slot position feature.
         if self.para.arg_representation_method == 'fix_slots':
             feature_size += self.num_slots
         else:
-            # Dim for the FE representation.
-            feature_size += self.para.event_embedding_dim
+            # Dim for the FE representation, we reduce this dimension
+            # before passing on.
+            slot_indicator_dim = 5
+            self.slot_indicator_reduction = MLP(
+                self.para.event_embedding_dim, [slot_indicator_dim])
+            feature_size += slot_indicator_dim
 
         self._use_distance = para.encode_distance
         if self._use_distance:
@@ -716,6 +716,16 @@ class EventCoherenceModel(ArgCompatibleModel):
 
         return pred_emb, event_repr, context_repr
 
+    def __slot_indicator(self, slot_indicator):
+        if self.para.arg_representation_method == 'fix_slots':
+            return torch_util.make_2d_one_hot(slot_indicator, self.num_slots,
+                                              self.device)
+        else:
+            # Apply the MLP reduction on the embedding.
+            return self.slot_indicator_reduction(
+                self.event_embedding(slot_indicator)
+            )
+
     def forward(self, batch_event_data, batch_info):
         """
 
@@ -735,11 +745,10 @@ class EventCoherenceModel(ArgCompatibleModel):
         # The slot is an embedding the represent the slot role.
         # It can be a one-hot vector for fix slot, and dense embedding in
         # dynamic view.
-        # TODO: 1. what should be the indicator? 2. this is currently long,
-        #  which won't work
         batch_slots = batch_info['slot_indicators']
+        slot_features = self.__slot_indicator(batch_slots)
 
-        l_extracted = [batch_features, batch_slots]
+        l_extracted = [batch_features, slot_features]
 
         # Compute the representation of events and context events.
         pred_emb, event_repr, context_repr = self.event_repr(
@@ -763,11 +772,11 @@ class EventCoherenceModel(ArgCompatibleModel):
 
         l_extracted.append(coh_features)
 
-        print('all features')
-        pdb.set_trace()
-
         # batch x instance_size x feature_size
         all_features = torch.cat(l_extracted, -1)
+
+        print('all features')
+        pdb.set_trace()
 
         # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)

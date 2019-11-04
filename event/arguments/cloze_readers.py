@@ -119,9 +119,9 @@ class HashedClozeReader:
             'event_indices': np.int64,
             'cross_event_indices': np.int64,
             'inside_event_indices': np.int64,
-            'slot_indicators': np.float32,
-            'cross_slot_indicators': np.float32,
-            'inside_slot_indicators': np.float32,
+            'slot_indicators': np.int64,
+            'cross_slot_indicators': np.int64,
+            'inside_slot_indicators': np.int64,
             'event_component': np.int64,
             'slot': np.int64,
             'slot_value': np.int64,
@@ -335,6 +335,10 @@ class HashedClozeReader:
         for slot, arg in args:
             slot_comps.append(slot)
             slot_value_comps.append(arg['arg_role'])
+
+        if len(slot_comps) == 0:
+            slot_comps.append(self.unobserved_fe)
+            slot_value_comps.append(self.unobserved_arg)
 
         return {
             'predicate': predicate,
@@ -802,10 +806,12 @@ class HashedClozeReader:
                                 self.fix_slot_names.index(target_slot)
                             )
                         else:
-                            # In dynamic slot mode, the first one is always
-                            # the candidate target, so we need a special marker
-                            # for it.
-                            cloze_slot_indicator.append(0)
+                            # In dynamic slot mode, we provide the slot's
+                            # vocab id, which can be converted to embedding.
+                            cloze_slot_indicator.append(
+                                self.event_emb_vocab.get_index(
+                                    target_slot, self.typed_event_vocab.unk_fe)
+                            )
 
                         if filler_eid == ghost_entity_id:
                             candidate_meta.append(
@@ -1088,6 +1094,7 @@ class HashedClozeReader:
                                                current_sent, pred,
                                                event['frame'], arg_list,
                                                correct_id)
+
                     # These two list indicate where the target argument is.
                     # When we use fix slot mode, the index is a indicator of
                     # the slot position. Otherwise, the slot_index is a way to

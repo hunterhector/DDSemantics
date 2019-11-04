@@ -318,7 +318,7 @@ class ArgRunner(Configurable):
 
                 event_idxes = common_data['event_indices'].data.cpu().numpy()[
                     0].tolist()
-                slot_idxes = common_data['slot_indices'].data.cpu().numpy()[
+                slot_idxes = common_data['slot_indicators'].data.cpu().numpy()[
                     0].tolist()
                 coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
 
