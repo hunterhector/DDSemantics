@@ -110,8 +110,6 @@ class ImplicitEval:
                 key=itemgetter(0)), instance_meta):
             _, raw_scores, c_meta = zip(*result)
 
-            pdb.set_trace()
-
             self.add_result(
                 doc_id, event_idx, slot_idx, raw_scores, ins_meta, c_meta
             )
@@ -182,7 +180,6 @@ class ImplicitEval:
             'predicate': ins_meta['predicate'],
             'slot_name': self.slot_names[slot_idx],
             'slot_index': slot_idx,
-            'gold_entity': ins_meta['gold_entity'],
             'answers': ins_meta['answers'],
             'categorized_result': {},
         }

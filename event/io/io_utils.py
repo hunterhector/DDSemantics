@@ -6,6 +6,7 @@ from gensim.models import KeyedVectors
 
 def pad_2d_list(in_list, pad_to_length, axis=0, pad_value=0):
     if axis == 0:
+        print('padding ', in_list)
         pad_len = pad_to_length - len(in_list)
         pads = [pad_value] * len(in_list[0])
         return in_list + [pads for _ in range(pad_len)]

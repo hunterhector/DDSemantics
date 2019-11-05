@@ -100,9 +100,9 @@ class HashedClozeReader:
             self.instance_keys = ('event_component', 'distances', 'features')
         elif para.arg_representation_method == 'role_dynamic':
             self.fix_slot_mode = False
-            self.instance_keys = ('predicate', 'slot', 'slot_values',
-                                  'distances', 'features',)
-            self.__unk_length = {'slot', 'slot_values', 'context_slot',
+            self.instance_keys = ('predicate', 'slot', 'slot_value', 'frame',
+                                  'slot_length', 'distances', 'features',)
+            self.__unk_length = {'slot', 'slot_value', 'context_slot',
                                  'context_slot_value'}
 
         self.gold_role_field = self.para.gold_field_name
@@ -133,12 +133,12 @@ class HashedClozeReader:
         }
 
         self.__data_dim = {
-            # 'context': 2,
             'context_event_component': 2,
             'context_slot': 2,
             'context_slot_value': 2,
             'context_slot_length': 1,
-            'context_predicates': 2,
+            # TODO: what is the dim for predicate? 1 or 2, make it consistent.
+            'context_predicate': 2,
             'context_frame': 2,
             'event_indices': 1,
             'cross_event_indices': 1,
@@ -169,6 +169,7 @@ class HashedClozeReader:
         dim = self.__data_dim[key]
 
         if dim == 2:
+            print(key)
             return [pad_2d_list(v, pad_size) for v in data]
         elif dim == 1:
             return pad_2d_list(data, pad_size, axis=1)
@@ -271,7 +272,6 @@ class HashedClozeReader:
             # Each document is computed as a whole.
             if doc_count % self.para.batch_size == 0:
                 debug_data = {
-                    # 'predicate': batch_predicates,
                 }
 
                 train_batch = self.create_batch(
@@ -757,19 +757,7 @@ class HashedClozeReader:
                         test_stub, doc_mentions, pred_sent, distance_cap=3)
 
                     # Prepare instance data for each possible instance.
-                    if self.fix_slot_mode:
-                        instance_data = {'event_component': [], 'distances': [],
-                                         'features': [], }
-                    else:
-                        instance_data = {
-                            'predicate': [],
-                            'frame': [],
-                            'slot': [],
-                            'slot_value': [],
-                            'slot_length': [],
-                            'distances': [],
-                            'features': [],
-                        }
+                    instance_data = dict([(k, []) for k in self.instance_keys])
 
                     candidate_meta = []
                     instance_meta = []
@@ -848,8 +836,8 @@ class HashedClozeReader:
                         # In fixed mode, the key is "events", that contain
                         # the representation for the event.
 
-                        # In dynamic mode, the keys are "predicates",
-                        # "slots", "slot_values".
+                        # In dynamic mode, the keys are "predicate",
+                        # "slot", "slot_value".
                         for key, value in event_rep.items():
                             try:
                                 common_data['context_' + key].append(value)
@@ -964,7 +952,8 @@ class HashedClozeReader:
                         'arg_phrase': arg['arg_phrase'],
                         'represent': arg['represent'],
                         'text': arg['text'],
-                        # 'source': arg['source'],
+                        # Some dataset do not have the source field.
+                        'source': arg.get('source', 'automatic'),
                         'sentence_id': arg['sentence_id'],
                         'arg_start': arg['arg_start'],
                         'arg_end': arg['arg_end'],
@@ -995,12 +984,8 @@ class HashedClozeReader:
             'inside_slot_indicators': [],
         }
 
-        max_rep_value = 0
         for event_rep in all_event_reps:
             for key, value in event_rep.items():
-                for v in value:
-                    if v > max_rep_value:
-                        max_rep_value = v
                 try:
                     common_data['context_' + key].append(value)
                 except KeyError:
@@ -1273,16 +1258,16 @@ class HashedClozeReader:
             component_per = 2 if self.para.use_frame else 1
             num_event_components = (1 + self.para.num_slots) * component_per
 
-            instance_data['events'].append(
+            instance_data['event_component'].append(
                 [self.ghost_component] * num_event_components)
         else:
-            instance_data['predicates'].append(
+            instance_data['predicate'].append(
                 self.ghost_component
             )
             instance_data['slot'].append(
                 self.ghost_component
             )
-            instance_data['slot_values'].append(
+            instance_data['slot_value'].append(
                 self.ghost_component
             )
 
@@ -1334,7 +1319,7 @@ class HashedClozeReader:
             updated_slot_info['represent'] = swap_slot['represent']
             updated_slot_info['text'] = swap_slot['text']
             updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
-            updated_slot_info['source'] = swap_slot['source']
+            updated_slot_info['source'] = swap_slot.get('source', 'automatic')
             updated_slot_info['arg_start'] = swap_slot['arg_start']
             updated_slot_info['arg_end'] = swap_slot['arg_end']
 

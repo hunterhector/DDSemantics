@@ -775,16 +775,10 @@ class EventCoherenceModel(ArgCompatibleModel):
         # batch x instance_size x feature_size
         all_features = torch.cat(l_extracted, -1)
 
-        print('all features')
-        pdb.set_trace()
-
         # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)
 
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
-
-        print('scores')
-        pdb.set_trace()
 
         return scores
