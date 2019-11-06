@@ -2,13 +2,9 @@ import json
 import os
 from itertools import groupby
 from operator import itemgetter
-import logging
 from event import util
-import pdb
-from pprint import pprint
-from collections import Counter, defaultdict
 
-from event.arguments.cloze_readers import ghost_entity_text
+from event.arguments.data.cloze_readers import ghost_entity_text
 from event.io.dataset.utils import nombank_pred_text
 
 

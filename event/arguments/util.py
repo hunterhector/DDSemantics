@@ -1,61 +1,7 @@
 from time import localtime, strftime
-import torch
+
 import numpy as np
-import random
-import math
-
-
-class ClozeSampler:
-    def __init__(self, sample_pred_threshold=10e-5, seed=None):
-        self.sample_pred_threshold = sample_pred_threshold
-        self.provided_seed = seed
-        random.seed(self.provided_seed)
-
-    def reset(self):
-        random.seed(self.provided_seed)
-
-    def sample_cross(self, arg_pool, origin_start, origin_end):
-        remaining = []
-        for arg_info in arg_pool:
-            if not (arg_info['arg_start'] == origin_start
-                    or arg_info['arg_end'] == origin_end):
-                remaining.append(arg_info)
-
-        if len(remaining) > 0:
-            return random.choice(remaining)
-        else:
-            return None
-
-    def sample_list(self, l):
-        return random.choice(l)
-
-    def sample_ignore_item(self, data, ignored_item):
-        """Sample one item in the list, but ignore a provided one. If the list
-        contains less than 2 elements, nothing will be sampled.
-
-        Args:
-          data: ignored_item:
-          ignored_item: 
-
-        Returns:
-
-        """
-        if len(data) <= 1:
-            return None
-
-        while True:
-            sampled_item = random.choice(data)
-            if not sampled_item == ignored_item:
-                break
-        return sampled_item
-
-    def subsample_pred(self, pred_tf, freq):
-        if freq > self.sample_pred_threshold:
-            if pred_tf > self.sample_pred_threshold:
-                rate = self.sample_pred_threshold / freq
-                if random.random() < 1 - rate - math.sqrt(rate):
-                    return False
-        return True
+import torch
 
 
 def batch_combine(l_data, device):

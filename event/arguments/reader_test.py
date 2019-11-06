@@ -1,6 +1,6 @@
 from event.arguments.arg_runner import GoldNullArgDetector, \
     ResolvableArgDetector
-from event.arguments.cloze_readers import HashedClozeReader
+from event.arguments.data.cloze_readers import HashedClozeReader
 from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.implicit_arg_resources import ImplicitArgResources
 

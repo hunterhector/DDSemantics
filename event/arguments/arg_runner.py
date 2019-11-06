@@ -16,7 +16,7 @@ from torch.nn import functional as F
 
 import logging
 
-from event.arguments.cloze_readers import HashedClozeReader
+from event.arguments.data.cloze_readers import HashedClozeReader
 
 from smart_open import open
 from event.arguments.implicit_arg_resources import ImplicitArgResources
@@ -24,12 +24,9 @@ import math
 import os
 import pickle
 import shutil
-from pprint import pprint
-from itertools import groupby
-from operator import itemgetter
 from event.arguments.evaluation import ImplicitEval
 from collections import Counter
-from event.arguments.util import ClozeSampler
+from event.arguments.data.cloze_gen import ClozeSampler
 from event.util import load_mixed_configs
 import json
 from event.util import (
@@ -37,7 +34,6 @@ from event.util import (
 )
 from time import localtime, strftime
 import numpy as np
-from event import util
 
 logger = logging.getLogger(__name__)
 
@@ -599,7 +595,8 @@ class ArgRunner(Configurable):
             for batch_data, debug_data in self.reader.read_train_batch(
                     data_gen(train_in,
                              from_line=self.basic_para.validation_size),
-                    train_sampler):
+                    train_sampler
+            ):
                 batch_instance, batch_info, b_size, mask = batch_data
                 loss = self._get_loss(batch_instance, batch_info, mask)
 

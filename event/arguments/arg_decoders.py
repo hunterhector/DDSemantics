@@ -1,25 +1,4 @@
 from traitlets.config import Configurable
-from event.arguments.implicit_arg_params import ArgModelPara
-from event.arguments.arg_models import EventCoherenceModel
-from traitlets import (
-    Unicode,
-    Integer
-)
-import torch
-from torch.nn import functional as F
-
-import logging
-import sys
-
-from event.arguments.cloze_readers import HashedClozeReader
-
-from smart_open import smart_open
-from event.arguments.implicit_arg_resources import ImplicitArgResources
-import math
-import os
-from event import torch_util
-import pickle
-import shutil
 
 
 class ArgDecoder(Configurable):
