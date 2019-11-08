@@ -101,8 +101,8 @@ class HashedClozeReader:
             if parsed_output is None:
                 continue
 
-            instance_data, common_data = parsed_output
-            yield from train_batcher.get_batch(instance_data, common_data)
+            instance_data, old_instance_data, common_data = parsed_output
+            yield from train_batcher.get_batch(old_instance_data, common_data)
 
         if train_batcher.doc_count == 0:
             raise ValueError("Provided data is empty.")
@@ -588,11 +588,15 @@ class HashedClozeReader:
         # the options are:
         # 1. Unigram distribution to sample items.
         # 2. Select items based on classifier output.
+
+        # These to be deleted.
         cross_instance = ClozeInstanceBuilder(self.para, self.event_struct)
         cross_gold = ClozeInstanceBuilder(self.para, self.event_struct)
-
         inside_instance = ClozeInstanceBuilder(self.para, self.event_struct)
         inside_gold = ClozeInstanceBuilder(self.para, self.event_struct)
+
+        # All generated instances here.
+        instances = ClozeInstanceBuilder(self.para, self.event_struct)
 
         for evm_index, event in enumerate(event_subset):
             pred = event['predicate']
@@ -638,6 +642,17 @@ class HashedClozeReader:
                 slot_index = self.fix_slot_names.index(slot) if \
                     self.fix_slot_mode else slot
 
+                if cross_sample or inside_sample:
+                    if is_singleton:
+                        instances.add_ghost_instance(1)
+                    else:
+                        instances.assemble_instance(
+                            features_by_eid, explicit_entity_positions,
+                            current_sent,
+                            self.event_struct.event_repr(
+                                pred, event['frame'], arg_list),
+                            correct_id, 1)
+
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
 
@@ -648,7 +663,19 @@ class HashedClozeReader:
                         self.event_struct.event_repr(
                             pred, event['frame'], cross_args
                         ),
-                        cross_filler_id
+                        cross_filler_id,
+                        0
+                    )
+
+                    instances.assemble_instance(
+                        features_by_eid,
+                        explicit_entity_positions,
+                        current_sent,
+                        self.event_struct.event_repr(
+                            pred, event['frame'], cross_args
+                        ),
+                        cross_filler_id,
+                        0
                     )
 
                     if is_singleton:
@@ -682,6 +709,15 @@ class HashedClozeReader:
                         inside_filler_id
                     )
 
+                    instances.assemble_instance(
+                        features_by_eid,
+                        explicit_entity_positions,
+                        current_sent,
+                        self.event_struct.event_repr(
+                            pred, event['frame'], inside_args),
+                        inside_filler_id, 0
+                    )
+
                     # Inside sample can be used on singletons.
                     inside_gold.assemble_instance(
                         features_by_eid,
@@ -706,4 +742,4 @@ class HashedClozeReader:
             'inside': inside_instance.data,
         }
 
-        return instance_data, common_data
+        return instances, instance_data, common_data

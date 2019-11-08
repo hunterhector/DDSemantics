@@ -25,14 +25,18 @@ class ClozeInstanceBuilder:
         self.num_distance_features = para.num_distance_features
 
         self.__data = dict([(k, []) for k in self.instance_keys])
+        self.__labels = []
 
     @property
     def data(self):
         return self.__data
 
-    def assemble_instance(self, features_by_eid,
-                          entity_positions, sent_id, event_repr,
-                          filler_eid):
+    @property
+    def label(self):
+        return self.__labels
+
+    def assemble_instance(self, features_by_eid, entity_positions, sent_id,
+                          event_repr, filler_eid, label=1):
         if filler_eid == ghost_entity_id:
             self.add_ghost_instance()
         else:
@@ -47,7 +51,9 @@ class ClozeInstanceBuilder:
                                                    filler_eid)
             )
 
-    def add_ghost_instance(self):
+        self.__labels.append(label)
+
+    def add_ghost_instance(self, label=1):
         if self.fix_slot_mode:
             component_per = 2 if self.use_frame else 1
             num_event_components = (1 + self.num_slots) * component_per
@@ -69,6 +75,8 @@ class ClozeInstanceBuilder:
             [0.0] * self.num_extracted_features)
         self.__data['distances'].append(
             [0.0] * self.num_distance_features)
+
+        self.__labels.append(label)
 
     def get_target_distance_signature(self, entity_positions, sent_id,
                                       filler_eid):
