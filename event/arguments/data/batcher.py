@@ -1,9 +1,9 @@
 from collections import defaultdict
 
 import numpy as np
-import torch
-from event.io.io_utils import pad_2d_list, pad_last_axis
+
 from event.arguments.util import (batch_combine, to_torch)
+from event.io.io_utils import pad_2d_list, pad_last_axis
 
 
 class ClozeBatcher:
@@ -50,6 +50,9 @@ class ClozeBatcher:
         'features': 2,
     }
 
+    # Keep track of the slot keys, since the size here might be different.
+    slot_keys = {'slot', 'slot_value', 'context_slot', 'context_slot_value'}
+
     def __init__(self, batch_size, device):
         self.batch_size = batch_size
         self.device = device
@@ -84,8 +87,14 @@ class ClozeBatcher:
         else:
             raise ValueError("Dimension unsupported %d" % dim)
 
-    def read_data(self, instance_data, common_data):
+    def get_batch(self, instance_data, common_data):
+        max_slot_size = max(len(l) for l in instance_data['slot'])
+        max_c_slot_size = max(len(l) for l in common_data['context_slot'])
+
         for key, value in common_data.items():
+            if key in self.slot_keys:
+                self.__var_pad(key, value, max_c_slot_size)
+
             self.common_data[key].append(value)
             if key.startswith('context_'):
                 if len(value) > self.max_context_size:
@@ -99,6 +108,9 @@ class ClozeBatcher:
 
         for ins_type, ins_data in instance_data.items():
             for key, value in ins_data.items():
+                if key in self.slot_keys:
+                    self.__var_pad(key, value, max_slot_size)
+
                 self.instance_data[ins_type][key].append(value)
 
         self.doc_count += 1
@@ -108,12 +120,12 @@ class ClozeBatcher:
             debug_data = {
             }
 
-            train_batch = self.create_batch(
+            batch = self.create_batch(
                 self.common_data, self.instance_data, self.max_num_slots,
                 self.max_context_size, self.max_instance_size
             )
 
-            yield train_batch, debug_data
+            yield batch, debug_data
             self.clear()
 
     def flush(self):

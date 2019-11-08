@@ -1,5 +1,6 @@
 import random
 import math
+from operator import itemgetter
 
 from event.arguments.prepare.event_vocab import EmbbedingVocab, TypedEventVocab
 
@@ -70,16 +71,68 @@ class ClozeSampler:
         return True
 
 
-class ClozeGenerator:
-    def __init__(self,
-                 sampler: ClozeSampler,
-                 event_emb_vocab: EmbbedingVocab,
-                 typed_event_vocab: TypedEventVocab,
-                 fix_slot_mode: bool = True):
-        self.sampler = sampler
-        self.fix_slot_mode = fix_slot_mode
+class CandidateBuilder:
+    def __init__(self, event_emb_vocab: EmbbedingVocab,
+                 typed_event_vocab: TypedEventVocab):
         self.event_emb_vocab = event_emb_vocab
         self.typed_event_vocab = typed_event_vocab
+
+    def build_candidate(self, base_slot, swap_slot, replace_fe=False):
+        if len(swap_slot) == 0:
+            # Make the update slot to be empty.
+            updated_slot_info = {}
+        else:
+            # Make a copy of the slot.
+            updated_slot_info = dict((k, v) for k, v in base_slot.items())
+
+            # Replace with the new information.
+            updated_slot_info['entity_id'] = swap_slot['entity_id']
+            updated_slot_info['represent'] = swap_slot['represent']
+            updated_slot_info['text'] = swap_slot['text']
+            updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
+            updated_slot_info['source'] = swap_slot.get('source', 'automatic')
+            updated_slot_info['arg_start'] = swap_slot['arg_start']
+            updated_slot_info['arg_end'] = swap_slot['arg_end']
+
+            if 'ner' in swap_slot:
+                updated_slot_info['ner'] = swap_slot['ner']
+            elif 'ner' in updated_slot_info:
+                updated_slot_info.pop('ner')
+
+            # These attributes are harmless but confusing.
+
+            updated_slot_info.pop('resolvable', None)
+            updated_slot_info.pop('implicit', None)
+
+            # Note: with the sentence Id we can have a better idea of where the
+            # argument is from, but we cannot use it to extract features.
+            updated_slot_info['sentence_id'] = swap_slot['sentence_id']
+
+            # TODO: now using the full dependency label here.
+            new_arg_rep = self.typed_event_vocab.get_arg_rep(
+                base_slot['dep'], swap_slot['represent']
+            )
+
+            updated_slot_info['arg_role'] = self.event_emb_vocab.get_index(
+                new_arg_rep, self.typed_event_vocab.get_unk_arg_rep()
+            )
+
+            if replace_fe:
+                updated_slot_info['fe'] = swap_slot['fe']
+
+        return updated_slot_info
+
+
+class ClozeGenerator:
+    def __init__(self,
+                 candidate_builder: CandidateBuilder,
+                 fix_slot_mode: bool = True):
+        self.sampler = ClozeSampler()
+        self.fix_slot_mode = fix_slot_mode
+        self.builder = candidate_builder
+
+    def set_sampler(self, sampler: ClozeSampler):
+        self.sampler = sampler
 
     def cross_cloze(self, arg_list, doc_args, target_arg_idx):
         """A negative cloze instance that use arguments from other events.
@@ -106,7 +159,7 @@ class ClozeGenerator:
             if idx == target_arg_idx:
                 neg_instance.append(
                     (slot,
-                     self.replace_slot_detail(content, sample_res))
+                     self.builder.build_candidate(content, sample_res))
                 )
             else:
                 neg_instance.append((slot, content))
@@ -151,7 +204,8 @@ class ClozeGenerator:
 
                 neg_instance.append((
                     slot,
-                    self.replace_slot_detail(base_slot, swap_slot_info, True)
+                    self.builder.build_candidate(
+                        base_slot, swap_slot_info, True)
                 ))
             elif idx == swap_index:
                 # Replace the original one here
@@ -162,54 +216,52 @@ class ClozeGenerator:
 
                 neg_instance.append((
                     slot,
-                    self.replace_slot_detail(base_slot, origin_slot_info, True)
+                    self.builder.build_candidate(
+                        base_slot, origin_slot_info, True)
                 ))
             else:
                 neg_instance.append((slot, content))
 
         return neg_instance, origin_slot_info['entity_id'], swap_slot
 
-    def replace_slot_detail(self, base_slot, swap_slot, replace_fe=False):
-        if len(swap_slot) == 0:
-            # Make the update slot to be empty.
-            updated_slot_info = {}
-        else:
-            # Make a copy of the slot.
-            updated_slot_info = dict((k, v) for k, v in base_slot.items())
 
-            # Replace with the new information.
-            updated_slot_info['entity_id'] = swap_slot['entity_id']
-            updated_slot_info['represent'] = swap_slot['represent']
-            updated_slot_info['text'] = swap_slot['text']
-            updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
-            updated_slot_info['source'] = swap_slot.get('source', 'automatic')
-            updated_slot_info['arg_start'] = swap_slot['arg_start']
-            updated_slot_info['arg_end'] = swap_slot['arg_end']
+class TestClozeMaker:
+    def __init__(self, candidate_builder: CandidateBuilder):
+        self.builder = candidate_builder
 
-            if 'ner' in swap_slot:
-                updated_slot_info['ner'] = swap_slot['ner']
-            elif 'ner' in updated_slot_info:
-                updated_slot_info.pop('ner')
+    def gen_test_args(self, test_stub, doc_args, pred_sent,
+                      distance_cap=float('inf')):
+        """Create slot candidates from the document mentions.
 
-            # These attributes are harmless but confusing.
+        Args:
+          test_stub: The test stub to be filled.
+          doc_args: The list of all document argument mentions.
+          pred_sent: The sentence where the predicate is in.
+          distance_cap: The max distance to find argument.
 
-            updated_slot_info.pop('resolvable', None)
-            updated_slot_info.pop('implicit', None)
+        Returns:
 
-            # Note: with the sentence Id we can have a better idea of where the
-            # argument is from, but we cannot use it to extract features.
-            updated_slot_info['sentence_id'] = swap_slot['sentence_id']
+        """
+        # List of Tuple (dist, argument candidates).
+        dist_arg_list = []
 
-            # TODO: now using the full dependency label here.
-            new_arg_rep = self.typed_event_vocab.get_arg_rep(
-                base_slot['dep'], swap_slot['represent']
-            )
+        # NOTE: we have removed the check of "original span". It means that if
+        # the system can predict the original phrase then it will be fine.
+        # This might be OK since the model should not have access to the
+        # original span during real test time. At self-test stage, predicting
+        # the original span means the system is learning well.
+        for doc_mention in doc_args:
+            # This is the target argument replaced by another entity mention.
+            update_arg = self.builder.build_candidate(
+                test_stub, doc_mention, True)
 
-            updated_slot_info['arg_role'] = self.event_emb_vocab.get_index(
-                new_arg_rep, self.typed_event_vocab.get_unk_arg_rep()
-            )
+            dist_arg_list.append((
+                abs(pred_sent - doc_mention['sentence_id']),
+                (update_arg, doc_mention['entity_id']),
+            ))
 
-            if replace_fe:
-                updated_slot_info['fe'] = swap_slot['fe']
+        # Sort the rank list based on the distance to the target evm.
+        dist_arg_list.sort(key=itemgetter(0))
+        sorted_arg_list = [arg for d, arg in dist_arg_list if d <= distance_cap]
 
-        return updated_slot_info
+        return sorted_arg_list

@@ -3,12 +3,14 @@ import json
 import logging
 from collections import Counter
 from collections import defaultdict
-from operator import itemgetter
+from typing import Dict
 
 import torch
 
+from event.arguments.NIFDetector import NullArgDetector
 from event.arguments.data.batcher import ClozeBatcher
-from event.arguments.data.cloze_gen import ClozeGenerator, PredicateSampler
+from event.arguments.data.cloze_gen import ClozeGenerator, PredicateSampler, \
+    TestClozeMaker, CandidateBuilder
 from event.arguments.data.cloze_instance import ClozeInstanceBuilder
 from event.arguments.data.event_structure import EventStruct
 from event.arguments.data.frame_data import FrameSlots
@@ -17,14 +19,6 @@ from event.arguments.implicit_arg_resources import ImplicitArgResources
 from event.arguments.util import (batch_combine, to_torch)
 
 logger = logging.getLogger(__name__)
-
-
-def inverse_vocab(vocab):
-    inverted = [0] * vocab.get_size()
-    for w, index in vocab.vocab_items():
-        inverted[index] = w
-    return inverted
-
 
 ghost_entity_text = '__ghost_component__'
 ghost_entity_id = -1
@@ -61,8 +55,6 @@ class HashedClozeReader:
         # The cloze data are organized by the following slots.
         self.fix_slot_names = ['subj', 'obj', 'prep', ]
 
-        self.instance_keys = []
-
         # A set for data with variable length, we then will create paddings
         # and length tensor for it.
         self.__unk_length = set()
@@ -70,51 +62,53 @@ class HashedClozeReader:
         # In fix slot mode we assume there is a fixed number of slots.
         if para.arg_representation_method == 'fix_slots':
             self.fix_slot_mode = True
-            self.instance_keys = ('event_component', 'distances', 'features')
         elif para.arg_representation_method == 'role_dynamic':
             self.fix_slot_mode = False
-            self.instance_keys = ('predicate', 'slot', 'slot_value', 'frame',
-                                  'slot_length', 'distances', 'features',)
             self.__unk_length = {'slot', 'slot_value', 'context_slot',
                                  'context_slot_value'}
 
         self.gold_role_field = self.para.gold_field_name
-        self.auto_test = False
         self.test_limit = 500
 
         self.device = torch.device(
             "cuda" if para.use_gpu and torch.cuda.is_available() else "cpu"
         )
 
-        self.batcher = ClozeBatcher(self.para.batch_size, self.device)
         self.event_struct = EventStruct(
             resources.event_embed_vocab, resources.typed_event_vocab,
             para.use_frame, self.fix_slot_mode
         )
         self.predicate_sampler = PredicateSampler()
+        self.candidate_builder = CandidateBuilder(
+            resources.event_embed_vocab,
+            resources.typed_event_vocab
+        )
+        self.cloze_gen = ClozeGenerator(self.candidate_builder,
+                                        self.fix_slot_mode)
 
         logger.info("Reading data with device: " + str(self.device))
 
     def read_train_batch(self, data_in, sampler):
         logger.info("Reading data as training batch.")
 
-        cloze_gen = ClozeGenerator(sampler, self.event_emb_vocab,
-                                   self.typed_event_vocab, self.fix_slot_mode)
+        self.cloze_gen.set_sampler(sampler)
+
+        train_batcher = ClozeBatcher(self.para.batch_size, self.device)
 
         for line in data_in:
-            parsed_output = self.create_training_data(line, cloze_gen)
+            parsed_output = self.create_training_data(line)
 
             if parsed_output is None:
                 continue
 
             instance_data, common_data = parsed_output
-            yield from self.batcher.read_data(instance_data, common_data)
+            yield from train_batcher.get_batch(instance_data, common_data)
 
-        if self.batcher.doc_count == 0:
+        if train_batcher.doc_count == 0:
             raise ValueError("Provided data is empty.")
 
         # Yield the remaining data.
-        yield self.batcher.flush()
+        yield train_batcher.flush()
 
     @staticmethod
     def collect_features(doc_info):
@@ -123,49 +117,6 @@ class HashedClozeReader:
         for eid, content in doc_info['entities'].items():
             features_by_eid[int(eid)] = content['features']
         return features_by_eid
-
-    def create_slot_candidates(self, test_stub, doc_mentions, pred_sent,
-                               distance_cap=float('inf')):
-        """Create slot candidates from the document mentions.
-
-        Args:
-          test_stub: The test stub to be filled.
-          doc_mentions: The list of all document mentions.
-          pred_sent: The sentence where the predicate is in.
-          distance_cap: The distance cap for selecting the candidate
-        argument: arguments with a sentence distance larger than this
-        will be ignored. The default value is INFINITY (no cap).
-
-        Returns:
-
-        """
-        # List of Tuple (dist, argument candidates).
-        dist_arg_list = []
-
-        # NOTE: we have removed the check of "original span". It means that if
-        # the system can predict the original phrase then it will be fine.
-        # This might be OK since the model should not have access to the
-        # original span during real test time. At self-test stage, predicting
-        # the original span means the system is learning well.
-        for doc_mention in doc_mentions:
-            # This is the target argument replaced by another entity mention.
-            update_arg = self.replace_slot_detail(test_stub, doc_mention, True)
-
-            dist_arg_list.append((
-                abs(pred_sent - doc_mention['sentence_id']),
-                (update_arg, doc_mention['entity_id']),
-            ))
-
-        # Sort the rank list based on the distance to the target evm.
-        dist_arg_list.sort(key=itemgetter(0))
-        sorted_arg_list = [arg for d, arg in dist_arg_list if d <= distance_cap]
-
-        if self.para.use_ghost:
-            # Put the ghost at the beginning to avoid it being pruned by \
-            # distance.
-            sorted_arg_list.insert(0, ({}, ghost_entity_id))
-
-        return sorted_arg_list
 
     @staticmethod
     def answer_from_arg(arg):
@@ -256,7 +207,7 @@ class HashedClozeReader:
 
         """
         slot_args = {}
-        for slot, l_arg in event_args.items():
+        for dep_slot, l_arg in event_args.items():
             for a in l_arg:
                 if ignore_implicit and a.get('implicit', False):
                     continue
@@ -267,19 +218,22 @@ class HashedClozeReader:
                     else:
                         # If not defined, then used to dep slots as factor
                         # role.
-                        factor_role = slot
+                        factor_role = dep_slot
 
                     if factor_role not in slot_args:
                         slot_args[factor_role] = a
         args = list(slot_args.items())
         return args
 
-    def get_one_test_doc(self, doc_info, nid_detector):
+    def get_one_test_doc(self, doc_info: Dict,
+                         nid_detector: NullArgDetector,
+                         test_cloze_maker: TestClozeMaker):
         """Parse and get one test document.
 
         Args:
           doc_info: The JSON data of one document.
           nid_detector: NID detector to detect which slot to fill.
+          test_cloze_maker: TestClozeMaker
 
         Returns:
 
@@ -338,7 +292,7 @@ class HashedClozeReader:
                     if 'ner' in arg:
                         doc_arg_info['ner'] = arg['ner']
 
-                    if not self.auto_test and self.gold_role_field in arg:
+                    if self.gold_role_field in arg:
                         doc_arg_info[self.gold_role_field] = arg[
                             self.gold_role_field
                         ]
@@ -355,29 +309,13 @@ class HashedClozeReader:
         # This creates a list of candidate mentions for this document.
         doc_mentions = [v for v in arg_mentions.values()]
 
-        eid_to_mentions = {}
-        if self.auto_test:
-            for arg in doc_mentions:
-                try:
-                    eid_to_mentions[arg['entity_id']].append(arg)
-                except KeyError:
-                    eid_to_mentions[arg['entity_id']] = [arg]
+        dist_cap = 3
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
             pred_idx = event['predicate']
             event_args = event['args']
             arg_list = self.get_args_as_list(event_args, False)
-
-            # There are two ways to create test cases.
-            # 1. The automatic cloze method: a test case is by removing one
-            # phrase, all mentions with the same eid should be considered as
-            # answers. The target slot is simply the dep (preposition)
-
-            # 2. The true test case: a test case if we have an implicit=True,
-            # the target slot should be a field in data (prespecified). We then
-            # need to map the target slot (e.g. i_arg1 -> obj). The answer are
-            # all arguments with the same field attribute then.
 
             available_slots = self.frame_slots.get_predicate_slots(event)
 
@@ -387,8 +325,14 @@ class HashedClozeReader:
                 # The detector determine whether we should fill this slot.
                 if nid_detector.should_fill(event, target_slot, test_stub):
                     # Fill the test_stub with all the possible args in this doc.
-                    test_rank_list = self.create_slot_candidates(
-                        test_stub, doc_mentions, pred_sent, distance_cap=3)
+                    test_rank_list = test_cloze_maker.gen_test_args(
+                        test_stub, doc_mentions, pred_sent,
+                        distance_cap=dist_cap
+                    )
+
+                    if self.para.use_ghost:
+                        # Put the ghost at the beginning.
+                        test_rank_list.insert(0, ({}, ghost_entity_id))
 
                     # Prepare instance data for each possible instance.
                     instance = ClozeInstanceBuilder(self.para,
@@ -485,7 +429,7 @@ class HashedClozeReader:
                         yield (instance.data, common_data,
                                candidate_meta, instance_meta)
 
-    def read_test_docs(self, test_in, nid_detector):
+    def read_test_docs(self, test_in, nid_detector: NullArgDetector):
         """Load test data. Importantly, this will create alternative cloze
          filling for ranking.
 
@@ -496,13 +440,20 @@ class HashedClozeReader:
         Returns:
 
         """
+        # At test time we can use a single doc batch.
+        batcher = ClozeBatcher(1, self.device)
+        test_cloze_maker = TestClozeMaker(self.candidate_builder)
+
         for line in test_in:
             doc_info = json.loads(line)
             doc_id = doc_info['docid']
 
-            for test_data in self.get_one_test_doc(doc_info, nid_detector):
+            for test_data in self.get_one_test_doc(doc_info, nid_detector,
+                                                   test_cloze_maker):
                 (instances, common_data, candidate_meta,
                  instance_meta,) = test_data
+
+                yield from batcher.get_batch(instances, common_data)
 
                 b_common_data = {}
                 b_instance_data = {}
@@ -536,7 +487,7 @@ class HashedClozeReader:
                     instance_meta,
                 )
 
-    def create_training_data(self, data_line, cloze_gen: ClozeGenerator):
+    def create_training_data(self, data_line):
         doc_info = json.loads(data_line)
         features_by_eid = self.collect_features(doc_info)
 
@@ -679,9 +630,9 @@ class HashedClozeReader:
                 if is_singleton and not self.para.use_ghost:
                     continue
 
-                cross_sample = cloze_gen.cross_cloze(
+                cross_sample = self.cloze_gen.cross_cloze(
                     arg_list, t_doc_args, arg_index)
-                inside_sample = cloze_gen.inside_cloze(
+                inside_sample = self.cloze_gen.inside_cloze(
                     arg_list, arg_index)
 
                 slot_index = self.fix_slot_names.index(slot) if \
@@ -756,48 +707,3 @@ class HashedClozeReader:
         }
 
         return instance_data, common_data
-
-    def replace_slot_detail(self, base_slot, swap_slot, replace_fe=False):
-        if len(swap_slot) == 0:
-            # Make the update slot to be empty.
-            updated_slot_info = {}
-        else:
-            # Make a copy of the slot.
-            updated_slot_info = dict((k, v) for k, v in base_slot.items())
-
-            # Replace with the new information.
-            updated_slot_info['entity_id'] = swap_slot['entity_id']
-            updated_slot_info['represent'] = swap_slot['represent']
-            updated_slot_info['text'] = swap_slot['text']
-            updated_slot_info['arg_phrase'] = swap_slot['arg_phrase']
-            updated_slot_info['source'] = swap_slot.get('source', 'automatic')
-            updated_slot_info['arg_start'] = swap_slot['arg_start']
-            updated_slot_info['arg_end'] = swap_slot['arg_end']
-
-            if 'ner' in swap_slot:
-                updated_slot_info['ner'] = swap_slot['ner']
-            elif 'ner' in updated_slot_info:
-                updated_slot_info.pop('ner')
-
-            # These attributes are harmless but confusing.
-
-            updated_slot_info.pop('resolvable', None)
-            updated_slot_info.pop('implicit', None)
-
-            # Note: with the sentence Id we can have a better idea of where the
-            # argument is from, but we cannot use it to extract features.
-            updated_slot_info['sentence_id'] = swap_slot['sentence_id']
-
-            # TODO: now using the full dependency label here.
-            new_arg_rep = self.typed_event_vocab.get_arg_rep(
-                base_slot['dep'], swap_slot['represent']
-            )
-
-            updated_slot_info['arg_role'] = self.event_emb_vocab.get_index(
-                new_arg_rep, self.typed_event_vocab.get_unk_arg_rep()
-            )
-
-            if replace_fe:
-                updated_slot_info['fe'] = swap_slot['fe']
-
-        return updated_slot_info

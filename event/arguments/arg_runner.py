@@ -1,4 +1,7 @@
 from traitlets.config import Configurable
+
+from event.arguments.NIFDetector import GoldNullArgDetector, \
+    TrainableNullArgDetector, ResolvableArgDetector
 from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.arg_models import (
     EventCoherenceModel,
@@ -67,54 +70,6 @@ def data_gen(data_path, from_line=None, until_line=None):
                 if until_line and line_num > until_line:
                     break
                 yield line
-
-
-class NullArgDetector:
-    def __init__(self):
-        pass
-
-    def should_fill(self, event_info, slot, arg):
-        pass
-
-
-class GoldNullArgDetector(NullArgDetector):
-    """A Null arg detector that look at gold standard."""
-
-    def __init__(self):
-        super().__init__()
-
-    def should_fill(self, event_info, slot, arg):
-        return arg.get('implicit', False) and not arg.get('incorporated', False)
-
-
-class AllArgDetector(NullArgDetector):
-    """A Null arg detector that returns everything."""
-
-    def __init__(self):
-        super().__init__()
-
-    def should_fill(self, event_info, slot, arg):
-        return True
-
-
-class ResolvableArgDetector(NullArgDetector):
-    """A Null arg detector that returns true for resolvable arguments."""
-
-    def __init__(self):
-        super().__init__()
-
-    def should_fill(self, event_info, slot, arg):
-        return len(arg) > 0 and arg['resolvable']
-
-
-class TrainableNullArgDetector(NullArgDetector):
-    """A Null arg detector that is trained to predict."""
-
-    def __index__(self):
-        super(NullArgDetector, self).__init__()
-
-    def should_fill(self, doc_info, arg_info, arg):
-        raise NotImplementedError
 
 
 class ArgRunner(Configurable):
@@ -214,6 +169,8 @@ class ArgRunner(Configurable):
             elif k.startswith('inside_'):
                 inside_common[k.replace('inside_', '')] = v
 
+        # TODO: We can compute the coherence score of different types of
+        #  instances at once, and compute th loss at once.
         cross_gold_coh = self.model(batch_instance['cross_gold'], cross_common)
         cross_coh = self.model(batch_instance['cross'], cross_common)
 

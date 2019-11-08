@@ -330,6 +330,7 @@ class DynamicEventReprModule(nn.Module):
     def multi_slot_combine_func(arg_repr, arg_mask):
         """
         Combine the variable length arguments into one fixed length vector.
+        The current implementation is simply an average pooling method.
 
         Args:
             arg_repr: The argument representations.
