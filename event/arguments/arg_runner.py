@@ -1,5 +1,25 @@
-from traitlets.config import Configurable
+import pdb
+import logging
+import math
+import os
+import pickle
+import shutil
+from collections import Counter
+import json
+from time import localtime, strftime
 
+from smart_open import open
+from traitlets.config import Configurable
+from traitlets import (
+    Unicode,
+    Integer,
+    Bool,
+)
+import torch
+from torch.nn import functional as F
+import numpy as np
+
+from event.arguments.data.cloze_readers import HashedClozeReader
 from event.arguments.NIFDetector import GoldNullArgDetector, \
     TrainableNullArgDetector, ResolvableArgDetector
 from event.arguments.implicit_arg_params import ArgModelPara
@@ -9,34 +29,13 @@ from event.arguments.arg_models import (
     MostFrequentModel,
     RandomBaseline,
 )
-from traitlets import (
-    Unicode,
-    Integer,
-    Bool,
-)
-import torch
-from torch.nn import functional as F
-
-import logging
-
-from event.arguments.data.cloze_readers import HashedClozeReader
-
-from smart_open import open
 from event.arguments.implicit_arg_resources import ImplicitArgResources
-import math
-import os
-import pickle
-import shutil
 from event.arguments.evaluation import ImplicitEval
-from collections import Counter
 from event.arguments.data.cloze_gen import ClozeSampler
 from event.util import load_mixed_configs
-import json
 from event.util import (
     set_file_log, set_basic_log, ensure_dir, append_num_to_path
 )
-from time import localtime, strftime
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -131,56 +130,10 @@ class ArgRunner(Configurable):
             assert self.para.event_arg_vocab_size == \
                    self.resources.event_embedding.shape[0]
 
-    def __loss(self, l_label, l_scores, mask):
-        if self.para.loss == 'cross_entropy':
-            total_loss = 0
+    def _get_loss(self, labels, batch_instance, batch_common, mask):
+        coh = self.model(batch_instance, batch_common)
+        loss = F.binary_cross_entropy(coh, labels)
 
-            for label, scores in zip(l_label, l_scores):
-                masked_scores = torch.zeros(scores.shape).to(self.device)
-                masked_scores.masked_scatter_(mask, scores)
-
-                if label == 1:
-                    # Make the coh scores close to 1 when these are actual
-                    # answers.
-                    gold = torch.zeros(scores.shape).to(
-                        self.device).masked_fill_(mask, 1)
-                else:
-                    # Make the coh score close to 0 when these are fake cases.
-                    gold = torch.zeros(scores.shape).to(self.device)
-
-                # TODO: Got NaN in scores
-                if torch.isnan(scores).any():
-                    logging.error("NaN in scores")
-                    print(scores)
-                    return None
-
-                v_loss = F.binary_cross_entropy(scores, gold)
-                total_loss += v_loss
-            return total_loss
-        elif self.para.loss == 'pairwise_letor':
-            raise NotImplementedError
-
-    def _get_loss(self, batch_instance, batch_common, mask):
-        cross_common = {'context_events': batch_common['context_events']}
-        inside_common = {'context_events': batch_common['context_events']}
-        for k, v in batch_common.items():
-            if k.startswith('cross_'):
-                cross_common[k.replace('cross_', '')] = v
-            elif k.startswith('inside_'):
-                inside_common[k.replace('inside_', '')] = v
-
-        # TODO: We can compute the coherence score of different types of
-        #  instances at once, and compute th loss at once.
-        cross_gold_coh = self.model(batch_instance['cross_gold'], cross_common)
-        cross_coh = self.model(batch_instance['cross'], cross_common)
-
-        inside_gold_coh = self.model(batch_instance['inside_gold'],
-                                     inside_common)
-        inside_coh = self.model(batch_instance['inside'], inside_common)
-
-        labels = [1, 0]
-        loss = self.__loss(labels, (cross_gold_coh, cross_coh), mask)
-        loss += self.__loss(labels, (inside_gold_coh, inside_coh), mask)
         return loss
 
     def __dump_stuff(self, key, obj):
@@ -210,9 +163,8 @@ class ArgRunner(Configurable):
 
         for batch_data, debug_data in self.reader.read_train_batch(
                 dev_lines, dev_sampler):
-            batch_instance, batch_common, b_size, mask = batch_data
-
-            loss = self._get_loss(batch_instance, batch_common, mask)
+            labels, batch_instance, batch_common, b_size, mask = batch_data
+            loss = self._get_loss(labels, batch_instance, batch_common, mask)
 
             if not loss:
                 raise ValueError('Error in computing loss.')
@@ -554,8 +506,8 @@ class ArgRunner(Configurable):
                              from_line=self.basic_para.validation_size),
                     train_sampler
             ):
-                batch_instance, batch_info, b_size, mask = batch_data
-                loss = self._get_loss(batch_instance, batch_info, mask)
+                labels, batch_instance, batch_info, b_size, mask = batch_data
+                loss = self._get_loss(labels, batch_instance, batch_info, mask)
 
                 # Case of a bug.
                 if not loss:

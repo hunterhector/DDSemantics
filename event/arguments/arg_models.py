@@ -380,6 +380,7 @@ class DynamicEventReprModule(nn.Module):
         # slot names, now we pass them into the transformer.
         b, i, s, e = combined_arg_role.shape
 
+        pdb.set_trace()
         # Before passing to the transformer, we view the batch and instance
         # dimension as the batch dimension only.
         self_att_args = self._transformer(
@@ -387,12 +388,19 @@ class DynamicEventReprModule(nn.Module):
             event_data['slot_length'].view(b * i, 1)
         ).view(b, i, s, e)
 
+        pdb.set_trace()
+
         # INF comes after we apply this func.
         combined_args = self.multi_slot_combine_func(
             self_att_args, event_data['slot_length'])
 
-        return self._pred_arg_mlp(event_data['predicate'], event_data['frame'],
-                                  combined_args)
+        # The predicate representation have multiple dimensions.
+        pred_rep = event_data['predicate']
+        flatten_pred_dim = pred_rep.size()[-1] * pred_rep.size()[-2]
+        flatten_pred_repr = pred_rep.view(pred_rep.size()[0], -1,
+                                          flatten_pred_dim)
+
+        return self._pred_arg_mlp(flatten_pred_repr, combined_args)
 
 
 class FixedEventReprModule(nn.Module):
@@ -690,7 +698,7 @@ class EventCoherenceModel(ArgCompatibleModel):
             # Each value is of shape batch x instance_size,
             # and will become embeddings:
             # batch x instance_size x emb.
-            for k in 'predicate', 'frame', 'slot_value', 'slot':
+            for k in 'predicate', 'slot_value', 'slot':
                 batch_event_repr_data[k] = self.event_embedding(
                     batch_event_data[k])
                 batch_context_event_repr_data[k] = self.event_embedding(
@@ -703,12 +711,13 @@ class EventCoherenceModel(ArgCompatibleModel):
                 batch_context_event_repr_data[k] = \
                     batch_info["context_" + k]
 
-            pred_emb = batch_event_repr_data['predicate']
+            batch_pred_rep = batch_event_repr_data['predicate']
 
-            print('computing event representation')
+            # The first one in the predicate rep is the predicate embedding.
+            pred_emb = batch_pred_rep[:, :, 1, :]
+
             event_repr = self.arg_composition_model(batch_event_repr_data)
 
-            print('computing context representation')
             context_repr = self.arg_composition_model(
                 batch_context_event_repr_data)
         else:

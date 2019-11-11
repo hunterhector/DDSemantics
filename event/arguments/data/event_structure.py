@@ -63,9 +63,10 @@ class EventStruct:
             slot_comps.append(self.unobserved_fe)
             slot_value_comps.append(self.unobserved_arg)
 
+        frame_id = self.unk_frame_idx if frame_id == -1 else frame_id
+
         return {
-            'predicate': predicate,
-            'frame': self.unk_frame_idx if frame_id == -1 else frame_id,
+            'predicate': [predicate, frame_id],
             'slot': slot_comps,
             'slot_value': slot_value_comps,
             'slot_length': len(slot_comps)

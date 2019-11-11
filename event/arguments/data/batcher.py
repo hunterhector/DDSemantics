@@ -1,7 +1,9 @@
 from collections import defaultdict
+import pdb
 
 import numpy as np
 
+from event.arguments.data.cloze_instance import ClozeInstances
 from event.arguments.util import (batch_combine, to_torch)
 from event.io.io_utils import pad_2d_list, pad_last_axis
 
@@ -57,20 +59,28 @@ class ClozeBatcher:
         self.batch_size = batch_size
         self.device = device
 
-        self.common_data = defaultdict(list)
-        self.instance_data = defaultdict(list)
+        self.b_common_data = defaultdict(list)
+        self.b_instance_data = defaultdict(list)
+        self.b_labels = []
+
         self.max_context_size = 0
         self.max_instance_size = 0
-        self.max_num_slots = 0
         self.doc_count = 0
 
+        self.max_num_slots = 0
+        self.max_c_num_slots = 0
+
     def clear(self):
-        self.common_data.clear()
-        self.instance_data.clear()
+        self.b_common_data.clear()
+        self.b_instance_data.clear()
+        self.b_labels.clear()
 
         self.max_context_size = 0
         self.max_instance_size = 0
+
         self.max_num_slots = 0
+        self.max_c_num_slots = 0
+
         self.doc_count = 0
 
     def __var_pad(self, key, data, pad_length):
@@ -80,39 +90,39 @@ class ClozeBatcher:
         dim = self.data_dim[key]
 
         if dim == 2:
-            print(key)
             return [pad_2d_list(v, pad_size) for v in data]
         elif dim == 1:
             return pad_2d_list(data, pad_size, axis=1)
         else:
             raise ValueError("Dimension unsupported %d" % dim)
 
-    def get_batch(self, instance_data, common_data):
-        max_slot_size = max(len(l) for l in instance_data['slot'])
-        max_c_slot_size = max(len(l) for l in common_data['context_slot'])
+    def get_batch(self, instances: ClozeInstances, common_data):
+        instance_data = instances.data
+        labels = instances.label
 
         for key, value in common_data.items():
-            if key in self.slot_keys:
-                self.__var_pad(key, value, max_c_slot_size)
+            self.b_common_data[key].append(value)
 
-            self.common_data[key].append(value)
             if key.startswith('context_'):
                 if len(value) > self.max_context_size:
                     self.max_context_size = len(value)
-            if key == 'cross_slot_indicators':
+            if key == 'event_indices':
                 if len(value) > self.max_instance_size:
                     self.max_instance_size = len(value)
+            if key == 'context_slot':
+                self.max_c_num_slots = max(
+                    list(len(l) for l in value) + [self.max_c_num_slots]
+                )
+
+        for key, value in instance_data.items():
             if key == 'slot':
-                if len(value) > 0 and len(value[0]) > self.max_num_slots:
-                    self.max_num_slots = len(value[0])
+                self.max_num_slots = max(
+                    list(len(l) for l in value) + [self.max_num_slots]
+                )
 
-        for ins_type, ins_data in instance_data.items():
-            for key, value in ins_data.items():
-                if key in self.slot_keys:
-                    self.__var_pad(key, value, max_slot_size)
+            self.b_instance_data[key].append(value)
 
-                self.instance_data[ins_type][key].append(value)
-
+        self.b_labels.append(labels)
         self.doc_count += 1
 
         # Each document is computed as a whole.
@@ -120,53 +130,53 @@ class ClozeBatcher:
             debug_data = {
             }
 
-            batch = self.create_batch(
-                self.common_data, self.instance_data, self.max_num_slots,
-                self.max_context_size, self.max_instance_size
-            )
+            batch = self.create_batch()
 
             yield batch, debug_data
             self.clear()
 
     def flush(self):
-        if len(self.common_data) > 0:
+        if len(self.b_common_data) > 0:
             debug_data = {}
-            train_batch = self.create_batch(
-                self.common_data, self.instance_data, self.max_num_slots,
-                self.max_context_size, self.max_instance_size)
+            train_batch = self.create_batch()
             return train_batch, debug_data
 
-    def create_batch(self, b_common_data, b_instance_data, max_num_slots,
-                     max_context_size, max_instance_size):
+    def create_batch(self):
         instance_data = {}
         common_data = {}
         # The actual instance lengths of in each batch.
         data_len = []
         sizes = {}
 
-        for key, value in b_common_data.items():
+        for key, value in self.b_common_data.items():
+            if key in self.slot_keys:
+                [self.__var_pad(key, v, self.max_c_num_slots) for v in value]
+
             if key.startswith('context_'):
-                padded = self.__batch_pad(key, value, max_context_size)
+                padded = self.__batch_pad(key, value, self.max_context_size)
                 vectorized = to_torch(padded, self.data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
             else:
-                padded = self.__batch_pad(key, value, max_instance_size)
+                padded = self.__batch_pad(key, value, self.max_instance_size)
                 vectorized = to_torch(padded, self.data_types[key])
                 common_data[key] = batch_combine(vectorized, self.device)
 
             sizes[key] = len(padded)
 
-        for ins_type, ins_data in b_instance_data.items():
-            instance_data[ins_type] = {}
-            for key, value in ins_data.items():
-                data_len = [len(v) for v in value]
-                padded = self.__batch_pad(key, value, max_instance_size)
-                vectorized = to_torch(padded, self.data_types[key])
+        for key, value in self.b_instance_data.items():
 
-                instance_data[ins_type][key] = batch_combine(
-                    vectorized, self.device
-                )
-                sizes[key] = len(padded)
+            if key in self.slot_keys:
+                [self.__var_pad(key, v, self.max_num_slots) for v in value]
+
+            data_len = [len(v) for v in value]
+            padded = self.__batch_pad(key, value, self.max_instance_size)
+
+            vectorized = to_torch(padded, self.data_types[key])
+            instance_data[key] = batch_combine(vectorized, self.device)
+
+            sizes[key] = len(padded)
+
+        labels = pad_2d_list(self.b_labels, self.max_instance_size, axis=1)
 
         f_size = -1
         for key, s in sizes.items():
@@ -177,11 +187,10 @@ class ClozeBatcher:
 
         assert f_size > 0
 
-        mask = np.zeros([f_size, max_instance_size], dtype=int)
+        mask = np.zeros([f_size, self.max_instance_size], dtype=int)
         for i, l in enumerate(data_len):
             mask[i][0: l] = 1
 
         ins_mask = to_torch(mask, np.uint8).to(self.device)
 
-        # TODO: check if we need to include context mask?
-        return instance_data, common_data, f_size, ins_mask
+        return labels, instance_data, common_data, f_size, ins_mask

@@ -4,6 +4,7 @@ import logging
 from collections import Counter
 from collections import defaultdict
 from typing import Dict
+import pdb
 
 import torch
 
@@ -11,7 +12,7 @@ from event.arguments.NIFDetector import NullArgDetector
 from event.arguments.data.batcher import ClozeBatcher
 from event.arguments.data.cloze_gen import ClozeGenerator, PredicateSampler, \
     TestClozeMaker, CandidateBuilder
-from event.arguments.data.cloze_instance import ClozeInstanceBuilder
+from event.arguments.data.cloze_instance import ClozeInstances
 from event.arguments.data.event_structure import EventStruct
 from event.arguments.data.frame_data import FrameSlots
 from event.arguments.implicit_arg_params import ArgModelPara
@@ -101,8 +102,8 @@ class HashedClozeReader:
             if parsed_output is None:
                 continue
 
-            instance_data, old_instance_data, common_data = parsed_output
-            yield from train_batcher.get_batch(old_instance_data, common_data)
+            instances, common_data = parsed_output
+            yield from train_batcher.get_batch(instances, common_data)
 
         if train_batcher.doc_count == 0:
             raise ValueError("Provided data is empty.")
@@ -335,8 +336,8 @@ class HashedClozeReader:
                         test_rank_list.insert(0, ({}, ghost_entity_id))
 
                     # Prepare instance data for each possible instance.
-                    instance = ClozeInstanceBuilder(self.para,
-                                                    self.event_struct)
+                    instance = ClozeInstances(self.para,
+                                              self.event_struct)
 
                     candidate_meta = []
                     instance_meta = []
@@ -535,17 +536,10 @@ class HashedClozeReader:
                     # - sentence_id is related to the distance based feature.
                     # - arg start and end are used to identify this unique
                     #   mention.
-                    mention_info = {
-                        'entity_id': eid,
-                        'arg_phrase': arg['arg_phrase'],
-                        'represent': arg['represent'],
-                        'text': arg['text'],
-                        # Some dataset do not have the source field.
-                        'source': arg.get('source', 'automatic'),
-                        'sentence_id': arg['sentence_id'],
-                        'arg_start': arg['arg_start'],
-                        'arg_end': arg['arg_end'],
-                    }
+                    copy_keys = ('entity_id', 'arg_phrase', 'represent', 'text',
+                                 'sentence_id', 'arg_start', 'arg_end')
+                    mention_info = dict([(k, arg[k]) for k in copy_keys])
+                    mention_info['source'] = arg.get('source', 'automatic')
 
                     if 'ner' in arg:
                         mention_info['ner'] = arg['ner']
@@ -565,11 +559,10 @@ class HashedClozeReader:
             e in event_subset
         ]
 
+        # TODO: in this mixed mode, these indices are not correct.
         common_data = {
-            'cross_event_indices': [],
-            'cross_slot_indicators': [],
-            'inside_event_indices': [],
-            'inside_slot_indicators': [],
+            'event_indices': [],
+            'slot_indicators': [],
         }
 
         for event_rep in all_event_reps:
@@ -589,16 +582,16 @@ class HashedClozeReader:
         # 1. Unigram distribution to sample items.
         # 2. Select items based on classifier output.
 
-        # These to be deleted.
-        cross_instance = ClozeInstanceBuilder(self.para, self.event_struct)
-        cross_gold = ClozeInstanceBuilder(self.para, self.event_struct)
-        inside_instance = ClozeInstanceBuilder(self.para, self.event_struct)
-        inside_gold = ClozeInstanceBuilder(self.para, self.event_struct)
-
         # All generated instances here.
-        instances = ClozeInstanceBuilder(self.para, self.event_struct)
+        instances = ClozeInstances(self.para, self.event_struct)
+
+        num_neg = 0
 
         for evm_index, event in enumerate(event_subset):
+            if num_neg > 100:
+                # Limit the number of instances generated.
+                break
+
             pred = event['predicate']
             if pred == self.unk_predicate_idx:
                 continue
@@ -653,93 +646,43 @@ class HashedClozeReader:
                                 pred, event['frame'], arg_list),
                             correct_id, 1)
 
+                        common_data['event_indices'].append(evm_index)
+                        common_data['slot_indicators'].append(slot_index)
+
                 if cross_sample:
                     cross_args, cross_filler_id = cross_sample
 
-                    cross_instance.assemble_instance(
-                        features_by_eid,
-                        explicit_entity_positions,
-                        current_sent,
-                        self.event_struct.event_repr(
-                            pred, event['frame'], cross_args
-                        ),
-                        cross_filler_id,
-                        0
-                    )
-
                     instances.assemble_instance(
-                        features_by_eid,
-                        explicit_entity_positions,
+                        features_by_eid, explicit_entity_positions,
                         current_sent,
                         self.event_struct.event_repr(
                             pred, event['frame'], cross_args
                         ),
-                        cross_filler_id,
-                        0
-                    )
+                        cross_filler_id, 0)
 
-                    if is_singleton:
-                        # If it is a singleton, than the ghost instance should
-                        # be higher than randomly placing any entity here.
-                        cross_gold.add_ghost_instance()
-                    else:
-                        cross_gold.assemble_instance(
-                            features_by_eid,
-                            explicit_entity_positions,
-                            current_sent,
-                            self.event_struct.event_repr(
-                                pred, event['frame'], arg_list),
-                            correct_id)
-
-                    # These two list indicate where the target argument is.
-                    # When we use fix slot mode, the index is a indicator of
-                    # the slot position. Otherwise, the slot_index is a way to
-                    # represent the open-set slot types (such as FEs)
-                    common_data['cross_event_indices'].append(evm_index)
-                    common_data['cross_slot_indicators'].append(slot_index)
+                    common_data['event_indices'].append(evm_index)
+                    common_data['slot_indicators'].append(slot_index)
+                    num_neg += 1
 
                 if inside_sample:
                     inside_args, inside_filler_id, swap_slot = inside_sample
-                    inside_instance.assemble_instance(
-                        features_by_eid,
-                        explicit_entity_positions,
-                        current_sent,
-                        self.event_struct.event_repr(
-                            pred, event['frame'], inside_args),
-                        inside_filler_id
-                    )
 
                     instances.assemble_instance(
-                        features_by_eid,
-                        explicit_entity_positions,
+                        features_by_eid, explicit_entity_positions,
                         current_sent,
                         self.event_struct.event_repr(
                             pred, event['frame'], inside_args),
                         inside_filler_id, 0
                     )
 
-                    # Inside sample can be used on singletons.
-                    inside_gold.assemble_instance(
-                        features_by_eid,
-                        explicit_entity_positions,
-                        current_sent,
-                        self.event_struct.event_repr(
-                            pred, event['frame'], arg_list),
-                        inside_filler_id
-                    )
-                    common_data['inside_event_indices'].append(evm_index)
-                    common_data['inside_slot_indicators'].append(slot_index)
+                    common_data['event_indices'].append(evm_index)
+                    common_data['slot_indicators'].append(slot_index)
+                    num_neg += 1
 
-        if len(common_data['cross_slot_indicators']) == 0 or \
-                len(common_data['inside_slot_indicators']) == 0:
+        if num_neg == 0:
             # Too few training instance.
             return None
 
-        instance_data = {
-            'cross_gold': cross_gold.data,
-            'cross': cross_instance.data,
-            'inside_gold': inside_gold.data,
-            'inside': inside_instance.data,
-        }
+        # print('number events', len(event_subset), 'num negative', num_neg)
 
-        return instances, instance_data, common_data
+        return instances, common_data

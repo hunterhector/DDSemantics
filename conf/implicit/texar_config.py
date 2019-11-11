@@ -4,9 +4,9 @@ hidden_dim = 300
 
 arg_transformer = {
     "dim": hidden_dim,
-    "num_blocks": 6,
+    "num_blocks": 3,
     "multihead_attention": {
-        "num_heads": 6,
+        "num_heads": 4,
         "num_units": hidden_dim,
         "output_dim": hidden_dim
     },

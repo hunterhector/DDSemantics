@@ -4,7 +4,7 @@ from event.arguments.implicit_arg_params import ArgModelPara
 ghost_entity_id = -1
 
 
-class ClozeInstanceBuilder:
+class ClozeInstances:
     def __init__(self,
                  para: ArgModelPara,
                  event_struct: EventStruct):
@@ -17,7 +17,7 @@ class ClozeInstanceBuilder:
             self.instance_keys = ('event_component', 'distances', 'features')
             self.fix_slot_mode = False
         elif para.arg_representation_method == 'role_dynamic':
-            self.instance_keys = ('predicate', 'slot', 'slot_value', 'frame',
+            self.instance_keys = ('predicate', 'slot', 'slot_value',
                                   'slot_length', 'distances', 'features')
             self.fix_slot_mode = True
 
