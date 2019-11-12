@@ -5,6 +5,7 @@ import os
 from gensim.models.word2vec import Word2Vec
 
 unk_word = 'UNK_word'
+word_pad = '__word_pad__'
 
 
 def main(input_data, vocab_dir, embedding_dir):

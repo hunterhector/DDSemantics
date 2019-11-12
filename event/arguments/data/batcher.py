@@ -176,7 +176,9 @@ class ClozeBatcher:
 
             sizes[key] = len(padded)
 
-        labels = pad_2d_list(self.b_labels, self.max_instance_size, axis=1)
+        labels = to_torch(
+            pad_2d_list(self.b_labels, self.max_instance_size, axis=1),
+            np.int64)
 
         f_size = -1
         for key, s in sizes.items():

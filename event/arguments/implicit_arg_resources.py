@@ -43,10 +43,8 @@ class ImplicitArgResources(Configurable):
         self.event_embedding = np.load(self.event_embedding_path)
         self.word_embedding = np.load(self.word_embedding_path)
 
-        self.event_embed_vocab = EmbbedingVocab(self.event_vocab_path)
-        self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path)
-        self.word_embed_vocab.add_extra('__word_pad__')
-
+        self.event_embed_vocab = EmbbedingVocab(self.event_vocab_path, True)
+        self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path, True)
         self.predicate_count = self.count_predicates(self.event_vocab_path)
 
         logger.info(

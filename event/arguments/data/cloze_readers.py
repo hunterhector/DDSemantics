@@ -274,6 +274,8 @@ class HashedClozeReader:
                         continue
 
                     eid = arg['entity_id']
+
+                    # TODO: Clean up this copy.
                     doc_arg_info = {
                         'event_index': evm_index,
                         'entity_id': eid,
@@ -447,7 +449,6 @@ class HashedClozeReader:
 
         for line in test_in:
             doc_info = json.loads(line)
-            doc_id = doc_info['docid']
 
             for test_data in self.get_one_test_doc(doc_info, nid_detector,
                                                    test_cloze_maker):
@@ -455,38 +456,6 @@ class HashedClozeReader:
                  instance_meta,) = test_data
 
                 yield from batcher.get_batch(instances, common_data)
-
-                b_common_data = {}
-                b_instance_data = {}
-
-                max_slot_size = max(len(l) for l in instances['slot'])
-                max_c_slot_size = max(
-                    len(l) for l in common_data['context_slot'])
-
-                # Create a pseudo batch with one instance.
-                for key, value in common_data.items():
-                    if key in self.__unk_length:
-                        if key.startswith('context_'):
-                            self.__var_pad(key, value, max_c_slot_size)
-                        else:
-                            self.__var_pad(key, value, max_slot_size)
-
-                    vectorized = to_torch([value],
-                                          self.__data_types[key])
-                    b_common_data[key] = batch_combine(vectorized, self.device)
-
-                for key, value in instances.items():
-                    vectorized = to_torch([value], self.__data_types[key])
-                    b_instance_data[key] = batch_combine(vectorized,
-                                                         self.device)
-
-                yield (
-                    doc_id,
-                    b_instance_data,
-                    b_common_data,
-                    candidate_meta,
-                    instance_meta,
-                )
 
     def create_training_data(self, data_line):
         doc_info = json.loads(data_line)

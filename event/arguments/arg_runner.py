@@ -132,6 +132,7 @@ class ArgRunner(Configurable):
 
     def _get_loss(self, labels, batch_instance, batch_common, mask):
         coh = self.model(batch_instance, batch_common)
+        pdb.set_trace()
         loss = F.binary_cross_entropy(coh, labels)
 
         return loss

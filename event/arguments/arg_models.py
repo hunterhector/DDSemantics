@@ -8,6 +8,7 @@ import torch
 from texar.torch.modules.encoders import TransformerEncoder
 from texar.torch.modules.embedders import EmbedderBase
 
+from event.arguments.implicit_arg_resources import ImplicitArgResources
 from event.nn.models import KernelPooling
 from event import torch_util
 from conf.implicit import texar_config
@@ -19,7 +20,8 @@ logger = logging.getLogger(__name__)
 class ArgCompatibleModel(nn.Module):
     """ """
 
-    def __init__(self, para, resources, device, model_name):
+    def __init__(self, para: ArgModelPara, resources: ImplicitArgResources,
+                 device, model_name):
         super(ArgCompatibleModel, self).__init__()
         self.para = para
 
@@ -80,21 +82,21 @@ class ArgCompatibleModel(nn.Module):
         if resources.word_embedding_path is not None:
             word_embed = torch.from_numpy(resources.word_embedding)
 
-            # Add extra dimensions for word padding.
+            # Add extra dimensions for word padding at index 0.
             zeros = torch.zeros(resources.word_embed_vocab.extra_size(),
                                 self.para.word_embedding_dim)
             self.word_embedding.weight = nn.Parameter(
-                torch.cat((word_embed, zeros))
+                torch.cat((zeros, word_embed))
             )
 
         if resources.event_embedding_path is not None:
             event_emb = torch.from_numpy(resources.event_embedding)
 
-            # Add extra event vocab for unobserved args.
+            # Add extra event vocab for arg padding at index 0.
             zeros = torch.zeros(resources.event_embed_vocab.extra_size(),
                                 self.para.event_embedding_dim)
             self.event_embedding.weight = nn.Parameter(
-                torch.cat((event_emb, zeros))
+                torch.cat((zeros, event_emb))
             )
 
 
@@ -315,7 +317,7 @@ class DynamicEventReprModule(nn.Module):
         super().__init__()
 
         # Use Texar Transformer.
-        # Texar module are subclass of Pytorch Modules.
+        # A full transformer is taking a lot of memory.
         self._transformer = TransformerEncoder(
             hparams=texar_config.arg_transformer,
         )
@@ -327,24 +329,23 @@ class DynamicEventReprModule(nn.Module):
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
     @staticmethod
-    def multi_slot_combine_func(arg_repr, arg_mask):
+    def multi_slot_combine_func(arg_repr, arg_length):
         """
         Combine the variable length arguments into one fixed length vector.
         The current implementation is simply an average pooling method.
 
         Args:
             arg_repr: The argument representations.
-            arg_mask: The argument mask.
+            arg_length: The argument mask.
 
         Returns:
 
         """
-        # A sum based combine function.
-        # 1. Need to consider how padding affects the sum.
-        # 1. The arg_mask must be all nonzero, this is currently done by adding
-        #    special arguments when the arguments length is zero, when reading
-        #    data, otherwise there will be NANs.
-        return torch.sum(arg_repr, dim=2) / arg_mask.unsqueeze(-1).float()
+        # Remove zero length arg list from here. This is assuming the arg_repr
+        #  is proper masked and will have 0 at
+        arg_length[arg_length == 0] = 1
+
+        return torch.sum(arg_repr, dim=2) / arg_length.unsqueeze(-1).float()
 
     def forward(self, event_data):
         """Compute the transformer encoded output of roles and the args.
@@ -380,7 +381,6 @@ class DynamicEventReprModule(nn.Module):
         # slot names, now we pass them into the transformer.
         b, i, s, e = combined_arg_role.shape
 
-        pdb.set_trace()
         # Before passing to the transformer, we view the batch and instance
         # dimension as the batch dimension only.
         self_att_args = self._transformer(
@@ -390,7 +390,6 @@ class DynamicEventReprModule(nn.Module):
 
         pdb.set_trace()
 
-        # INF comes after we apply this func.
         combined_args = self.multi_slot_combine_func(
             self_att_args, event_data['slot_length'])
 
@@ -704,7 +703,6 @@ class EventCoherenceModel(ArgCompatibleModel):
                 batch_context_event_repr_data[k] = self.event_embedding(
                     batch_info["context_" + k])
 
-            # Some non-embedding items
             # batch x instance_size
             for k in ('slot_length',):
                 batch_event_repr_data[k] = batch_event_data[k]

@@ -251,12 +251,20 @@ class TypedEventVocab:
 
 
 class EmbbedingVocab:
-    def __init__(self, vocab_file):
+    def __init__(self, vocab_file, with_padding=False, extras=None):
         self.vocab_file = vocab_file
         self.vocab = {}
         self.tf = []
-        self.__read_vocab()
         self.extras = []
+        self.pad = '__PADDING__'
+
+        if extras:
+            for name in extras:
+                self.add_extra(name)
+
+        self.add_extra(self.pad)
+
+        self.__read_vocab()
 
     def get_index(self, token, unk):
         try:
@@ -303,7 +311,7 @@ class EmbbedingVocab:
 
     def __read_vocab(self):
         with open(self.vocab_file) as din:
-            index = 0
+            index = len(self.vocab)
             for line in din:
                 word, count = line.split()
                 self.vocab[word] = index

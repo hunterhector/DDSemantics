@@ -57,8 +57,8 @@ c.ImplicitArgResources.word_vocab_path = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.voc')
 
 c.ImplicitArgResources.nombank_arg_slot_map = 'resources/nombankArgMap.tsv'
-c.ImplicitArgResources.framenet_frame_path = '/home/zhengzhl' \
-                                             '/resources/fndata-1.5/frame'
+c.ImplicitArgResources.framenet_frame_path = os.path.join(
+    base, 'resources/fndata-1.5/frame')
 
 c.ImplicitArgResources.event_embedding_path = os.path.join(
     base, raw_corpus_name,
@@ -81,5 +81,3 @@ c.Basic.run_baselines = False
 c.Basic.do_training = True
 c.Basic.self_test_size = -1
 c.Basic.do_test = True
-
-
