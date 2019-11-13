@@ -610,9 +610,7 @@ class EventContextAttentionPool(nn.Module):
         nom_event_emb = F.normalize(event_emb, 2, -1)
         nom_context_emb = F.normalize(context_emb, 2, -1)
 
-        # TODO: half of both matrixes are zero, probably something wrong.
         trans = self._context_vote(nom_event_emb, nom_context_emb)
-        pdb.set_trace()
 
         # Make the self score zero.
         trans = trans * self_avoid_mask
@@ -800,8 +798,6 @@ class EventCoherenceModel(ArgCompatibleModel):
 
         # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)
-
-        pdb.set_trace()
 
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)
