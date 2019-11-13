@@ -71,10 +71,17 @@ class ArgModelPara(Configurable):
         Int, default_value=[600, 300],
         help='Output size of the argument composition layers.'
     ).tag(config=True)
+    arg_composition_activation = Unicode(default_value='tanh').tag(config=True)
     event_composition_layer_sizes = List(
         Int, default_value=[400, 200],
         help='Output size of the event composition layers.'
     ).tag(config=True)
+    # TODO: add this to arg_models.
+    event_composition_activation = Unicode(default_value='tanh').tag(
+        config=True)
+
+    slot_reduction_activation = Unicode(default_value='tanh').tag(config=True)
+
     num_slots = Int(help='Number of slots in the model.').tag(config=True)
 
     # num_event_components = Int(

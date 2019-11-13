@@ -325,7 +325,8 @@ class DynamicEventReprModule(nn.Module):
             para.arg_role_combine_func, para.event_embedding_dim)
 
         self._pred_arg_mlp = MLP(para.event_embedding_dim * 3,
-                                 para.arg_composition_layer_sizes)
+                                 para.arg_composition_layer_sizes,
+                                 para.arg_composition_activation)
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
     @staticmethod
@@ -341,11 +342,16 @@ class DynamicEventReprModule(nn.Module):
         Returns:
 
         """
-        # Remove zero length arg list from here. This is assuming the arg_repr
-        #  is proper masked and will have 0 at
+        # Remove zero length arg list from here.
         arg_length[arg_length == 0] = 1
 
-        return torch.sum(arg_repr, dim=2) / arg_length.unsqueeze(-1).float()
+        # Mask the arg_repr to have 0 for empty slots.
+        maxlen = arg_repr.shape[2]
+        idx = torch.arange(maxlen).cuda()
+        mask = (idx[None, None, :] < arg_length[:, :, None]).float()
+
+        return torch.sum(arg_repr * mask.unsqueeze(-1),
+                         dim=2) / arg_length.float().unsqueeze(-1)
 
     def forward(self, event_data):
         """Compute the transformer encoded output of roles and the args.
@@ -388,8 +394,6 @@ class DynamicEventReprModule(nn.Module):
             event_data['slot_length'].view(b * i, 1)
         ).view(b, i, s, e)
 
-        pdb.set_trace()
-
         combined_args = self.multi_slot_combine_func(
             self_att_args, event_data['slot_length'])
 
@@ -411,7 +415,8 @@ class FixedEventReprModule(nn.Module):
         num_event_components = (1 + para.num_slots) * component_per
         self.arg_comp = MLP(
             para.event_embedding_dim * num_event_components,
-            para.arg_composition_layer_sizes
+            para.arg_composition_layer_sizes,
+            para.arg_composition_activation
         )
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
@@ -434,17 +439,24 @@ class FixedEventReprModule(nn.Module):
 
 
 class MLP(nn.Module):
-    """ """
+    """
+    Args:
+      activation: (Default value = F.relu)
 
-    def __init__(self, input_hidden_size, output_sizes):
+    Returns:
+
+    """
+
+    def __init__(self, input_hidden_size, output_sizes, activation=F.relu):
         super().__init__()
         self.layers = nn.ModuleList()
+        self.activation = activation
         input_size = input_hidden_size
         for output_size in output_sizes:
             self.layers.append(nn.Linear(input_size, output_size))
             input_size = output_size
 
-    def forward(self, *input_data, activation=F.relu):
+    def forward(self, *input_data):
         """
 
         Args:
@@ -457,7 +469,7 @@ class MLP(nn.Module):
         _data = torch.cat(input_data, -1)
 
         for layer in self.layers:
-            _data = activation(layer(_data))
+            _data = self.activation(layer(_data))
         return _data
 
 
@@ -600,6 +612,7 @@ class EventContextAttentionPool(nn.Module):
 
         # TODO: half of both matrixes are zero, probably something wrong.
         trans = self._context_vote(nom_event_emb, nom_context_emb)
+        pdb.set_trace()
 
         # Make the self score zero.
         trans = trans * self_avoid_mask
@@ -661,7 +674,9 @@ class EventCoherenceModel(ArgCompatibleModel):
             # before passing on.
             slot_indicator_dim = 5
             self.slot_indicator_reduction = MLP(
-                self.para.event_embedding_dim, [slot_indicator_dim])
+                self.para.event_embedding_dim, [slot_indicator_dim],
+                self.para.slot_reduction_activation
+            )
             feature_size += slot_indicator_dim
 
         self._use_distance = para.encode_distance
@@ -785,6 +800,8 @@ class EventCoherenceModel(ArgCompatibleModel):
 
         # batch x instance_size x 1
         scores = self._linear_combine(all_features).squeeze(-1)
+
+        pdb.set_trace()
 
         if self.normalize_score:
             scores = torch.nn.Sigmoid()(scores)

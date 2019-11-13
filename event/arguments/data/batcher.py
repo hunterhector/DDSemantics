@@ -164,7 +164,6 @@ class ClozeBatcher:
             sizes[key] = len(padded)
 
         for key, value in self.b_instance_data.items():
-
             if key in self.slot_keys:
                 [self.__var_pad(key, v, self.max_num_slots) for v in value]
 
@@ -178,7 +177,7 @@ class ClozeBatcher:
 
         labels = to_torch(
             pad_2d_list(self.b_labels, self.max_instance_size, axis=1),
-            np.int64)
+            np.float32).to(self.device)
 
         f_size = -1
         for key, s in sizes.items():

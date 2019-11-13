@@ -262,7 +262,8 @@ class EmbbedingVocab:
             for name in extras:
                 self.add_extra(name)
 
-        self.add_extra(self.pad)
+        if with_padding:
+            self.add_extra(self.pad)
 
         self.__read_vocab()
 
