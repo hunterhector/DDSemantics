@@ -17,6 +17,14 @@ from event.arguments.implicit_arg_params import ArgModelPara
 logger = logging.getLogger(__name__)
 
 
+def parse_activation(activation_name: str):
+    activation = torch.relu
+    if activation_name == 'tanh':
+        activation = torch.tanh
+
+    return activation
+
+
 class ArgCompatibleModel(nn.Module):
     """ """
 
@@ -317,16 +325,27 @@ class DynamicEventReprModule(nn.Module):
         super().__init__()
 
         # Use Texar Transformer.
-        # A full transformer is taking a lot of memory.
+        # A full transformer is taking a lot of memory so we may reduce the
+        # hidden dim here.
+        self.do_pre_transform_reduction = False
+        if not para.transformer_dim == para.event_embedding_dim:
+            self._pre_transformer_reduction = nn.Linear(
+                para.event_embedding_dim, para.transformer_dim)
+            self.do_pre_transform_reduction = True
+
         self._transformer = TransformerEncoder(
             hparams=texar_config.arg_transformer,
         )
         self._role_arg_combiner = RoleArgCombineModule(
             para.arg_role_combine_func, para.event_embedding_dim)
 
-        self._pred_arg_mlp = MLP(para.event_embedding_dim * 3,
-                                 para.arg_composition_layer_sizes,
-                                 para.arg_composition_activation)
+        event_repr_dim = para.event_embedding_dim + para.transformer_dim
+        if para.use_frame:
+            event_repr_dim += para.event_embedding_dim
+
+        self._pred_arg_mlp = MLP(
+            event_repr_dim, para.arg_composition_layer_sizes,
+            parse_activation(para.arg_composition_activation))
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
     @staticmethod
@@ -353,6 +372,21 @@ class DynamicEventReprModule(nn.Module):
         return torch.sum(arg_repr * mask.unsqueeze(-1),
                          dim=2) / arg_length.float().unsqueeze(-1)
 
+    def arg_role_repr(self, slot, slot_value):
+
+        # This combines the slot name and slot value, which mimics the
+        # positional encoding idea. The output shape is
+        # batch x #instance x #slots x embedding_dim.
+        combined_arg_role = self._role_arg_combiner(slot,
+                                                    slot_value)
+
+        # If transformer reduction is needed, we reduce this to shape
+        # batch x #instance x #slots x transformer_dim
+        if self.do_pre_transform_reduction:
+            return self._pre_transformer_reduction(combined_arg_role)
+        else:
+            return combined_arg_role
+
     def forward(self, event_data):
         """Compute the transformer encoded output of roles and the args.
 
@@ -377,11 +411,8 @@ class DynamicEventReprModule(nn.Module):
 
         """
 
-        # This combines the slot name and slot value, which mimics the
-        # positional encoding idea. The output shape is
-        # batch x #instance x #slots x embedding_dim.
-        combined_arg_role = self._role_arg_combiner(event_data['slot'],
-                                                    event_data['slot_value'])
+        combined_arg_role = self.arg_role_repr(event_data['slot'],
+                                               event_data['slot_value'])
 
         # We have the argument representation now, which is weighted by the
         # slot names, now we pass them into the transformer.
@@ -416,7 +447,7 @@ class FixedEventReprModule(nn.Module):
         self.arg_comp = MLP(
             para.event_embedding_dim * num_event_components,
             para.arg_composition_layer_sizes,
-            para.arg_composition_activation
+            parse_activation(para.arg_composition_activation)
         )
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
@@ -673,7 +704,7 @@ class EventCoherenceModel(ArgCompatibleModel):
             slot_indicator_dim = 5
             self.slot_indicator_reduction = MLP(
                 self.para.event_embedding_dim, [slot_indicator_dim],
-                self.para.slot_reduction_activation
+                parse_activation(self.para.slot_reduction_activation)
             )
             feature_size += slot_indicator_dim
 

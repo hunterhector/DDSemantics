@@ -1,12 +1,12 @@
 import texar.torch as tx
 
-hidden_dim = 300
+hidden_dim = 50
 
 arg_transformer = {
     "dim": hidden_dim,
     "num_blocks": 2,
     "multihead_attention": {
-        "num_heads": 4,
+        "num_heads": 1,
         "num_units": hidden_dim,
         "output_dim": hidden_dim
     },

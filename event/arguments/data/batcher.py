@@ -1,5 +1,6 @@
 from collections import defaultdict
 import pdb
+from typing import Dict
 
 import numpy as np
 
@@ -96,7 +97,7 @@ class ClozeBatcher:
         else:
             raise ValueError("Dimension unsupported %d" % dim)
 
-    def get_batch(self, instances: ClozeInstances, common_data):
+    def get_batch(self, instances: ClozeInstances, common_data: Dict):
         instance_data = instances.data
         labels = instances.label
 
@@ -130,9 +131,7 @@ class ClozeBatcher:
             debug_data = {
             }
 
-            batch = self.create_batch()
-
-            yield batch, debug_data
+            yield self.create_batch(), debug_data
             self.clear()
 
     def flush(self):
@@ -192,6 +191,6 @@ class ClozeBatcher:
         for i, l in enumerate(data_len):
             mask[i][0: l] = 1
 
-        ins_mask = to_torch(mask, np.uint8).to(self.device)
+        ins_mask = to_torch(mask, np.float32).to(self.device)
 
         return labels, instance_data, common_data, f_size, ins_mask

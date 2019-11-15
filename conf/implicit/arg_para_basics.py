@@ -15,7 +15,7 @@ c.ArgModelPara.nb_epochs = 20
 # c.ArgModelPara.num_event_components = 8
 c.ArgModelPara.num_extracted_features = 11
 c.ArgModelPara.max_events = 120
-c.ArgModelPara.batch_size = 100
+c.ArgModelPara.batch_size = 128
 
 # Model parameters that changes the architectures
 c.ArgModelPara.multi_context = True

@@ -4,7 +4,6 @@ import logging
 from collections import Counter
 from collections import defaultdict
 from typing import Dict
-import pdb
 
 import torch
 
@@ -17,7 +16,8 @@ from event.arguments.data.event_structure import EventStruct
 from event.arguments.data.frame_data import FrameSlots
 from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.implicit_arg_resources import ImplicitArgResources
-from event.arguments.util import (batch_combine, to_torch)
+from event import torch_util
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +102,7 @@ class HashedClozeReader:
             if parsed_output is None:
                 continue
 
-            instances, common_data = parsed_output
-            yield from train_batcher.get_batch(instances, common_data)
+            yield from train_batcher.get_batch(*parsed_output)
 
         if train_batcher.doc_count == 0:
             raise ValueError("Provided data is empty.")

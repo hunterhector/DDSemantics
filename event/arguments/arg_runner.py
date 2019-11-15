@@ -36,6 +36,7 @@ from event.util import load_mixed_configs
 from event.util import (
     set_file_log, set_basic_log, ensure_dir, append_num_to_path
 )
+from event import torch_util
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +133,7 @@ class ArgRunner(Configurable):
 
     def _get_loss(self, labels, batch_instance, batch_common, mask):
         coh = self.model(batch_instance, batch_common)
-        pdb.set_trace()
-        loss = F.binary_cross_entropy(coh, labels)
-
+        loss = F.binary_cross_entropy(coh * mask, labels)
         return loss
 
     def __dump_stuff(self, key, obj):
@@ -508,6 +507,7 @@ class ArgRunner(Configurable):
                     train_sampler
             ):
                 labels, batch_instance, batch_info, b_size, mask = batch_data
+
                 loss = self._get_loss(labels, batch_instance, batch_info, mask)
 
                 # Case of a bug.
