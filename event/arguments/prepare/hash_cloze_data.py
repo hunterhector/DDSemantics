@@ -155,7 +155,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
                 if hashed_arg['implicit']:
                     if 'gold_role' not in arg:
-                        logging.warning(f'Gold role at filed '
+                        logging.warning(f'Gold role at field '
                                         f'goldRole is NA.')
                     else:
                         gold_role = arg['gold_role']

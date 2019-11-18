@@ -324,6 +324,10 @@ class DynamicEventReprModule(nn.Module):
     def __init__(self, para: ArgModelPara):
         super().__init__()
 
+        self.device = torch.device(
+            "cuda" if para.use_gpu and torch.cuda.is_available()
+            else "cpu")
+
         # Use Texar Transformer.
         # A full transformer is taking a lot of memory so we may reduce the
         # hidden dim here.
@@ -348,8 +352,7 @@ class DynamicEventReprModule(nn.Module):
             parse_activation(para.arg_composition_activation))
         self.output_dim = para.arg_composition_layer_sizes[-1]
 
-    @staticmethod
-    def multi_slot_combine_func(arg_repr, arg_length):
+    def multi_slot_combine_func(self, arg_repr, arg_length):
         """
         Combine the variable length arguments into one fixed length vector.
         The current implementation is simply an average pooling method.
@@ -366,7 +369,7 @@ class DynamicEventReprModule(nn.Module):
 
         # Mask the arg_repr to have 0 for empty slots.
         maxlen = arg_repr.shape[2]
-        idx = torch.arange(maxlen).cuda()
+        idx = torch.arange(maxlen).to(self.device)
         mask = (idx[None, None, :] < arg_length[:, :, None]).float()
 
         return torch.sum(arg_repr * mask.unsqueeze(-1),
@@ -417,6 +420,9 @@ class DynamicEventReprModule(nn.Module):
         # We have the argument representation now, which is weighted by the
         # slot names, now we pass them into the transformer.
         b, i, s, e = combined_arg_role.shape
+
+        assert b * i > 0
+        assert s > 0
 
         # Before passing to the transformer, we view the batch and instance
         # dimension as the batch dimension only.

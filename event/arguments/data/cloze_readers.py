@@ -266,33 +266,12 @@ class HashedClozeReader:
                 # candidate document arguments.
                 for arg in l_arg:
                     if len(arg) == 0:
-                        # Empty args will be skipped.
-                        # At real production time, we need to create an arg
-                        # with some placeholder values, which is based on
-                        # null instantiation prediction.
                         continue
 
                     eid = arg['entity_id']
 
-                    # TODO: Clean up this copy.
-                    doc_arg_info = {
-                        'event_index': evm_index,
-                        'entity_id': eid,
-                        'arg_phrase': arg['arg_phrase'],
-                        # The sentence id is used to sort the candidate by
-                        # its distance.
-                        'sentence_id': arg['sentence_id'],
-                        'represent': arg['represent'],
-                        'text': arg['text'],
-                        'dep': arg['dep'],
-                        'arg_start': arg['arg_start'],
-                        'arg_end': arg['arg_end'],
-                        'fe': arg['fe'],
-                        'source': arg['source'],
-                    }
-
-                    if 'ner' in arg:
-                        doc_arg_info['ner'] = arg['ner']
+                    # TODO: event_index, dep not copied.
+                    doc_arg_info = self.copy_mention_info(arg)
 
                     if self.gold_role_field in arg:
                         doc_arg_info[self.gold_role_field] = arg[
@@ -311,8 +290,6 @@ class HashedClozeReader:
         # This creates a list of candidate mentions for this document.
         doc_mentions = [v for v in arg_mentions.values()]
 
-        dist_cap = 3
-
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
             pred_idx = event['predicate']
@@ -323,13 +300,15 @@ class HashedClozeReader:
 
             test_cases = self.get_test_cases(event, available_slots)
 
+            pdb.set_trace()
+
             for target_slot, test_stub, answers in test_cases:
                 # The detector determine whether we should fill this slot.
                 if nid_detector.should_fill(event, target_slot, test_stub):
                     # Fill the test_stub with all the possible args in this doc.
                     test_rank_list = test_cloze_maker.gen_test_args(
                         test_stub, doc_mentions, pred_sent,
-                        distance_cap=dist_cap
+                        distance_cap=self.para.distance_cap
                     )
 
                     if self.para.use_ghost:
@@ -371,18 +350,8 @@ class HashedClozeReader:
                         )
 
                         cloze_event_indices.append(evm_index)
-
-                        if self.fix_slot_mode:
-                            cloze_slot_indicator.append(
-                                self.fix_slot_names.index(target_slot)
-                            )
-                        else:
-                            # In dynamic slot mode, we provide the slot's
-                            # vocab id, which can be converted to embedding.
-                            cloze_slot_indicator.append(
-                                self.event_emb_vocab.get_index(
-                                    target_slot, self.typed_event_vocab.unk_fe)
-                            )
+                        cloze_slot_indicator.append(
+                            self.get_slot_index(target_slot))
 
                         if filler_eid == ghost_entity_id:
                             candidate_meta.append(
@@ -456,6 +425,35 @@ class HashedClozeReader:
 
                 yield from batcher.get_batch(instances, common_data)
 
+    def get_slot_index(self, slot):
+        if self.fix_slot_mode:
+            return self.fix_slot_names.index(slot)
+        else:
+            # In dynamic slot mode, we provide the slot's
+            # vocab id, which can be converted to embedding.
+            return self.event_emb_vocab.get_index(
+                slot, self.typed_event_vocab.unk_fe)
+
+    @staticmethod
+    def copy_mention_info(arg: Dict):
+        # Some minimum information for creating cloze tests.
+        # - Entity id is the target to predict.
+        # - Arg phrase, represent or text are different ways to
+        #   represent the argument mention.
+        # - source distinguish gold and automatic predicted args.
+        # - sentence_id is related to the distance based feature.
+        # - arg start and end are used to identify this unique
+        #   mention.
+        copy_keys = ('entity_id', 'arg_phrase', 'represent', 'text',
+                     'sentence_id', 'arg_start', 'arg_end')
+        mention_info = dict([(k, arg[k]) for k in copy_keys])
+        mention_info['source'] = arg.get('source', 'automatic')
+
+        if 'ner' in arg:
+            mention_info['ner'] = arg['ner']
+
+        return mention_info
+
     def create_training_data(self, data_line):
         doc_info = json.loads(data_line)
         features_by_eid = self.collect_features(doc_info)
@@ -482,39 +480,19 @@ class HashedClozeReader:
             # Only a subset in a long document will be used for generating.
             event_subset.append(event)
 
-            sentence_id = event.get('sentence_id', None)
-
             for slot, arg in self.get_args_as_list(event['args'], False):
                 if len(arg) > 0:
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
+                    eid_count[eid] += 1
 
-                    arg_start = arg['arg_start']
-                    arg_end = arg['arg_end']
+                    span = (arg['arg_start'], arg['arg_end'])
 
                     if not arg.get('implicit', False):
-                        explicit_entity_positions[eid][
-                            (arg_start, arg_end)] = sentence_id
+                        explicit_entity_positions[eid][span] = arg[
+                            'sentence_id']
 
-                    # Some minimum information for creating cloze tests.
-                    # - Entity id is the target to predict.
-                    # - Arg phrase, represent or text are different ways to
-                    #   represent the argument mention.
-                    # - source distinguish gold and automatic predicted args.
-                    # - sentence_id is related to the distance based feature.
-                    # - arg start and end are used to identify this unique
-                    #   mention.
-                    copy_keys = ('entity_id', 'arg_phrase', 'represent', 'text',
-                                 'sentence_id', 'arg_start', 'arg_end')
-                    mention_info = dict([(k, arg[k]) for k in copy_keys])
-                    mention_info['source'] = arg.get('source', 'automatic')
-
-                    if 'ner' in arg:
-                        mention_info['ner'] = arg['ner']
-
-                    arg_mentions[
-                        (arg['arg_start'], arg['arg_end'])] = mention_info
-                    eid_count[eid] += 1
+                    arg_mentions[span] = self.copy_mention_info(arg)
 
         # A set that contains some minimum argument entity mention information,
         # used for sampling a slot to create clozes.
@@ -591,7 +569,7 @@ class HashedClozeReader:
                     # Only one mention for this one.
                     is_singleton = True
 
-                # If we do not train on singletons, we skip now.
+                # If we do not train ghost instance, we skip the singletons.
                 if is_singleton and not self.para.use_ghost:
                     continue
 
@@ -600,8 +578,9 @@ class HashedClozeReader:
                 inside_sample = self.cloze_gen.inside_cloze(
                     arg_list, arg_index)
 
-                slot_index = self.fix_slot_names.index(slot) if \
-                    self.fix_slot_mode else slot
+                slot_index = self.get_slot_index(slot)
+
+                assert slot_index >= 0
 
                 if cross_sample or inside_sample:
                     if is_singleton:

@@ -413,6 +413,11 @@ class ArgRunner(Configurable):
 
         logger.info("Training with data from [%s]", train_in)
 
+        model_out_dir = os.path.join(self.basic_para.model_dir, self.model.name)
+        logger.info("Model out directory is [%s]", model_out_dir)
+        if not os.path.exists(model_out_dir):
+            os.makedirs(model_out_dir)
+
         if self.basic_para.valid_in:
             logger.info("Validation with data from [%s]",
                         self.basic_para.valid_in)
@@ -422,11 +427,6 @@ class ArgRunner(Configurable):
                 "validation." % self.basic_para.validation_size)
         else:
             logging.error("No validation!")
-
-        model_out_dir = os.path.join(self.basic_para.model_dir, self.model.name)
-        logger.info("Model out directory is [%s]", model_out_dir)
-        if not os.path.exists(model_out_dir):
-            os.makedirs(model_out_dir)
 
         self.model.train()
 
@@ -450,11 +450,15 @@ class ArgRunner(Configurable):
                 previous_dev_loss = checkpoint['previous_dev_loss']
                 worse = checkpoint['worse']
 
+                # https://discuss.pytorch.org/t/gpu-memory-usage-increases-by-90-after-torch-load/9213/3
+                del checkpoint
+                torch.cuda.empty_cache()
+
                 logger.info(
-                    f"Loaded check point, epoch {checkpoint['epoch']}, "
-                    f"best loss {checkpoint['best_loss']}, "
-                    f"previous dev loss {checkpoint['previous_dev_loss']}, "
-                    f"worse {checkpoint['worse']} times."
+                    f"Loaded check point, epoch {start_epoch}, "
+                    f"best loss {best_loss}, "
+                    f"previous dev loss {previous_dev_loss}, "
+                    f"worsen {worse} times."
                 )
             else:
                 logger.info(
@@ -595,10 +599,8 @@ class ArgRunner(Configurable):
                 worse += 1
                 if worse == self.para.early_stop_patience:
                     logger.info(
-                        (
-                            f"Dev loss increase from {previous_dev_loss:.4f} "
-                            f"to {dev_loss:.4f}, stop at Epoch {epoch:d}"
-                        )
+                        (f"Dev loss increase from {previous_dev_loss:.4f} "
+                         f"to {dev_loss:.4f}, stop at Epoch {epoch:d}")
                     )
                     break
 

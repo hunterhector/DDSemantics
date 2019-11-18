@@ -42,7 +42,7 @@ class ArgModelPara(Configurable):
         help='Maximum number of cloze to extract per document',
         default_value=150).tag(config=True)
 
-    ## Model architecture related parameters.
+    # Model architecture related parameters.
     loss = Unicode(
         help='Loss type for implicit argument training',
         default_value='cross_entropy'
@@ -122,6 +122,13 @@ class ArgModelPara(Configurable):
         help='Use ghost instance as decision boundary', default_value=False
     ).tag(config=True)
 
+    # Other parameters.
+    factor_role = Unicode(
+        help='The field name of the role that is used to determine the '
+             'slot type.').tag(config=True)
+    distance_cap = Int(help='Max distance from current in test.',
+                       default_value=3).tag(config=True)
+
     # Baseline parameters.
     w2v_baseline_method = Unicode(help='Baseline method type.',
                                   default_value='').tag(config=True)
@@ -132,6 +139,3 @@ class ArgModelPara(Configurable):
 
     gold_field_name = Unicode(help='Field name for the gold standard').tag(
         config=True)
-    factor_role = Unicode(
-        help='The field name of the role that is used to modify the '
-             'argument string as factors').tag(config=True)

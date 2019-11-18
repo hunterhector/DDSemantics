@@ -184,7 +184,6 @@ class ClozeBatcher:
                 f_size = s
             else:
                 assert s == f_size
-
         assert f_size > 0
 
         mask = np.zeros([f_size, self.max_instance_size], dtype=int)

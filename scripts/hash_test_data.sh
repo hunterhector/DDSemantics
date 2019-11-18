@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-implicit_corpus=/home/zhengzhl/workspace/implicit
+if [[ -z "${implicit_corpus}" ]]; then
+  echo 'Env variable implicit_corpus not defined'
+  exit
+fi
 
 echo "hash nombank"
  python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash_event_only.py --HashParam.raw_data=${implicit_corpus}/nombank_with_gc/processed/cloze.json.gz --HashParam.output_path=${implicit_corpus}/nombank_with_gc/processed/cloze_hashed.json.gz

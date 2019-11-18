@@ -105,14 +105,15 @@ class ImplicitArgResources(Configurable):
         h_frame_slots = {}
 
         for frame_name, fes in frame_prior.items():
-            fid = self.event_embed_vocab.get_index(frame_name, None)
+            fid = self.event_embed_vocab.get_index(
+                frame_name, self.typed_event_vocab.unk_frame)
             h_frame_slots[fid] = set()
 
             for fe in fes:
                 fe_name = fe['fe_name']
                 fe_id = self.event_embed_vocab.get_index(
                     self.typed_event_vocab.get_fe_rep(frame_name, fe_name),
-                    self.typed_event_vocab.oovs['fe']
+                    self.typed_event_vocab.unk_fe
                 )
                 h_frame_slots[fid].add(fe_id)
 

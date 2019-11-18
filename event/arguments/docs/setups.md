@@ -35,7 +35,8 @@ Test set setups:
         1. ```python -m event.io.dataset.reader negra```
     1. Run ImplicitFeatureExtractionPipeline to create dataset with features.
         1. Now you will get cloze.json.gz
-        1. ```bin/run_pipeline.sh argument-modeling edu.cmu.cs.lti.script.pipeline.implicitFeatureExtractionPipeline ~/workspace/implicit/nombank_with_gc/text ~/workspace/implicit/nombank_with_gc/annotation ~/workspace/implicit/nombank_with_gc/processed```
+        1. ```bin/run_pipeline.sh argument-modeling edu.cmu.cs.lti.script.pipeline.ImplicitFeatureExtractionPipeline ~/data/implicit/resources ~/data/implicit/semeval2010t10_train/text ~/data/implicit/semeval2010t10_train/annotation ~/data/implicit/semeval2010t10_train/processed simple framenet```
+        1. ```bin/run_pipeline.sh argument-modeling edu.cmu.cs.lti.script.pipeline.ImplicitFeatureExtractionPipeline ~/data/implicit/resources ~/data/implicit/nombank_with_gc/text ~/data/implicit/nombank_with_gc/annotation ~/workspace/implicit/nombank_with_gc/processed simple propbank```
     1. Run hasher to convert it to the Integer format
         1. Use different conf will use different vocab (filter or not) 
         1. ```python -m event.arguments.prepare.hash_cloze_data conf/implicit/hash.py --HashParam.raw_data=cloze.json.gz --HashParam.output_path=cloze_hashed.json.gz```

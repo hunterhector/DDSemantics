@@ -56,6 +56,8 @@ class EventStruct:
         # The slot will need to be indexed vocabularies, i.e. frame elements.
         # And they need to be hashed to number first.
         for slot, arg in args:
+            if slot == -1:
+                slot = self.unk_fe_idx
             slot_comps.append(slot)
             slot_value_comps.append(arg['arg_role'])
 
