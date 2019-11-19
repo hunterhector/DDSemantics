@@ -203,6 +203,7 @@ class ArgRunner(Configurable):
             logger.warning(
                 "Serialized model not existing, test without loading.")
 
+    @torch.no_grad()
     def __test(self, model, test_lines, nid_detector, auto_test=False,
                eval_dir=None):
         self.model.eval()
@@ -215,27 +216,26 @@ class ArgRunner(Configurable):
         logger.info(f"Evaluation result will be stored at {eval_dir}")
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
-            (doc_id, instances, common_data, candidate_meta, instance_meta,
-             ) = test_data
+            (labels, instances, common_data, _, _, metadata) = test_data
 
-            with torch.no_grad():
-                coh = model(instances, common_data)
+            pdb.set_trace()
 
-                event_idxes = common_data['event_indices'].data.cpu().numpy()[
-                    0].tolist()
-                slot_idxes = common_data['slot_indicators'].data.cpu().numpy()[
-                    0].tolist()
-                coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
+            coh = model(instances, common_data)
 
-                evaluator.add_prediction(
-                    doc_id, event_idxes, slot_idxes, coh_scores,
-                    candidate_meta, instance_meta
-                )
+            event_idxes = common_data['event_indices'].data.cpu().numpy()[
+                0].tolist()
+            slot_idxes = common_data['slot_indicators'].data.cpu().numpy()[
+                0].tolist()
+            coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
 
-                instance_count += 1
+            evaluator.add_prediction(
+                event_idxes, slot_idxes, coh_scores, metadata
+            )
 
-                if instance_count % 1000 == 0:
-                    logger.info("Tested %d instances." % instance_count)
+            instance_count += 1
+
+            if instance_count % 1000 == 0:
+                logger.info("Tested %d instances." % instance_count)
 
         logger.info("Finish testing %d instances." % instance_count)
 

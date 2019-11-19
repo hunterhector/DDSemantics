@@ -310,16 +310,19 @@ class HashedClozeReader:
                         distance_cap=self.para.distance_cap
                     )
 
+                    answer_spans = set([a['span'] for a in answers])
+
                     if self.para.use_ghost:
                         # Put the ghost at the beginning.
                         test_rank_list.insert(0, ({}, ghost_entity_id))
 
                     # Prepare instance data for each possible instance.
-                    instance = ClozeInstances(self.para,
-                                              self.event_struct)
+                    instances = ClozeInstances(self.para, self.event_struct)
 
-                    candidate_meta = []
-                    instance_meta = []
+                    metadata = {
+                        'candidate': [],
+                        'instance': [],
+                    }
 
                     cloze_event_indices = []
                     cloze_slot_indicator = []
@@ -337,15 +340,20 @@ class HashedClozeReader:
                             if not s == target_slot:
                                 candidate_args.append((s, arg))
 
+                        cand_arg_span = cand_arg['arg_start'], cand_arg[
+                            'arg_end']
+
+                        label = 1 if cand_arg_span in answer_spans else 0
+
                         # Create the event instance representation.
-                        instance.assemble_instance(
+                        instances.assemble_instance(
                             features_by_eid,
                             explicit_entity_positions,
                             pred_sent,
                             self.event_struct.event_repr(
                                 pred_idx, event['frame'], candidate_args
                             ),
-                            filler_eid
+                            filler_eid, label=label
                         )
 
                         cloze_event_indices.append(evm_index)
@@ -353,14 +361,12 @@ class HashedClozeReader:
                             self.get_slot_index(target_slot))
 
                         if filler_eid == ghost_entity_id:
-                            candidate_meta.append(
-                                {
-                                    'entity': ghost_entity_text,
-                                    'span': (-1, -1),
-                                }
+                            metadata['candidate'].append(
+                                {'entity': ghost_entity_text,
+                                 'span': (-1, -1)}
                             )
                         else:
-                            candidate_meta.append({
+                            metadata['candidate'].append({
                                 'entity': cand_arg['represent'],
                                 'distance_to_event': (
                                         pred_sent - cand_arg['sentence_id']
@@ -368,10 +374,11 @@ class HashedClozeReader:
                                 'span': (
                                     cand_arg['arg_start'], cand_arg['arg_end']
                                 ),
-                                'source': cand_arg['source'],
-                            })
+                                'source': cand_arg['source']})
 
-                    instance_meta.append({
+                    # How to return these meta cleanly.
+                    metadata['instance'].append({
+                        'docid': doc_info['docid'],
                         'predicate': event['predicate_text'],
                         'predicate_idx': pred_idx,
                         'target_slot': target_slot,
@@ -396,8 +403,7 @@ class HashedClozeReader:
                                 common_data['context_' + key] = [value]
 
                     if len(cloze_event_indices) > 0:
-                        yield (instance.data, common_data,
-                               candidate_meta, instance_meta)
+                        yield instances, common_data, metadata
 
     def read_test_docs(self, test_in, nid_detector: NullArgDetector):
         """Load test data. Importantly, this will create alternative cloze
@@ -419,10 +425,7 @@ class HashedClozeReader:
 
             for test_data in self.get_one_test_doc(doc_info, nid_detector,
                                                    test_cloze_maker):
-                (instances, common_data, candidate_meta,
-                 instance_meta,) = test_data
-
-                yield from batcher.get_batch(instances, common_data)
+                yield from batcher.get_batch(*test_data)
 
     def get_slot_index(self, slot):
         if self.fix_slot_mode:
@@ -447,6 +450,9 @@ class HashedClozeReader:
                      'sentence_id', 'arg_start', 'arg_end')
         mention_info = dict([(k, arg[k]) for k in copy_keys])
         mention_info['source'] = arg.get('source', 'automatic')
+
+        if 'fe' in arg:
+            mention_info['fe'] = arg['fe']
 
         if 'ner' in arg:
             mention_info['ner'] = arg['ner']

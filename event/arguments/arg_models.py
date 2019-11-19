@@ -164,6 +164,34 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         self._score_method = para.w2v_baseline_method
         self._avg_topk = para.w2v_baseline_avg_topk
 
+    def fixed_event_embedding(self, event_rep):
+        event_emb = self.event_embedding(event_rep)
+
+        if self.para.w2v_event_repr == 'concat':
+            flat_event_emb = event_emb.view(
+                event_emb.size()[0], -1,
+                event_emb.size()[-1] * event_emb.size()[-2]
+            )
+        elif self.para.w2v_event_repr == 'sum':
+            flat_event_emb = event_emb.sum(-2)
+        else:
+            raise ValueError(f"Unsupported event pooling method: "
+                             f"[{self.para.w2v_event_repr}]")
+
+        return F.normalize(flat_event_emb, 2, -1)
+
+    def dynamic_event_embedding(self, predicate_rep, slot_rep):
+        event_emb = self.event_embedding(predicate_rep)
+        slot_emb = self.event_embedding(slot_rep)
+
+        if self.para.w2v_event_repr == 'sum':
+            flat_event_emb = torch.cat([event_emb, slot_emb], -1).sum(-2)
+        else:
+            raise ValueError(f"Unsupported event pooling method in dynamic: "
+                             f"[{self.para.w2v_event_repr}]")
+
+        return F.normalize(flat_event_emb, 2, -1)
+
     def forward(self, batch_event_data, batch_info):
         """
 
@@ -174,46 +202,23 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         Returns:
 
         """
-        # batch x instance_size x event_component
-        batch_event_rep = batch_event_data['event_components']
-
-        # batch x context_size x event_component
-        batch_context = batch_info['context_events']
+        if self.para.arg_representation_method == 'fix_slots':
+            nom_event_emb = self.fixed_event_embedding(
+                batch_event_data['event_component'])
+            nom_context_emb = self.fixed_event_embedding(
+                batch_info['context_event_component'])
+        elif self.para.arg_representation_method == 'role_dynamic':
+            nom_event_emb = self.dynamic_event_embedding(
+                batch_event_data['predicate'], batch_event_data['slot_value'])
+            nom_context_emb = self.dynamic_event_embedding(
+                batch_event_data['context_predicate'],
+                batch_event_data['context_slot_value'])
+        else:
+            raise ValueError("Unknown arg representation method.")
 
         batch_event_indices = batch_info['event_indices']
-
-        # Add embedding dimension at the end.
-        # batch x context_size x event_component x embedding
-        context_emb = self.event_embedding(batch_context)
-
-        # batch x instance_size x event_component x embedding
-        event_emb = self.event_embedding(batch_event_rep)
-
-        # This is the concat way:
-        # batch x context_size x embedding_x_component
-        if self.para.w2v_event_repr == 'concat':
-            flat_context_emb = context_emb.view(
-                context_emb.size()[0], -1,
-                context_emb.size()[-1] * context_emb.size()[-2]
-            )
-
-            # batch x instance_size x embedding_x_component
-            flat_event_emb = event_emb.view(
-                event_emb.size()[0], -1,
-                event_emb.size()[-1] * event_emb.size()[-2]
-            )
-        elif self.para.w2v_event_repr == 'sum':
-            # Sum all the components together.
-            # batch x instance_size x embedding
-            flat_context_emb = context_emb.sum(-2)
-            flat_event_emb = event_emb.sum(-2)
-        else:
-            raise ValueError(f"Unknown event representation method: "
-                             f"[{self.para.w2v_event_repr}]")
-
-        # Compute cosine.
-        nom_event_emb = F.normalize(flat_event_emb, 2, -1)
-        nom_context_emb = F.normalize(flat_context_emb, 2, -1)
+        # batch x context_size x event_component
+        batch_context = batch_info['context_event_component']
 
         _, context_size, _ = batch_context.shape
         self_mask = self.self_event_mask(batch_event_indices, context_size)

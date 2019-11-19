@@ -62,6 +62,7 @@ class ClozeBatcher:
 
         self.b_common_data = defaultdict(list)
         self.b_instance_data = defaultdict(list)
+        self.b_meta_data = defaultdict(list)
         self.b_labels = []
 
         self.max_context_size = 0
@@ -75,6 +76,7 @@ class ClozeBatcher:
         self.b_common_data.clear()
         self.b_instance_data.clear()
         self.b_labels.clear()
+        self.b_meta_data.clear()
 
         self.max_context_size = 0
         self.max_instance_size = 0
@@ -97,7 +99,8 @@ class ClozeBatcher:
         else:
             raise ValueError("Dimension unsupported %d" % dim)
 
-    def get_batch(self, instances: ClozeInstances, common_data: Dict):
+    def get_batch(self, instances: ClozeInstances, common_data: Dict,
+                  meta: Dict = None):
         instance_data = instances.data
         labels = instances.label
 
@@ -120,25 +123,23 @@ class ClozeBatcher:
                 self.max_num_slots = max(
                     list(len(l) for l in value) + [self.max_num_slots]
                 )
-
             self.b_instance_data[key].append(value)
+
+        if meta is not None:
+            for key, value in meta.items():
+                self.b_meta_data[key].append(value)
 
         self.b_labels.append(labels)
         self.doc_count += 1
 
         # Each document is computed as a whole.
         if self.doc_count % self.batch_size == 0:
-            debug_data = {
-            }
-
-            yield self.create_batch(), debug_data
+            yield self.create_batch()
             self.clear()
 
     def flush(self):
         if len(self.b_common_data) > 0:
-            debug_data = {}
-            train_batch = self.create_batch()
-            return train_batch, debug_data
+            return self.create_batch()
 
     def create_batch(self):
         instance_data = {}
@@ -192,4 +193,7 @@ class ClozeBatcher:
 
         ins_mask = to_torch(mask, np.float32).to(self.device)
 
-        return labels, instance_data, common_data, f_size, ins_mask
+        return (
+            labels, instance_data, common_data, f_size, ins_mask,
+            self.b_meta_data
+        )
