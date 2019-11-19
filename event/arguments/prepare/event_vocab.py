@@ -297,7 +297,8 @@ class EmbbedingVocab:
         self.vocab[name] = extra_index
         self.tf.append(0)
 
-        logger.info(f"Adding {name} as extra dimension {extra_index}")
+        logger.info(f"Adding {name} as extra dimension {extra_index} "
+                    f"to {self.vocab_file}")
 
         return extra_index
 

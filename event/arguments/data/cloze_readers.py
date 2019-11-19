@@ -186,12 +186,13 @@ class HashedClozeReader:
                 test_cases.append([slot, test_stub, answers])
             else:
                 for arg in args:
-                    # This checks whether there are explicit gold arguments.
+                    # We do not need to fill the explicit arguments.
                     if arg['source'] == 'gold' and not arg['implicit']:
                         break
                 else:
-                    # We make sure there is no implicit and explicit arguments.
-                    test_cases.append([slot] + copy.deepcopy(no_fill_case))
+                    # There are no explict and implicit either, but we need the
+                    # system to guess whether it wanted to fill such case.
+                    test_cases.append(copy.deepcopy(no_fill_case))
 
         return test_cases
 
@@ -299,8 +300,6 @@ class HashedClozeReader:
             available_slots = self.frame_slots.get_predicate_slots(event)
 
             test_cases = self.get_test_cases(event, available_slots)
-
-            pdb.set_trace()
 
             for target_slot, test_stub, answers in test_cases:
                 # The detector determine whether we should fill this slot.
