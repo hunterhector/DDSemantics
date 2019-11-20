@@ -218,8 +218,6 @@ class ArgRunner(Configurable):
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             (labels, instances, common_data, _, _, metadata) = test_data
 
-            pdb.set_trace()
-
             coh = model(instances, common_data)
 
             event_idxes = common_data['event_indices'].data.cpu().numpy()[
@@ -324,33 +322,8 @@ class ArgRunner(Configurable):
         logger.info(f"Test baseline models on {basic_para.test_in}.")
 
         # W2v baseline.
-        # Variation 1: max_sim, concat
-        self.para.w2v_baseline_method = 'max_sim'
-        self.para.w2v_event_repr = 'concat'
-        w2v_baseline = BaselineEmbeddingModel(
-            self.para, self.resources, self.device).to(self.device)
-        self.__test(
-            w2v_baseline, data_gen(basic_para.test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'test', 'concat_max',
-            ),
-        )
 
-        # Variation 2: topk, concat
-        self.para.w2v_baseline_method = 'topk_average'
-        self.para.w2v_event_repr = 'concat'
-        w2v_baseline = BaselineEmbeddingModel(
-            self.para, self.resources, self.device).to(self.device)
-        self.__test(
-            w2v_baseline, data_gen(basic_para.test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'test', 'concat_top3'
-            ),
-        )
-
-        # Variation 3: topk, sum
+        # Variation 1: max sim, sum
         self.para.w2v_baseline_method = 'max_sim'
         self.para.w2v_event_repr = 'sum'
         w2v_baseline = BaselineEmbeddingModel(
@@ -363,7 +336,7 @@ class ArgRunner(Configurable):
             ),
         )
 
-        # Variation 4: topk, sum
+        # Variation 2: topk, sum
         self.para.w2v_baseline_method = 'topk_average'
         self.para.w2v_event_repr = 'sum'
         w2v_baseline = BaselineEmbeddingModel(

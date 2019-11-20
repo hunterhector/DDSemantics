@@ -49,7 +49,7 @@ class ArgCompatibleModel(nn.Module):
         """Return a matrix to mask out the scores from the current event.
 
         Args:
-          batch_event_indices: batch_size
+          batch_event_indices: A tensor containing the current event indices
           context_size:
 
         Returns:
@@ -185,7 +185,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         slot_emb = self.event_embedding(slot_rep)
 
         if self.para.w2v_event_repr == 'sum':
-            flat_event_emb = torch.cat([event_emb, slot_emb], -1).sum(-2)
+            flat_event_emb = torch.cat([event_emb, slot_emb], -2).sum(-2)
         else:
             raise ValueError(f"Unsupported event pooling method in dynamic: "
                              f"[{self.para.w2v_event_repr}]")
@@ -211,17 +211,14 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
             nom_event_emb = self.dynamic_event_embedding(
                 batch_event_data['predicate'], batch_event_data['slot_value'])
             nom_context_emb = self.dynamic_event_embedding(
-                batch_event_data['context_predicate'],
-                batch_event_data['context_slot_value'])
+                batch_info['context_predicate'],
+                batch_info['context_slot_value'])
         else:
             raise ValueError("Unknown arg representation method.")
 
-        batch_event_indices = batch_info['event_indices']
-        # batch x context_size x event_component
-        batch_context = batch_info['context_event_component']
-
-        _, context_size, _ = batch_context.shape
-        self_mask = self.self_event_mask(batch_event_indices, context_size)
+        _, context_size, _ = nom_context_emb.shape
+        self_mask = self.self_event_mask(batch_info['event_indices'],
+                                         context_size)
 
         # Cosine similarities to the context.
         # batch x instance_size x context_size

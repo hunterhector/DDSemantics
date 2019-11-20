@@ -293,7 +293,7 @@ class HashedClozeReader:
 
         for evm_index, event in enumerate(doc_info['events']):
             pred_sent = event['sentence_id']
-            pred_idx = event['predicate']
+            pred_id = event['predicate']
             event_args = event['args']
             arg_list = self.get_args_as_list(event_args, False)
 
@@ -321,7 +321,7 @@ class HashedClozeReader:
 
                     metadata = {
                         'candidate': [],
-                        'instance': [],
+                        'instance': {},
                     }
 
                     cloze_event_indices = []
@@ -351,7 +351,7 @@ class HashedClozeReader:
                             explicit_entity_positions,
                             pred_sent,
                             self.event_struct.event_repr(
-                                pred_idx, event['frame'], candidate_args
+                                pred_id, event['frame'], candidate_args
                             ),
                             filler_eid, label=label
                         )
@@ -368,6 +368,7 @@ class HashedClozeReader:
                         else:
                             metadata['candidate'].append({
                                 'entity': cand_arg['represent'],
+                                'event_index': evm_index,
                                 'distance_to_event': (
                                         pred_sent - cand_arg['sentence_id']
                                 ),
@@ -376,14 +377,13 @@ class HashedClozeReader:
                                 ),
                                 'source': cand_arg['source']})
 
-                    # How to return these meta cleanly.
-                    metadata['instance'].append({
+                    metadata['instance'] = {
                         'docid': doc_info['docid'],
                         'predicate': event['predicate_text'],
-                        'predicate_idx': pred_idx,
-                        'target_slot': target_slot,
+                        'predicate_id': pred_id,
+                        'target_slot_id': target_slot,
                         'answers': answers,
-                    })
+                    }
 
                     common_data = {
                         'event_indices': cloze_event_indices,

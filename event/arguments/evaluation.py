@@ -98,8 +98,19 @@ class ImplicitEval:
 
         return this_res
 
-    def add_prediction(self, doc_id, event_indexes, slot_indexes, coh_scores,
-                       candidate_meta, instance_meta):
+    def add_prediction(self, event_indexes, slot_indexes, coh_scores,
+                       metadata):
+        b_candidate_meta = metadata['candidate']
+        b_instance_meta = metadata['instance']
+
+        import pdb
+        pdb.set_trace()
+
+        for candidate_meta, instance_meta in zip(metadata['candidate'],
+                                                 metadata['instance']):
+
+            pass
+
         for (((event_idx, slot_idx), result), ins_meta) in zip(groupby(
                 zip(zip(
                     event_indexes, slot_indexes), coh_scores, candidate_meta),
