@@ -80,7 +80,7 @@ def get_nltk_span(token_spans, sent_num, indice_groups):
     return spans
 
 
-def nombank_pred_text(raw_text):
+def normalize_pred_text(raw_text):
     p_text = raw_text.lower()
 
     if p_text.startswith('not_'):

@@ -288,7 +288,7 @@ class NomBank(DataLoader):
                 added_args = defaultdict(list)
 
                 p = self.add_predicate(doc, parsed_sents, predicate_node)
-                p_text = utils.nombank_pred_text(p.text)
+                p_text = utils.normalize_pred_text(p.text)
 
                 p.add_meta('from_gc', True)
 

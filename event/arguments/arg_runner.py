@@ -615,6 +615,7 @@ def main(conf):
     if basic_para.do_test:
         result_dir = os.path.join(
             basic_para.log_dir, basic_para.model_name, basic_para.run_name,
+            basic_para.test_data
         )
         logger.info("Evaluation results will be saved in: " + result_dir)
 
@@ -627,6 +628,7 @@ def main(conf):
 if __name__ == '__main__':
     class Basic(Configurable):
         train_in = Unicode(help='Training data directory.').tag(config=True)
+        test_data = Unicode(help='Test data name.').tag(config=True)
         test_in = Unicode(help='Testing data.').tag(config=True)
         test_out = Unicode(help='Test res.').tag(config=True)
         valid_in = Unicode(help='Validation in.').tag(config=True)

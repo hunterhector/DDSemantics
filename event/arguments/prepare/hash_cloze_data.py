@@ -139,7 +139,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         implicit_slots_no_incorp = set()
         implicit_slots_all = set()
 
-        raw_pred = data_utils.nombank_pred_text(event['predicate'])
+        raw_pred = data_utils.normalize_pred_text(event['predicate'])
 
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []

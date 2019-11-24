@@ -14,6 +14,6 @@ c.ArgModelPara.arg_representation_method = 'role_dynamic'
 c.ArgModelPara.arg_role_combine_func = 'mlp'
 c.ArgModelPara.factor_role = 'fe'
 
-c.Basic.test_in = os.path.join(base, 'semeval2010t10_train', 'processed',
+c.Basic.test_data = 'semeval2010t10_train'
+c.Basic.test_in = os.path.join(base, c.Basic.test_data, 'processed',
                                'cloze_hashed.json.gz')
-
