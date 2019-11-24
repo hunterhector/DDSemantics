@@ -9,11 +9,9 @@ from event.io.dataset.utils import nombank_pred_text
 
 
 class ImplicitEval:
-    def __init__(self, slot_names, out_dir=None):
+    def __init__(self, out_dir=None):
         self.out_dir = out_dir
         self.cutoffs = [1, 5, 10]
-
-        self.slot_names = slot_names
 
         if self.out_dir is not None:
             if not os.path.exists(self.out_dir):
@@ -98,27 +96,13 @@ class ImplicitEval:
 
         return this_res
 
-    def add_prediction(self, event_indexes, slot_indexes, coh_scores,
-                       metadata):
-        b_candidate_meta = metadata['candidate']
-        b_instance_meta = metadata['instance']
-
-        import pdb
-        pdb.set_trace()
-
-        for candidate_meta, instance_meta in zip(metadata['candidate'],
-                                                 metadata['instance']):
-
-            pass
-
-        for (((event_idx, slot_idx), result), ins_meta) in zip(groupby(
-                zip(zip(
-                    event_indexes, slot_indexes), coh_scores, candidate_meta),
-                key=itemgetter(0)), instance_meta):
-            _, raw_scores, c_meta = zip(*result)
-
+    def add_prediction(self, coh_scores, metadata):
+        for l_candidate_meta, instance_meta in zip(metadata['candidate'],
+                                                   metadata['instance']):
             self.add_result(
-                doc_id, event_idx, slot_idx, raw_scores, ins_meta, c_meta
+                instance_meta,
+                l_candidate_meta,
+                coh_scores
             )
 
     @staticmethod
@@ -154,10 +138,9 @@ class ImplicitEval:
             predicate_selector
         ]
 
-    def add_result(self, doc_id, event_idx, slot_idx, raw_scores, ins_meta,
-                   c_meta):
+    def add_result(self, ins_meta, c_meta, raw_scores):
         data = {
-            'doc_id': doc_id,
+            'doc_id': ins_meta['docid'],
             'results': {},
             'predictions': [],
         }
@@ -183,10 +166,7 @@ class ImplicitEval:
                     selected_groups[selection]['metas'].append(meta)
 
         instance_res = {
-            'event_index': event_idx,
             'predicate': ins_meta['predicate'],
-            'slot_name': self.slot_names[slot_idx],
-            'slot_index': slot_idx,
             'answers': ins_meta['answers'],
             'categorized_result': {},
         }

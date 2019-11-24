@@ -179,21 +179,21 @@ class ClozeBatcher:
             pad_2d_list(self.b_labels, self.max_instance_size, axis=1),
             np.float32).to(self.device)
 
-        f_size = -1
+        data_size = -1
         for key, s in sizes.items():
-            if f_size < 0:
-                f_size = s
+            if data_size < 0:
+                data_size = s
             else:
-                assert s == f_size
-        assert f_size > 0
+                assert s == data_size
+        assert data_size > 0
 
-        mask = np.zeros([f_size, self.max_instance_size], dtype=int)
+        mask = np.zeros([data_size, self.max_instance_size], dtype=int)
         for i, l in enumerate(data_len):
             mask[i][0: l] = 1
 
         ins_mask = to_torch(mask, np.float32).to(self.device)
 
         return (
-            labels, instance_data, common_data, f_size, ins_mask,
+            labels, instance_data, common_data, data_size, ins_mask,
             self.b_meta_data
         )

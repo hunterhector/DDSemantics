@@ -208,7 +208,7 @@ class ArgRunner(Configurable):
                eval_dir=None):
         self.model.eval()
 
-        evaluator = ImplicitEval(self.reader.fix_slot_names, eval_dir)
+        evaluator = ImplicitEval(eval_dir)
         instance_count = 0
 
         self.reader.auto_test = auto_test
@@ -220,15 +220,9 @@ class ArgRunner(Configurable):
 
             coh = model(instances, common_data)
 
-            event_idxes = common_data['event_indices'].data.cpu().numpy()[
-                0].tolist()
-            slot_idxes = common_data['slot_indicators'].data.cpu().numpy()[
-                0].tolist()
             coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
 
-            evaluator.add_prediction(
-                event_idxes, slot_idxes, coh_scores, metadata
-            )
+            evaluator.add_prediction(coh_scores, metadata)
 
             instance_count += 1
 
@@ -478,14 +472,13 @@ class ArgRunner(Configurable):
                         f'{self.basic_para.validation_size} validation lines '
                         f'for training.')
 
-            for batch_data, debug_data in self.reader.read_train_batch(
+            for train_data in self.reader.read_train_batch(
                     data_gen(train_in,
                              from_line=self.basic_para.validation_size),
                     train_sampler
             ):
-                labels, batch_instance, batch_info, b_size, mask = batch_data
-
-                loss = self._get_loss(labels, batch_instance, batch_info, mask)
+                labels, instances, batch_info, b_size, mask, _ = train_data
+                loss = self._get_loss(labels, instances, batch_info, mask)
 
                 # Case of a bug.
                 if not loss:
@@ -502,7 +495,7 @@ class ArgRunner(Configurable):
                         if name.startswith('event_to_var_layer'):
                             logging.error(name, weight)
 
-                    self.__dump_stuff('batch_instance', batch_instance)
+                    self.__dump_stuff('batch_instance', instances)
                     self.__dump_stuff('batch_info', batch_info)
 
                     raise ValueError('Error in computing loss.')
