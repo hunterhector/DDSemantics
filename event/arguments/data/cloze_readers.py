@@ -300,8 +300,6 @@ class HashedClozeReader:
 
             test_cases = self.get_test_cases(event, available_slots)
 
-            pdb.set_trace()
-
             for target_slot, test_stub, answers in test_cases:
                 # The detector determine whether we should fill this slot.
                 if nid_detector.should_fill(event, target_slot, test_stub):
@@ -338,6 +336,7 @@ class HashedClozeReader:
 
                         # Add the remaining arguments.
                         for s, arg in arg_list:
+                            #TODO: this == check is not good.
                             if not s == target_slot:
                                 candidate_args.append((s, arg))
 
