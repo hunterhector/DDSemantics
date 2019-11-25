@@ -16,7 +16,6 @@ from event.arguments.data.event_structure import EventStruct
 from event.arguments.data.frame_data import FrameSlots
 from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.implicit_arg_resources import ImplicitArgResources
-from event import torch_util
 import pdb
 
 logger = logging.getLogger(__name__)
@@ -301,6 +300,8 @@ class HashedClozeReader:
 
             test_cases = self.get_test_cases(event, available_slots)
 
+            pdb.set_trace()
+
             for target_slot, test_stub, answers in test_cases:
                 # The detector determine whether we should fill this slot.
                 if nid_detector.should_fill(event, target_slot, test_stub):
@@ -357,8 +358,7 @@ class HashedClozeReader:
                         )
 
                         cloze_event_indices.append(evm_index)
-                        cloze_slot_indicator.append(
-                            self.get_slot_index(target_slot))
+                        cloze_slot_indicator.append(target_slot)
 
                         if filler_eid == ghost_entity_id:
                             metadata['candidate'].append(
@@ -429,7 +429,7 @@ class HashedClozeReader:
 
     def get_slot_index(self, slot):
         if self.fix_slot_mode:
-            return self.fix_slot_names.index(slot)
+            return slot
         else:
             # In dynamic slot mode, we provide the slot's
             # vocab id, which can be converted to embedding.
@@ -583,6 +583,7 @@ class HashedClozeReader:
                 inside_sample = self.cloze_gen.inside_cloze(
                     arg_list, arg_index)
 
+                # TODO: double check get_slot_index
                 slot_index = self.get_slot_index(slot)
 
                 assert slot_index >= 0

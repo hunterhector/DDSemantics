@@ -3,6 +3,8 @@ import operator
 import sys
 import logging
 from collections import Counter, defaultdict
+
+import event.util
 from event.arguments import util
 
 
@@ -77,7 +79,7 @@ class FrameMapper:
                 from_frame_name, from_arg_name, from_count = info_parts
 
                 if dep_source:
-                    from_frame_name = util.remove_neg(from_frame_name)
+                    from_frame_name = event.util.remove_neg(from_frame_name)
 
                 from_arg = (from_frame_name, from_arg_name)
 
@@ -94,7 +96,7 @@ class FrameMapper:
                         role = arg_parts[-1]
 
                         if dep_target:
-                            predicate = util.remove_neg(predicate)
+                            predicate = event.util.remove_neg(predicate)
 
                         if not role == 'NA':
                             args[(predicate, role)] += int(count)

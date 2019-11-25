@@ -1,8 +1,8 @@
+import event.util
 from event.io.readers import EventReader
 import gzip
 from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
 from event.arguments.prepare import word_vocab
-from event.arguments import util
 from event.arguments.prepare.slot_processor import SlotHandler
 from collections import Counter
 import json
@@ -224,7 +224,7 @@ def hash_data():
     doc_count = 0
     event_count = 0
 
-    print(f"{util.get_time()}: Start hashing")
+    print(f"{event.util.get_time()}: Start hashing")
     with gzip.open(hash_params.raw_data) as data_in, gzip.open(
             hash_params.output_path, 'w') as data_out:
         for docid, events, entities, sentences in reader.read_events(
@@ -246,7 +246,7 @@ def hash_data():
             event_count += len(hashed_doc['events'])
 
             if doc_count % 1000 == 0:
-                print(f'{util.get_time()}: Hashed for {event_count} events in '
+                print(f'{event.util.get_time()}: Hashed for {event_count} events in '
                       f'{doc_count} docs.\r', end='')
 
     print(

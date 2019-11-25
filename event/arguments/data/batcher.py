@@ -5,7 +5,7 @@ from typing import Dict
 import numpy as np
 
 from event.arguments.data.cloze_instance import ClozeInstances
-from event.arguments.util import (batch_combine, to_torch)
+from event.util import batch_combine, to_torch
 from event.io.io_utils import pad_2d_list, pad_last_axis
 
 

@@ -8,9 +8,9 @@ import torch
 from texar.torch.modules.encoders import TransformerEncoder
 from texar.torch.modules.embedders import EmbedderBase
 
+import event.util
 from event.arguments.implicit_arg_resources import ImplicitArgResources
 from event.nn.models import KernelPooling
-from event import torch_util
 from conf.implicit import texar_config
 from event.arguments.implicit_arg_params import ArgModelPara
 
@@ -231,7 +231,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         elif self._score_method == 'average':
             pooled, _ = trans.mean(2, keepdim=False)
         elif self._score_method == 'topk_average':
-            topk_pooled = torch_util.topk_with_fill(
+            topk_pooled = event.util.topk_with_fill(
                 trans, self.para.w2v_baseline_avg_topk, 2, largest=True)
             pooled = topk_pooled.mean(2, keepdim=False)
         else:
@@ -778,7 +778,7 @@ class EventCoherenceModel(ArgCompatibleModel):
 
     def __slot_indicator(self, slot_indicator):
         if self.para.arg_representation_method == 'fix_slots':
-            return torch_util.make_2d_one_hot(slot_indicator, self.num_slots,
+            return event.util.make_2d_one_hot(slot_indicator, self.num_slots,
                                               self.device)
         else:
             # Apply the MLP reduction on the embedding.

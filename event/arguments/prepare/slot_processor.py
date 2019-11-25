@@ -1,9 +1,8 @@
 import os
-import xml.etree.ElementTree as ET
 from collections import defaultdict, Counter
-from event.arguments import util
 from operator import itemgetter
-from pprint import pprint
+import xml.etree.ElementTree as ET
+from event import util
 
 
 def remove_slot_info(arg_info):

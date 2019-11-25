@@ -88,7 +88,8 @@ class TypedEventVocab:
 
     @staticmethod
     def make_fe(frame, fe):
-        return frame + ',' + fe
+        # Do not use frame,fe format to alleviate sparsity.
+        return fe
 
     def get_arg_entity_rep(self, arg, entity_text):
         rep = self.get_vocab_word(entity_text, 'argument')
@@ -174,14 +175,6 @@ class TypedEventVocab:
                 self.filter_by_count(vocab_counters['fe'], min_fe_count),
         }
 
-        # Frames are retained if their frame elements are retained.
-        fe_counter = filtered_vocab['fe_min_%d' % min_fe_count]
-        frame_counter = Counter()
-        for full_fe, count in fe_counter:
-            frame, fe = full_fe.split(',')
-            frame_counter[frame] += count
-        filtered_vocab['frame'] = frame_counter.most_common()
-
         for key, counts in filtered_vocab.items():
             name = key.split('_')[0]
 
@@ -225,6 +218,8 @@ class TypedEventVocab:
 
                     predicate = event['predicate']
                     vocab_counters['predicate'][predicate] += 1
+
+                    vocab_counters['frame'][event['frame']] += 1
 
                     for arg in event['arguments']:
                         fe_name = arg['feName']

@@ -34,9 +34,8 @@ from event.arguments.evaluation import ImplicitEval
 from event.arguments.data.cloze_gen import ClozeSampler
 from event.util import load_mixed_configs
 from event.util import (
-    set_file_log, set_basic_log, ensure_dir, append_num_to_path
+    set_file_log, set_basic_log, ensure_dir, append_num_to_path, get_date_stamp
 )
-from event import torch_util
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +84,11 @@ class ArgRunner(Configurable):
         self.reader = HashedClozeReader(self.resources, self.para)
 
         self.model_dir = os.path.join(self.basic_para.model_dir,
-                                      self.basic_para.model_name)
+                                      self.basic_para.model_name + '_'
+                                      + get_date_stamp())
         self.debug_dir = os.path.join(self.basic_para.debug_dir,
-                                      self.basic_para.model_name)
+                                      self.basic_para.model_name + '_'
+                                      + get_date_stamp())
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
