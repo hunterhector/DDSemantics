@@ -5,6 +5,8 @@ import json
 import pickle
 from json.decoder import JSONDecodeError
 import logging
+from typing import Dict
+
 from event import util
 from event.arguments.prepare.slot_processor import get_simple_dep
 
@@ -20,8 +22,8 @@ class TypedEventVocab:
     unk_dep = 'unk_dep'
 
     def __init__(self, vocab_dir, event_data=None):
-        self.lookups = {}
-        self.oovs = {}
+        self.lookups: Dict[str, Dict[str, int]] = {}
+        self.oovs: Dict[str, str] = {}
 
         self.vocab_dir = vocab_dir
 
@@ -41,31 +43,70 @@ class TypedEventVocab:
 
             # Now filter the vocabulary.
             logger.info("Filtering vocabulary.")
-            self.filter_vocab(vocab_counters)
+            filtered_vocab = self.filter_vocab(vocab_counters)
             logger.info("Done filtering.")
+
+            logger.info("Writing filtered vocab to disk.")
+            for key, vocab in filtered_vocab.items():
+                with open(os.path.join(self.vocab_dir, key + '.vocab'),
+                          'w') as out:
+                    for token, count in vocab:
+                        out.write('{}\t{}\n'.format(token, count))
+
+            self.pickle_counts()
+
+            logger.info("Done.")
         else:
             logger.info("Will not overwrite vocabulary, using existing.")
-            for f in os.listdir(vocab_dir):
-                if '_' in f and f.endswith('.vocab'):
-                    vocab_type = f.split('_')[0]
-                elif f == 'frame.vocab':
-                    vocab_type = 'frame'
-                else:
-                    continue
 
-                self.lookups[vocab_type] = {}
-                self.oovs[vocab_type] = 'unk_' + vocab_type
+            if not self.unpickle_counts():
+                logger.info("Reading counts from .vocab files.")
 
-                with open(os.path.join(vocab_dir, f)) as vocab_file:
-                    index = 0
-                    for line in vocab_file:
-                        word, count = line.strip().split('\t')
-                        self.lookups[vocab_type][word] = index
-                        index += 1
+                f_name: str
+                for f_name in os.listdir(vocab_dir):
+                    if '_' in f_name and f_name.endswith('.vocab'):
+                        vocab_type = f_name.split('_')[0]
+                    else:
+                        continue
 
-                logger.info(
-                    "Loaded {} types for {}".format(
-                        len(self.lookups[vocab_type]), vocab_type))
+                    self.lookups[vocab_type] = {}
+                    self.oovs[vocab_type] = 'unk_' + vocab_type
+
+                    with open(os.path.join(vocab_dir, f_name)) as vocab_file:
+                        index = 0
+                        for line in vocab_file:
+                            word, count = line.strip().split('\t')
+                            self.lookups[vocab_type][word] = index
+                            index += 1
+
+                    logger.info(
+                        "Loaded {} types for {}".format(
+                            len(self.lookups[vocab_type]), vocab_type))
+
+                self.pickle_counts()
+
+    def pickle_counts(self):
+        with open(os.path.join(self.vocab_dir, 'lookups.pickle'),
+                  'wb') as out:
+            pickle.dump(self.lookups, out)
+
+        with open(os.path.join(self.vocab_dir, 'oovs.pickle'),
+                  'wb') as out:
+            pickle.dump(self.oovs, out)
+
+    def unpickle_counts(self):
+        lookup_pickle = os.path.join(self.vocab_dir, 'lookups.pickle')
+        oov_pickle = os.path.join(self.vocab_dir, 'oovs.pickle')
+
+        if os.path.exists(lookup_pickle) and os.path.exists(oov_pickle):
+            logger.info("Directly loading pickled counts.")
+            with open(lookup_pickle, 'rb') as lp:
+                self.lookups = pickle.load(lp)
+            with open(oov_pickle, 'rb') as op:
+                self.oovs = pickle.load(op)
+            return True
+        else:
+            return False
 
     def get_vocab_word(self, word, key):
         if not word:
@@ -158,10 +199,8 @@ class TypedEventVocab:
         return [(key, count) for key, count in counter.most_common() if
                 count >= min_count]
 
-    def filter_vocab(self, vocab_counters,
-                     top_num_prep=150,
-                     min_token_count=500,
-                     min_fe_count=50):
+    def filter_vocab(self, vocab_counters, top_num_prep=150,
+                     min_token_count=500, min_fe_count=50, min_frame_count=5):
         filtered_vocab = {
             'predicate_min_%d' % min_token_count:
                 self.filter_by_count(vocab_counters['predicate'],
@@ -173,9 +212,13 @@ class TypedEventVocab:
                 vocab_counters['preposition'].most_common(top_num_prep),
             'fe_min_%d' % min_fe_count:
                 self.filter_by_count(vocab_counters['fe'], min_fe_count),
+            'frame_min_%d' % min_frame_count:
+                self.filter_by_count(vocab_counters['frame'], min_frame_count)
         }
 
         for key, counts in filtered_vocab.items():
+            # Use the base key name for the vocabulary, not including the
+            # cutoff, (i.e. predicate_min_50 -> predicate)
             name = key.split('_')[0]
 
             oov = 'unk_' + name
@@ -188,14 +231,7 @@ class TypedEventVocab:
             for term, _ in counts:
                 self.lookups[name][term] = index
                 index += 1
-
-        for key, vocab in filtered_vocab.items():
-            with open(os.path.join(self.vocab_dir, key + '.vocab'), 'w') as out:
-                for token, count in vocab:
-                    out.write('{}\t{}\n'.format(token, count))
-
-        with open(os.path.join(self.vocab_dir, 'lookups.pickle'), 'wb') as out:
-            pickle.dump(self.lookups, out)
+        return filtered_vocab
 
     def get_vocab_count(self, data_path):
         vocab_counters = defaultdict(Counter)
