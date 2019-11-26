@@ -86,6 +86,9 @@ class HashedClozeReader:
         self.cloze_gen = ClozeGenerator(self.candidate_builder,
                                         self.fix_slot_mode)
 
+        self.use_gold_mention = self.para.use_gold_mention
+        self.use_auto_mention = self.para.use_auto_mention
+
         logger.info("Reading data with device: " + str(self.device))
 
     def read_train_batch(self, data_in, sampler):
@@ -127,7 +130,8 @@ class HashedClozeReader:
     def get_test_cases(self, event, possible_slots):
         test_cases = []
 
-        # First organize the roles by the gold role name.
+        # First organize the roles by the gold role name, this will take every
+        #   arg in the data, even in the case of duplication.
         arg_by_slot = defaultdict(list)
         for dep_slot, args_per_dep in event['args'].items():
             for arg in args_per_dep:
@@ -160,9 +164,8 @@ class HashedClozeReader:
             ]
 
             if slot not in arg_by_slot:
-                # TODO: here we skip the slot because the slot is not part of
-                #  gold standard data. However, this is an candidate for
-                #  non-fill case, which should be include in the production.
+                # TODO: here we skip the slot because gold standard says no. But
+                #   a complete system would need a no-fill classifier here.
                 continue
 
             answers = []
@@ -200,7 +203,7 @@ class HashedClozeReader:
         first argument when multiple ones are presented at the slot.
 
         Args:
-          event_args: ignore_implicit:
+          event_args:
           ignore_implicit: 
 
         Returns:
@@ -209,19 +212,33 @@ class HashedClozeReader:
         slot_args = {}
         for dep_slot, l_arg in event_args.items():
             for a in l_arg:
-                if ignore_implicit and a.get('implicit', False):
-                    continue
-                else:
-                    # Reading dynamic slots using the defined factor role.
-                    if self.factor_role:
-                        factor_role = a[self.factor_role]
-                    else:
-                        # If not defined, then used to dep slots as factor
-                        # role.
-                        factor_role = dep_slot
+                use_this_arg = True
 
-                    if factor_role not in slot_args:
-                        slot_args[factor_role] = a
+                if ignore_implicit and a.get('implicit', False):
+                    use_this_arg = False
+
+                source = a.get('source', 'automatic')
+                if source == 'gold':
+                    if not self.use_gold_mention:
+                        use_this_arg = False
+                elif source == 'automatic':
+                    if not self.use_auto_mention:
+                        use_this_arg = False
+                else:
+                    raise ValueError(f"Unknown source {source}")
+
+                if not use_this_arg:
+                    continue
+
+                # Reading dynamic slots using the defined factor role.
+                if self.factor_role:
+                    factor_role = a[self.factor_role]
+                else:
+                    # If not defined, then used to dep slots as factor role.
+                    factor_role = dep_slot
+
+                if factor_role not in slot_args:
+                    slot_args[factor_role] = a
         args = list(slot_args.items())
         return args
 
@@ -234,6 +251,8 @@ class HashedClozeReader:
           doc_info: The JSON data of one document.
           nid_detector: NID detector to detect which slot to fill.
           test_cloze_maker: TestClozeMaker
+          use_gold_mentions: Whether to use gold mentions.
+          use_auto_mentions: Whether to use system mentions.
 
         Returns:
 
@@ -306,8 +325,7 @@ class HashedClozeReader:
                     # Fill the test_stub with all the possible args in this doc.
                     test_rank_list = test_cloze_maker.gen_test_args(
                         test_stub, doc_mentions, pred_sent,
-                        distance_cap=self.para.distance_cap
-                    )
+                        distance_cap=self.para.distance_cap)
 
                     answer_spans = set([a['span'] for a in answers])
 
@@ -335,8 +353,14 @@ class HashedClozeReader:
                         candidate_args = [(target_slot, cand_arg)]
 
                         # Add the remaining arguments.
+                        pdb.set_trace()
+                        # TODO: the arg_list taken here ignores many ones with
+                        #  the same dep label, this will hurt the representation
+                        #  of this argument. If we use the frame module, we
+                        #  actually shouldn't only take one from every dep,
+                        #  since we do not restrict the fe type anyway.
                         for s, arg in arg_list:
-                            #TODO: this == check is not good.
+                            # TODO: this == check is not good.
                             if not s == target_slot:
                                 candidate_args.append((s, arg))
 

@@ -37,7 +37,9 @@ def get_propbank_role_index(role):
             'argm') and not role.startswith('arga'):
         role_idx = int(role.replace('arg', ''))
 
-    if role_idx > 3:
+    # TODO: how about argm, i.e. argm-loc ?
+
+    if role_idx > 4:
         role_idx = -1
     return role_idx
 
@@ -246,8 +248,9 @@ def hash_data():
             event_count += len(hashed_doc['events'])
 
             if doc_count % 1000 == 0:
-                print(f'{event.util.get_time()}: Hashed for {event_count} events in '
-                      f'{doc_count} docs.\r', end='')
+                print(
+                    f'{event.util.get_time()}: Hashed for {event_count} events in '
+                    f'{doc_count} docs.\r', end='')
 
     print(
         f'\nTotally {event_count} events and {doc_count} documents.'

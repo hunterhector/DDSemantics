@@ -94,6 +94,8 @@ class EventStruct:
             fid = self.unk_frame_idx if frame_id == -1 else frame_id
             event_components.append(fid)
 
+        # TODO: the current setup for argument slot position in the fix slot
+        #   model might mess up, need double check on this mapping method.
         for _, arg in args:
             if len(arg) == 0:
                 if self.use_frame:

@@ -12,8 +12,17 @@ c.ArgModelPara.use_frame = True
 c.ArgModelPara.slot_frame_formalism = 'FrameNet'
 c.ArgModelPara.arg_representation_method = 'role_dynamic'
 c.ArgModelPara.arg_role_combine_func = 'mlp'
-c.ArgModelPara.factor_role = 'fe'
 
-c.Basic.test_data = 'semeval2010t10_train'
-c.Basic.test_in = os.path.join(base, c.Basic.test_data, 'processed',
-                               'cloze_hashed.json.gz')
+raw_corpus_name = 'gigaword_frames'
+
+c.ImplicitArgResources.event_embedding_path = os.path.join(
+    base, raw_corpus_name,
+    'embeddings/event_embeddings_mixed.pickle.wv.vectors.npy')
+c.ImplicitArgResources.event_vocab_path = os.path.join(
+    base, raw_corpus_name, 'embeddings/event_embeddings_mixed.voc')
+c.ImplicitArgResources.raw_lookup_path = os.path.join(
+    base, raw_corpus_name, 'vocab/')
+
+# Runner parameters
+c.Basic.log_dir = os.path.join(base, raw_corpus_name, 'logs')
+c.Basic.model_dir = os.path.join(base, raw_corpus_name, 'models')

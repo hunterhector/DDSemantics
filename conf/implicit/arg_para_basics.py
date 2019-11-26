@@ -45,12 +45,6 @@ if 'implicit_corpus' not in os.environ:
 else:
     base = os.environ['implicit_corpus']
 
-if 'raw_corpus_name' not in os.environ:
-    raise KeyError("Please supply the raw corpus directory as environment "
-                   "variable: 'raw_corpus_name'")
-else:
-    raw_corpus_name = os.environ['raw_corpus_name']
-
 c.ImplicitArgResources.word_embedding_path = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.pickle.wv.vectors.npy')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
@@ -60,21 +54,9 @@ c.ImplicitArgResources.nombank_arg_slot_map = 'resources/nombankArgMap.tsv'
 c.ImplicitArgResources.framenet_frame_path = os.path.join(
     base, 'resources/fndata-1.5/frame')
 
-c.ImplicitArgResources.event_embedding_path = os.path.join(
-    base, raw_corpus_name,
-    'embeddings/event_embeddings_mixed.pickle.wv.vectors.npy')
-c.ImplicitArgResources.event_vocab_path = os.path.join(
-    base, raw_corpus_name, 'embeddings/event_embeddings_mixed.voc')
-c.ImplicitArgResources.raw_lookup_path = os.path.join(
-    base, raw_corpus_name, 'vocab/')
 c.ImplicitArgResources.min_vocab_count = 50
 
-# Runner parameters
-c.Basic.train_in = os.path.join(base, raw_corpus_name, 'hashed')
 c.Basic.validation_size = 10000
-c.Basic.debug_dir = os.path.join(base, raw_corpus_name, 'debug')
-c.Basic.log_dir = os.path.join(base, raw_corpus_name, 'logs')
-c.Basic.model_dir = os.path.join(base, raw_corpus_name, 'models')
 
 c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
 c.Basic.run_baselines = False
