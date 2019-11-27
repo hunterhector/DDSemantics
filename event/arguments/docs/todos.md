@@ -1,12 +1,21 @@
 # List of TODOs 
 
+1. Training speedup?
+1. Training data
+   1. ~~how to replace with eid and headword?~~
+1. Test   
+   1. How to map arg0-arg4 correctly to the 3 slots?
+1. Building event-arg sentences
+   1. ~~When to use NER?~~
+   1. ~~Should not use Entity representation in sentences.~~
+   1. ~~Which dep, arg or fe to include for FrameNet and Propbank?~~
+   1. ~~Which verb to include for Propbank?~~
 1. ~~Frame is incorrect:~~
-   1. ~~I saw: ```[{'predicate': 'front', 'predicate_idx': 997, 'target_slot': 293, 'answers': [{'span': (172, 234), 'text': 'a low , dark house , pitchblack against a slate-coloured sky .'}]}]```~~
    1. ~~It seems that the system have merged many different frames together~~
-1. We are using FrameName:FE_Name format for roles in framenet, but this make the data more sparse:
-   1. Distance is a frame element role name in Self_motion, but Self_motion:Distance is never observed
-   1. Distance is observed multiple times in other places, so it is reasonable to reuse it.
-   1. Concern: some Distance role are different, such as Time_Vector:Distance
+1. ~~We are using FrameName:FE_Name format for roles in framenet, but this make the data more sparse:~~
+   1. ~~Distance is a frame element role name in Self_motion, but Self_motion:Distance is never observed~~
+   1. ~~Distance is observed multiple times in other places, so it is reasonable to reuse it.~~
+   1. ~~Concern: some Distance role are different, such as Time_Vector:Distance~~
 1. During training, two verbs may share the same exact span, this could be an
  important source of information, but the standard way of creating cloze task
   is to remove the span, hence the information is lost.

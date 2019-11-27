@@ -6,9 +6,11 @@ import pickle
 from json.decoder import JSONDecodeError
 import logging
 from typing import Dict
+import pdb
 
 from event import util
-from event.arguments.prepare.slot_processor import get_simple_dep
+from event.arguments.prepare.slot_processor import (get_simple_dep,
+                                                    is_propbank_dep)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +36,8 @@ class TypedEventVocab:
 
             logger.info("Counting vocabulary.")
             vocab_counters = self.get_vocab_count(event_data)
-            for key, counter in vocab_counters.items():
-                raw_vocab_path = os.path.join(vocab_dir, key + '.vocab')
+            for vocab_name, counter in vocab_counters.items():
+                raw_vocab_path = os.path.join(vocab_dir, vocab_name + '.vocab')
                 with open(raw_vocab_path, 'w') as out:
                     for key, value in counter.most_common():
                         out.write('{}\t{}\n'.format(key, value))
@@ -133,31 +135,38 @@ class TypedEventVocab:
         return fe
 
     def get_arg_entity_rep(self, arg, entity_text):
-        rep = self.get_vocab_word(entity_text, 'argument')
-        if rep == self.oovs['argument']:
-            if 'ner' in arg:
-                rep = arg['ner']
+        # If a specific entity text is provided.
+        rep = self.oovs['argument']
 
-        # If still.
+        if entity_text is not None:
+            # Use the argument's own text.
+            rep = self.get_vocab_word(entity_text, 'argument')
+
+            if rep == self.oovs['argument']:
+                # Use the text after hypen.
+                if '-' in entity_text:
+                    rep = self.get_vocab_word(entity_text.split('-')[-1],
+                                              'argument')
+
+        arg_text = arg['text'].lower()
         if rep == self.oovs['argument']:
             # Fall back to use the argument's own text.
-            rep = self.get_vocab_word(arg['text'], 'argument')
+            rep = self.get_vocab_word(arg_text, 'argument')
+
+            if rep == self.oovs['argument']:
+                if '-' in arg_text:
+                    rep = self.get_vocab_word(arg_text.split('-')[-1],
+                                              'argument')
 
         if rep == self.oovs['argument']:
-            if '-' in entity_text:
-                rep = self.get_vocab_word(entity_text.split('-')[-1],
-                                          'argument')
-
-        if rep == self.oovs['argument']:
-            if '-' in arg['text']:
-                rep = self.get_vocab_word(arg['text'].split('-')[-1],
-                                          'argument')
-
+            # Fall back to NER tag.
+            if 'ner' in arg:
+                rep = arg['ner']
         return rep
 
     def get_unk_arg_rep(self):
-        # TODO: This will create a full unknown argument, but we can back off to
-        # a partial unknown argument in many cases.
+        # This will create a full unknown argument, try to back off to
+        #  a partial unknown argument if possible.
         return self.make_arg(self.unk_arg_word, self.unk_dep)
 
     def get_arg_rep_no_dep(self, entity_rep):
@@ -173,10 +182,10 @@ class TypedEventVocab:
         """
         return self.make_arg(entity_rep, self.unk_dep)
 
-    def get_arg_rep(self, arg_dep, entity_rep):
-        if arg_dep.startswith('prep'):
-            arg_dep = self.get_vocab_word(arg_dep, 'preposition')
-        arg_rep = self.make_arg(entity_rep, arg_dep)
+    def get_arg_rep(self, dep, entity_rep):
+        if dep.startswith('prep'):
+            dep = self.get_vocab_word(dep, 'preposition')
+        arg_rep = self.make_arg(entity_rep, dep)
         return arg_rep
 
     # TODO: This will only use the verb form if the nominal form does not
@@ -221,6 +230,7 @@ class TypedEventVocab:
             # cutoff, (i.e. predicate_min_50 -> predicate)
             name = key.split('_')[0]
 
+            # Put oov token as a token int he vocab file.
             oov = 'unk_' + name
             counts.insert(0, (oov, 0))
 
@@ -243,25 +253,20 @@ class TypedEventVocab:
             for line in data:
                 doc_info = json.loads(line)
 
-                represent_by_id = {}
-                for entity in doc_info['entities']:
-                    eid = entity['entityId']
-                    represent = entity['representEntityHead']
-                    represent_by_id[eid] = represent
-
                 for event in doc_info['events']:
                     event_count += 1
 
                     predicate = event['predicate']
                     vocab_counters['predicate'][predicate] += 1
 
-                    vocab_counters['frame'][event['frame']] += 1
+                    frame = event['frame']
+                    if not frame == 'NA':
+                        vocab_counters['frame'][frame] += 1
 
                     for arg in event['arguments']:
                         fe_name = arg['feName']
                         syn_role = arg['dep']
-                        eid = arg['entityId']
-                        arg_text = represent_by_id.get(eid, arg['text'])
+                        arg_text = arg['text'].lower()
 
                         vocab_counters['argument'][arg_text] += 1
 
@@ -353,7 +358,7 @@ class EmbbedingVocab:
 
 
 def create_sentences(doc, event_vocab, output_path, include_frame=False,
-                     simple_dep=False):
+                     use_simple_dep=False, prop_arg_only=False):
     if include_frame:
         print("Adding frames to sentences.")
 
@@ -380,32 +385,36 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False,
 
                 sentence.append(event_vocab.get_pred_rep(event))
 
-                if include_frame:
+                if include_frame and not event['frame'] == 'NA':
                     frame = event_vocab.get_vocab_word(event['frame'], 'frame')
                     sentence.append(frame)
 
                 for arg in event['arguments']:
                     dep = arg['dep']
 
-                    if simple_dep:
+                    if arg['argStart'] == event['predicateStart'] \
+                            and arg['argEnd'] == event['predicateEnd']:
+                        dep = 'root'
+
+                    if use_simple_dep:
                         dep = get_simple_dep(dep)
 
-                    if (not include_frame) and dep == 'NA':
+                    if prop_arg_only and not is_propbank_dep(dep):
                         continue
 
                     sentence.append(
                         event_vocab.get_arg_rep(
-                            dep,
-                            event_vocab.get_arg_entity_rep(
-                                arg, represent_by_id[arg['entityId']]
-                            )
+                            dep, event_vocab.get_arg_entity_rep(arg, None)
                         )
                     )
 
-                    if include_frame:
-                        sentence.append(
-                            event_vocab.get_fe_rep(frame, arg['feName'])
-                        )
+                    if include_frame and not arg['feName'] == 'NA':
+                        fe = event_vocab.get_fe_rep(frame, arg['feName'])
+                        if not fe == event_vocab.oovs['fe']:
+                            sentence.append(fe)
+
+                    if 'NA' in sentence:
+                        pdb.set_trace()
 
             doc_count += 1
 
@@ -419,51 +428,43 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False,
           '{} events.\n'.format(doc_count, event_count), end='')
 
 
-def main(event_data, vocab_dir, sent_out):
+def write_sentences(sent_out, event_data, event_vocab, include_frame,
+                    simple_dep, prop_arg):
+    if not os.path.exists(sent_out):
+        os.makedirs(sent_out)
+
+    fname = 'sent_with_frames.gz' if include_frame else 'sent_pred_only.gz'
+
+    out = os.path.join(sent_out, fname)
+    if not os.path.exists(out):
+        create_sentences(
+            event_data, event_vocab, out, include_frame=include_frame,
+            use_simple_dep=simple_dep, prop_arg_only=prop_arg)
+    else:
+        logger.info(f"Will not overwrite {out}")
+
+
+def main(event_data, vocab_dir, sent_out, prop_arg):
     if not os.path.exists(vocab_dir):
         os.makedirs(vocab_dir)
 
     event_vocab = TypedEventVocab(vocab_dir, event_data=event_data)
     logger.info("Done loading vocabulary.")
 
-    logger.info("Creating event sentences")
-    sent_out_simple = sent_out + '_simple'
+    # Always create sentences with frame or without frame, the without-frame
+    #   version can probably make argument predicate closer.
+    if prop_arg:
+        # For propbank style training.
+        logger.info("Creating event sentences in propbank style")
 
-    if not os.path.exists(sent_out):
-        os.makedirs(sent_out)
-
-    if not os.path.exists(sent_out_simple):
-        os.makedirs(sent_out_simple)
-
-    sent_out_pred_only = os.path.join(sent_out, 'sent_pred_only.gz')
-    if not os.path.exists(sent_out_pred_only):
-        create_sentences(event_data, event_vocab, sent_out_pred_only,
-                         include_frame=False)
+        write_sentences(sent_out, event_data, event_vocab, False, True, True)
+        write_sentences(sent_out, event_data, event_vocab, True, True, True)
     else:
-        logger.info(f"Will not overwrite {sent_out_pred_only}")
+        # For framenet style training.
+        logger.info("Creating event sentences in FrameNet style")
 
-    sent_out_with_frame = os.path.join(sent_out, 'sent_with_frames.gz')
-    if not os.path.exists(sent_out_with_frame):
-        create_sentences(event_data, event_vocab, sent_out_with_frame,
-                         include_frame=True)
-    else:
-        logger.info(f"Will not overwrite {sent_out_with_frame}")
-
-    sent_out_pred_only_simple = os.path.join(sent_out_simple,
-                                             'sent_pred_only.gz')
-    if not os.path.exists(sent_out_pred_only_simple):
-        create_sentences(event_data, event_vocab, sent_out_pred_only_simple,
-                         include_frame=False, simple_dep=True)
-    else:
-        logger.info(f"Will not overwrite {sent_out_pred_only_simple}")
-
-    sent_out_with_frame_simple = os.path.join(sent_out_simple,
-                                              'sent_with_frames.gz')
-    if not os.path.exists(sent_out_with_frame_simple):
-        create_sentences(event_data, event_vocab, sent_out_with_frame_simple,
-                         include_frame=True, simple_dep=True)
-    else:
-        logger.info(f"Will not overwrite {sent_out_with_frame_simple}")
+        write_sentences(sent_out, event_data, event_vocab, True, False, False)
+        write_sentences(sent_out, event_data, event_vocab, False, False, False)
 
 
 if __name__ == '__main__':
@@ -472,10 +473,12 @@ if __name__ == '__main__':
     parser.add_argument('--vocab_dir', type=str, help='Vocabulary directory.')
     parser.add_argument('--input_data', type=str, help='Input data.')
     parser.add_argument('--sent_out', type=str, help='Sentence out dir.')
+    parser.add_argument('--prop_arg', action='store_true',
+                        help='Propbank arg only.', default=False)
 
     util.set_basic_log()
 
     args = parser.parse_args()
     main(
-        args.input_data, args.vocab_dir, args.sent_out
+        args.input_data, args.vocab_dir, args.sent_out, args.prop_arg
     )

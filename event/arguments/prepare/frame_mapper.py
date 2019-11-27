@@ -5,7 +5,6 @@ import logging
 from collections import Counter, defaultdict
 
 import event.util
-from event.arguments import util
 
 
 class FrameMapper:
