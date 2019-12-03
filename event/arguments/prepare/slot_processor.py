@@ -6,7 +6,7 @@ from event import util
 
 
 def is_propbank_dep(dep):
-    return dep == 'subj' or dep == 'dobj' or dep.startswith('prep_')
+    return dep == 'subj' or dep == 'obj' or dep.startswith('prep_')
 
 
 def remove_slot_info(arg_info):
@@ -34,7 +34,7 @@ def get_simple_dep(dep):
     if dep == 'nsubj' or dep == 'agent' or dep == 'subj':
         return 'subj'
     elif dep == 'dobj' or dep == 'nsubjpass' or dep == 'obj':
-        return 'dobj'
+        return 'obj'
     elif dep == 'iobj':
         # iobj is more prep like location
         return 'prep'

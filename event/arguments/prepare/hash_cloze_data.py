@@ -218,7 +218,9 @@ def hash_data():
 
     typed_event_vocab = TypedEventVocab(hash_params.component_vocab_dir)
 
-    event_emb_vocab = EmbbedingVocab(hash_params.event_vocab, True)
+    event_emb_vocab = EmbbedingVocab(
+        hash_params.event_vocab, True,
+        [TypedEventVocab.unk_frame, TypedEventVocab.unk_fe])
     word_emb_vocab = EmbbedingVocab(hash_params.word_vocab, True)
 
     reader = EventReader()

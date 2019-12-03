@@ -294,12 +294,13 @@ class EmbbedingVocab:
         self.extras = []
         self.pad = '__PADDING__'
 
+        if with_padding:
+            # Paddings should be at 0.
+            self.add_extra(self.pad)
+
         if extras:
             for name in extras:
                 self.add_extra(name)
-
-        if with_padding:
-            self.add_extra(self.pad)
 
         self.__read_vocab()
 
@@ -326,17 +327,19 @@ class EmbbedingVocab:
 
         """
         if name in self.extras:
-            raise ValueError(
-                "Cannot add extras to an embedding with the same name")
-        self.extras.append(name)
-        extra_index = len(self.vocab)
-        self.vocab[name] = extra_index
-        self.tf.append(0)
+            logger.info(f"Extra {name} already exist in vocabulary "
+                        f"at index {self.vocab[name]}")
+            return self.vocab[name]
+        else:
+            self.extras.append(name)
+            extra_index = len(self.vocab)
+            self.vocab[name] = extra_index
+            self.tf.append(0)
 
-        logger.info(f"Adding {name} as extra dimension {extra_index} "
-                    f"to {self.vocab_file}")
+            logger.info(f"Adding {name} as extra dimension {extra_index} "
+                        f"to {self.vocab_file}")
 
-        return extra_index
+            return extra_index
 
     def get_size(self):
         return len(self.vocab)

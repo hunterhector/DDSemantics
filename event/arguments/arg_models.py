@@ -64,7 +64,7 @@ class ArgCompatibleModel(nn.Module):
         one_zeros.scatter_(-1, selector, 0)
         return one_zeros
 
-    def __load_embeddings(self, resources):
+    def __load_embeddings(self, resources: ImplicitArgResources):
         logger.info("Loading %d x %d event embedding." % (
             resources.event_embed_vocab.get_size(),
             self.para.event_embedding_dim
@@ -73,24 +73,23 @@ class ArgCompatibleModel(nn.Module):
         # Add additional dimension for extra event vocab.
         self.event_embedding = nn.Embedding(
             resources.event_embed_vocab.get_size(),
-            self.para.event_embedding_dim,
+            self.para.event_embedding_dim, padding_idx=0
         )
 
         logger.info("Loading %d x %d word embedding." % (
             resources.word_embed_vocab.get_size(),
-            self.para.word_embedding_dim
+            self.para.word_embedding_dim,
         ))
 
         self.word_embedding = nn.Embedding(
             resources.word_embed_vocab.get_size(),
-            self.para.word_embedding_dim,
-            padding_idx=self.para.word_vocab_size
+            self.para.word_embedding_dim, padding_idx=0
         )
 
         if resources.word_embedding_path is not None:
             word_embed = torch.from_numpy(resources.word_embedding)
 
-            # Add extra dimensions for word padding at index 0.
+            # Add extra word vocab at beginning.
             zeros = torch.zeros(resources.word_embed_vocab.extra_size(),
                                 self.para.word_embedding_dim)
             self.word_embedding.weight = nn.Parameter(
@@ -100,7 +99,7 @@ class ArgCompatibleModel(nn.Module):
         if resources.event_embedding_path is not None:
             event_emb = torch.from_numpy(resources.event_embedding)
 
-            # Add extra event vocab for arg padding at index 0.
+            # Add extra event vocab at beginning.
             zeros = torch.zeros(resources.event_embed_vocab.extra_size(),
                                 self.para.event_embedding_dim)
             self.event_embedding.weight = nn.Parameter(
