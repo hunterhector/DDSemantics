@@ -123,14 +123,13 @@ class EventReader:
         for line in data_in:
             doc = json.loads(line)
 
-            doc_format = JOINED_TEXT
             doc_text = ''
             sentence_spans = []
 
             if 'text' in doc:
                 doc_format = JOINED_TEXT
                 doc_text = doc['text']
-                sentence_spans = doc['sentence_spans']
+                sentence_spans = doc['sentences']
             elif 'sentences' in doc:
                 doc_format = SPLIT_SENT
                 sentences = doc['sentences']
@@ -189,7 +188,6 @@ class EventReader:
                     'predicate_start': pred_start,
                     'predicate_end': pred_end,
                     'sentence_id': event_info['sentenceId'],
-                    'source': event_info.get('source', 'automatic'),
                     'event_type': event_info.get('eventType', 'NA'),
                     'is_target': event_info.get('fromGC', False)
                 }
@@ -235,7 +233,7 @@ class EventReader:
                         'arg_phrase': arg_info['argumentPhrase'],
                         'text': arg_info['text'],
                         'represent': represent,
-                        'source': arg_info.get('source', 'NA'),
+                        'source': arg_info.get('source', 'automatic'),
                     }
 
                     gold_role = arg_info.get(gold_role_field, 'NA')
