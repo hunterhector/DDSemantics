@@ -3,7 +3,8 @@ from event.io.readers import EventReader
 import gzip
 from event.arguments.prepare.event_vocab import TypedEventVocab, EmbbedingVocab
 from event.arguments.prepare import word_vocab
-from event.arguments.prepare.slot_processor import SlotHandler
+from event.arguments.prepare.slot_processor import (
+    SlotHandler, get_simple_dep, is_propbank_dep)
 from collections import Counter
 import json
 from traitlets import (
@@ -46,20 +47,41 @@ def get_propbank_role_index(role):
 
 def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
              typed_event_vocab, entity_represents):
+    if hash_params.frame_formalism == 'Propbank':
+        dep = get_simple_dep(dep)
+        if not is_propbank_dep(dep):
+            return {}
+
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
 
+    # TODO: We should not use dep (system predicted) dependency here when
+    #   dealing with gold standard text, we should get the reverse mapping
+    #   from arg_role -> dep, and use that here instead. And need to rehash
+    #   test data after this.
     arg_role = typed_event_vocab.get_arg_rep(dep, entity_rep)
     arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
-        # arg_role = typed_event_vocab.get_arg_rep(t, entity_rep)
         arg_role = typed_event_vocab.get_arg_rep_no_dep(entity_rep)
+        arg_role_id = event_emb_vocab.get_index(arg_role, None)
+
+    if arg_role_id == -1:
+        arg_role = typed_event_vocab.get_unk_arg_with_dep(dep)
         arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
         arg_role = typed_event_vocab.get_unk_arg_rep()
         arg_role_id = event_emb_vocab.get_index(arg_role, None)
+
+    if arg_role_id == -1:
+        print(dep, entity_rep)
+        logging.info(
+            f"The argument with {dep}:{entity_rep} cannot be mapped to "
+            f"vocabulary, ignore this argument.")
+        import pdb
+        pdb.set_trace()
+        return {}
 
     fe_id = event_emb_vocab.get_index(
         typed_event_vocab.get_fe_rep(frame, fe),
@@ -120,20 +142,20 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
     hashed_doc['entities'] = hashed_entities
 
-    for event in events:
+    for event_info in events:
         if hash_params.use_gold_frame:
             # The gold frame is stored at the event type section.
-            frame = event['event_type']
+            frame = event_info['event_type']
         else:
-            frame = event['frame']
+            frame = event_info['frame']
 
         pid = event_emb_vocab.get_index(
-            typed_event_vocab.get_pred_rep(event), None)
+            typed_event_vocab.get_pred_rep(event_info), None)
         fid = event_emb_vocab.get_index(frame, None)
 
         # TODO: many args are mapped in the "prep" slot, but some of them are
-        # different implicit slots.
-        mapped_args = slot_handler.organize_args(event)
+        #   different implicit slots.
+        mapped_args = slot_handler.organize_args(event_info)
 
         full_args = {}
 
@@ -141,7 +163,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
         implicit_slots_no_incorp = set()
         implicit_slots_all = set()
 
-        raw_pred = data_utils.normalize_pred_text(event['predicate'])
+        raw_pred = data_utils.normalize_pred_text(event_info['predicate'])
 
         for slot, arg_info_list in mapped_args.items():
             hashed_arg_list = []
@@ -153,37 +175,39 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents,
                 )
 
-                hashed_arg_list.append(hashed_arg)
+                if hashed_arg:
+                    hashed_arg_list.append(hashed_arg)
 
-                if hashed_arg['implicit']:
-                    if 'gold_role' not in arg:
-                        logging.warning(f'Gold role at field '
-                                        f'goldRole is NA.')
-                    else:
-                        gold_role = arg['gold_role']
-                        implicit_slots_all.add(gold_role)
+                    if hashed_arg['implicit']:
+                        if 'gold_role' not in arg:
+                            logging.warning(f'Gold role at field '
+                                            f'goldRole is NA.')
+                        else:
+                            gold_role = arg['gold_role']
+                            implicit_slots_all.add(gold_role)
 
-                        if not hashed_arg['incorporated']:
-                            implicit_slots_no_incorp.add(gold_role)
-                            if not hashed_arg['succeeding']:
-                                implicit_slots_preceed.add(gold_role)
+                            if not hashed_arg['incorporated']:
+                                implicit_slots_no_incorp.add(gold_role)
+                                if not hashed_arg['succeeding']:
+                                    implicit_slots_preceed.add(gold_role)
             full_args[slot] = hashed_arg_list
 
-        num_actual = len(event["arguments"])
+        num_actual = len(event_info["arguments"])
         num_full_args = sum([len(l) for l in full_args.values()])
         num_mapped_args = sum([len(l) for l in mapped_args.values()])
-        if not num_actual == num_full_args:
+
+        if hash_params.strict_arg_count and not num_actual == num_full_args:
             print(f'Actual number of args {num_actual}')
-            print(f'Full args contains {num_full_args} args')
+            print(f'Hashed args contains {num_full_args} args')
             print(f'mapped args contains {num_mapped_args} args')
 
-            pprint(event['arguments'])
+            pprint(event_info['arguments'])
             pprint(full_args)
 
             raise ValueError("Incorrect argument numbers.")
 
         frame_key = None
-        if event['is_target']:
+        if event_info['is_target']:
             frame_key = raw_pred
 
         if hash_params.use_gold_frame and not frame == 'Verbal':
@@ -196,14 +220,14 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                 stat_counters['implicit slots'][frame_key] += len(
                     implicit_slots_all)
 
-        context = hash_context(word_emb_vocab, event['predicate_context'])
+        context = hash_context(word_emb_vocab, event_info['predicate_context'])
 
         hashed_doc['events'].append({
             'predicate': pid,
-            'predicate_text': event['predicate'],
+            'predicate_text': event_info['predicate'],
             'frame': fid,
             'context': context,
-            'sentence_id': event['sentence_id'],
+            'sentence_id': event_info['sentence_id'],
             'args': full_args,
         })
 
@@ -218,9 +242,8 @@ def hash_data():
 
     typed_event_vocab = TypedEventVocab(hash_params.component_vocab_dir)
 
-    event_emb_vocab = EmbbedingVocab(
-        hash_params.event_vocab, True,
-        [TypedEventVocab.unk_frame, TypedEventVocab.unk_fe])
+    event_emb_vocab = EmbbedingVocab.with_extras(
+        hash_params.event_vocab)
     word_emb_vocab = EmbbedingVocab(hash_params.word_vocab, True)
 
     reader = EventReader()
@@ -285,6 +308,8 @@ class HashParam(Configurable):
     use_gold_frame = Bool(
         help='Use gold the gold frame produced by annotation',
         default_value=False).tag(config=True)
+    strict_arg_count = Bool(help='Force loseles number of arguments',
+                            default_value=False).tag(config=True)
 
 
 if __name__ == '__main__':

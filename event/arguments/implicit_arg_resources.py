@@ -44,9 +44,8 @@ class ImplicitArgResources(Configurable):
         self.word_embedding = np.load(self.word_embedding_path)
 
         # Add padding and two unk to the vocab.
-        self.event_embed_vocab = EmbbedingVocab(
-            self.event_vocab_path, True,
-            [TypedEventVocab.unk_frame, TypedEventVocab.unk_fe])
+        self.event_embed_vocab = EmbbedingVocab.with_extras(
+            self.event_vocab_path)
 
         # Add padding to the vocab.
         self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path, True)

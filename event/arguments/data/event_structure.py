@@ -3,8 +3,6 @@ import pdb
 
 from event.arguments.prepare.event_vocab import EmbbedingVocab, TypedEventVocab
 
-ghost_entity_text = '__ghost_component__'
-
 
 class EventStruct:
     def __init__(self,
@@ -15,20 +13,8 @@ class EventStruct:
         self.fix_slot_mode = fix_slot_mode
         self.use_frame = use_frame
 
-        # Some extra embeddings.
-        self.unobserved_fe = event_emb_vocab.add_extra(
-            '__unobserved_fe__')
-        self.unobserved_arg = event_emb_vocab.add_extra(
-            '__unobserved_arg__')
-        self.ghost_component = event_emb_vocab.add_extra(
-            ghost_entity_text)
-
         self.unk_frame_idx = event_emb_vocab.get_index(
             typed_event_vocab.unk_frame, None)
-        self.unk_predicate_idx = event_emb_vocab.get_index(
-            typed_event_vocab.unk_predicate, None)
-        self.unk_arg_idx = event_emb_vocab.get_index(
-            typed_event_vocab.get_unk_arg_rep, None)
         self.unk_fe_idx = event_emb_vocab.get_index(
             typed_event_vocab.unk_fe, None
         )
@@ -62,8 +48,8 @@ class EventStruct:
             slot_value_comps.append(arg['arg_role'])
 
         if len(slot_comps) == 0:
-            slot_comps.append(self.unobserved_fe)
-            slot_value_comps.append(self.unobserved_arg)
+            slot_comps.append(TypedEventVocab.unobserved_fe)
+            slot_value_comps.append(TypedEventVocab.unobserved_arg)
 
         frame_id = self.unk_frame_idx if frame_id == -1 else frame_id
 
@@ -99,8 +85,8 @@ class EventStruct:
         for _, arg in args:
             if len(arg) == 0:
                 if self.use_frame:
-                    event_components.append(self.unobserved_fe)
-                event_components.append(self.unobserved_arg)
+                    event_components.append(TypedEventVocab.unobserved_fe)
+                event_components.append(TypedEventVocab.unobserved_arg)
             else:
                 # Adding frame elements in argument representation.
                 if self.use_frame:

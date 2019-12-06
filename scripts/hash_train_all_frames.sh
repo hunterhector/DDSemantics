@@ -7,14 +7,16 @@ if [[ ! -d ${implicit_corpus}/gigaword_frames/nyt_all_frames_shuffled ]]; then
     gunzip -c nyt_all_frames.json.gz | split -l 50000 - nyt_all_frames_shuffled/part_ --filter='shuf | gzip > $FILE.gz'
 fi
 
+hash_dir='hashed_new'
+
 echo 'Going to do hashing'
-mkdir -p ${implicit_corpus}/gigaword_frames/hashed
+mkdir -p ${implicit_corpus}/gigaword_frames/${hash_dir}
 cd ~/projects/DDSemantics
 
 for f in ${implicit_corpus}/gigaword_frames/nyt_all_frames_shuffled/*.gz
 do
     if [[ -f ${f} ]]; then
-        h=${f//nyt_all_frames_shuffled/hashed}
+        h=${f//nyt_all_frames_shuffled/${hash_dir}}
 
         if [[ -f ${h} ]]; then
             echo ${h}' already exists'

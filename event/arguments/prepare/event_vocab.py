@@ -22,6 +22,9 @@ class TypedEventVocab:
     unk_fe = 'unk_fe'
     unk_prep = 'unk_preposition'
     unk_dep = 'unk_dep'
+    unobserved_fe = '__unobserved_fe__'
+    unobserved_arg = '__unobserved_arg__'
+    ghost = '__ghost_component__'
 
     def __init__(self, vocab_dir, event_data=None):
         self.lookups: Dict[str, Dict[str, int]] = {}
@@ -119,9 +122,10 @@ class TypedEventVocab:
         else:
             return self.oovs[key]
 
-    def make_arg(self, text, role):
+    @classmethod
+    def make_arg(cls, text, role):
         if role == 'NA':
-            return text + "-" + self.unk_dep
+            return text + "-" + cls.unk_dep
         else:
             return text + "-" + role
 
@@ -164,14 +168,26 @@ class TypedEventVocab:
                 rep = arg['ner']
         return rep
 
-    def get_unk_arg_rep(self):
+    @classmethod
+    def get_unk_arg_rep(cls):
         # This will create a full unknown argument, try to back off to
         #  a partial unknown argument if possible.
-        return self.make_arg(self.unk_arg_word, self.unk_dep)
+        return cls.make_arg(cls.unk_arg_word, cls.unk_dep)
 
-    def get_arg_rep_no_dep(self, entity_rep):
-        """Return the backoff version of the argument representation by using the
-        unk_dep, but the actual entity.
+    @classmethod
+    def get_unk_arg_with_dep(cls, dep):
+        """Return a backoff version of the representation by using the
+        actual dep, but unk_arg
+
+        Args:
+            dep
+        """
+        return cls.make_arg(cls.unk_arg_word, dep)
+
+    @classmethod
+    def get_arg_rep_no_dep(cls, entity_rep):
+        """Return the backoff version of the argument representation by using
+        the unk_dep, but the actual entity.
 
         Args:
           entity_rep:
@@ -180,7 +196,7 @@ class TypedEventVocab:
           
 
         """
-        return self.make_arg(entity_rep, self.unk_dep)
+        return cls.make_arg(entity_rep, cls.unk_dep)
 
     def get_arg_rep(self, dep, entity_rep):
         if dep.startswith('prep'):
@@ -293,16 +309,37 @@ class EmbbedingVocab:
         self.tf = []
         self.extras = []
         self.pad = '__PADDING__'
+        self.padded = False
 
         if with_padding:
             # Paddings should be at 0.
-            self.add_extra(self.pad)
+            self.padded = True
+            self.vocab[self.pad] = 0
+            self.tf.append(0)
 
         if extras:
             for name in extras:
                 self.add_extra(name)
 
         self.__read_vocab()
+
+    @staticmethod
+    def with_extras(vocab_file):
+        """
+        Create a EmbeddingVocab with unknown word slots and padding slot.
+        Args:
+            vocab_file:
+
+        Returns:
+
+        """
+
+        return EmbbedingVocab(
+            vocab_file, True,
+            [TypedEventVocab.unk_frame, TypedEventVocab.unk_fe,
+             TypedEventVocab.get_unk_arg_rep(), TypedEventVocab.unobserved_arg,
+             TypedEventVocab.unobserved_fe, TypedEventVocab.ghost]
+        )
 
     def get_index(self, token, unk):
         try:
@@ -405,11 +442,8 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False,
                     if prop_arg_only and not is_propbank_dep(dep):
                         continue
 
-                    sentence.append(
-                        event_vocab.get_arg_rep(
-                            dep, event_vocab.get_arg_entity_rep(arg, None)
-                        )
-                    )
+                    sentence.append(event_vocab.get_arg_rep(
+                        dep, event_vocab.get_arg_entity_rep(arg, None)))
 
                     if include_frame and not arg['feName'] == 'NA':
                         fe = event_vocab.get_fe_rep(frame, arg['feName'])
@@ -454,18 +488,22 @@ def main(event_data, vocab_dir, sent_out, prop_arg):
     event_vocab = TypedEventVocab(vocab_dir, event_data=event_data)
     logger.info("Done loading vocabulary.")
 
-    # Always create sentences with frame or without frame, the without-frame
-    #   version can probably make argument predicate closer.
+    # The 3 boolean are : include_frame,simple_dep, prop_arg
+
     if prop_arg:
         # For propbank style training.
         logger.info("Creating event sentences in propbank style")
 
+        # Include frame or not version for propbank, but always use simple dep
+        # and propbank style arguments.
         write_sentences(sent_out, event_data, event_vocab, False, True, True)
         write_sentences(sent_out, event_data, event_vocab, True, True, True)
     else:
         # For framenet style training.
         logger.info("Creating event sentences in FrameNet style")
 
+        # Include frame or not version for framenet, but always use complex dep
+        # and framenet style arguments.
         write_sentences(sent_out, event_data, event_vocab, True, False, False)
         write_sentences(sent_out, event_data, event_vocab, False, False, False)
 

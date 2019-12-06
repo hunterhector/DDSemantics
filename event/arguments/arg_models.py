@@ -64,6 +64,21 @@ class ArgCompatibleModel(nn.Module):
         one_zeros.scatter_(-1, selector, 0)
         return one_zeros
 
+    def make_embedding(self, embedding_path, extra_size, padded: bool):
+        # Add padding or extra weights.
+
+        event_emb = torch.from_numpy(embedding_path)
+
+        # Add extra event vocab at beginning.
+        extras = torch.rand(extra_size, self.para.event_embedding_dim)
+
+        # Add zero padding.
+        if padded:
+            zero = torch.zeros(1, self.para.event_embedding_dim)
+            extras = torch.cat([zero, extras])
+
+        return nn.Parameter(torch.cat((extras, event_emb)))
+
     def __load_embeddings(self, resources: ImplicitArgResources):
         logger.info("Loading %d x %d event embedding." % (
             resources.event_embed_vocab.get_size(),
@@ -87,23 +102,16 @@ class ArgCompatibleModel(nn.Module):
         )
 
         if resources.word_embedding_path is not None:
-            word_embed = torch.from_numpy(resources.word_embedding)
-
-            # Add extra word vocab at beginning.
-            zeros = torch.zeros(resources.word_embed_vocab.extra_size(),
-                                self.para.word_embedding_dim)
-            self.word_embedding.weight = nn.Parameter(
-                torch.cat((zeros, word_embed))
-            )
+            self.word_embedding.weight = self.make_embedding(
+                resources.word_embedding,
+                resources.word_embed_vocab.extra_size(),
+                resources.word_embed_vocab.padded)
 
         if resources.event_embedding_path is not None:
-            event_emb = torch.from_numpy(resources.event_embedding)
-
-            # Add extra event vocab at beginning.
-            zeros = torch.zeros(resources.event_embed_vocab.extra_size(),
-                                self.para.event_embedding_dim)
-            self.event_embedding.weight = nn.Parameter(
-                torch.cat((zeros, event_emb))
+            self.event_embedding.weight = self.make_embedding(
+                resources.event_embedding,
+                resources.event_embed_vocab.extra_size(),
+                resources.event_embed_vocab.padded
             )
 
 
