@@ -59,6 +59,8 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
     #   dealing with gold standard text, we should get the reverse mapping
     #   from arg_role -> dep, and use that here instead. And need to rehash
     #   test data after this.
+    #   But what's the mapping? how do we know which argX to use given
+    #   dependency?
     arg_role = typed_event_vocab.get_arg_rep(dep, entity_rep)
     arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
