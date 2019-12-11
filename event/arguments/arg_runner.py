@@ -473,11 +473,15 @@ class ArgRunner(Configurable):
                         f'{self.basic_para.validation_size} validation lines '
                         f'for training.')
 
+            if os.path.exists(basic_para.train_dump):
+                pickle.load(os.path.join(basic_para.train_dump))
+
             for train_data in self.reader.read_train_batch(
                     data_gen(train_in,
                              from_line=self.basic_para.validation_size),
                     train_sampler
             ):
+                pickle.dump(train_data, 'sample.pickle')
                 labels, instances, batch_info, b_size, mask, _ = train_data
                 loss = self._get_loss(labels, instances, batch_info, mask)
 
@@ -641,6 +645,7 @@ if __name__ == '__main__':
             config=True)
         run_name = Unicode(help='Run name.', default_value='default').tag(
             config=True)
+        train_dump = Unicode(help='Path to training dump.').tag(config=True)
         model_dir = Unicode(help='Model directory.').tag(config=True)
         log_dir = Unicode(help='Logging directory.').tag(config=True)
         cmd_log = Bool(help='Log on command prompt only.',

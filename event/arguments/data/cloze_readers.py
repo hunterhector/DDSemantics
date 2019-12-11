@@ -52,9 +52,6 @@ class HashedClozeReader:
         # Specify which role is used to modify the argument string in SRL.
         self.factor_role = self.para.factor_role
 
-        # The cloze data are organized by the following slots.
-        self.fix_slot_names = ['subj', 'obj', 'prep', ]
-
         # A set for data with variable length, we then will create paddings
         # and length tensor for it.
         self.__unk_length = set()
@@ -198,7 +195,7 @@ class HashedClozeReader:
 
         return test_cases
 
-    def get_args_as_list(self, event_args, ignore_implicit):
+    def get_args_by_role(self, event_args, ignore_implicit):
         """Take a argument map and return a list version of it. It will take the
         first argument when multiple ones are presented at the slot.
 
@@ -239,8 +236,8 @@ class HashedClozeReader:
 
                 if factor_role not in slot_args:
                     slot_args[factor_role] = a
-        args = list(slot_args.items())
-        return args
+        # args = list(slot_args.items())
+        return slot_args
 
     def get_one_test_doc(self, doc_info: Dict,
                          nid_detector: NullArgDetector,
@@ -264,7 +261,7 @@ class HashedClozeReader:
         all_event_reps = [
             self.event_struct.event_repr(
                 e['predicate'], e['frame'],
-                self.get_args_as_list(e['args'], True)) for
+                self.get_args_by_role(e['args'], True)) for
             e in doc_info['events']
         ]
 
@@ -313,7 +310,7 @@ class HashedClozeReader:
             pred_sent = event['sentence_id']
             pred_id = event['predicate']
             event_args = event['args']
-            arg_list = self.get_args_as_list(event_args, False)
+            arg_by_slot = self.get_args_by_role(event_args, False)
 
             available_slots = self.frame_slots.get_predicate_slots(event)
 
@@ -353,13 +350,12 @@ class HashedClozeReader:
                         candidate_args = [(target_slot, cand_arg)]
 
                         # Add the remaining arguments.
-                        pdb.set_trace()
                         # TODO: the arg_list taken here ignores many ones with
                         #  the same dep label, this will hurt the representation
                         #  of this argument. If we use the frame module, we
                         #  actually shouldn't only take one from every dep,
                         #  since we do not restrict the fe type anyway.
-                        for s, arg in arg_list:
+                        for s, arg in arg_by_slot.items():
                             # TODO: this == check is not good.
                             if not s == target_slot:
                                 candidate_args.append((s, arg))
@@ -452,7 +448,7 @@ class HashedClozeReader:
 
     def get_slot_index(self, slot):
         if self.fix_slot_mode:
-            return slot
+            return self.event_struct.fix_slot_names.index(slot)
         else:
             # In dynamic slot mode, we provide the slot's
             # vocab id, which can be converted to embedding.
@@ -508,7 +504,8 @@ class HashedClozeReader:
             # Only a subset in a long document will be used for generating.
             event_subset.append(event)
 
-            for slot, arg in self.get_args_as_list(event['args'], False):
+            for slot, arg in self.get_args_by_role(
+                    event['args'], False).items():
                 if len(arg) > 0:
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
@@ -529,7 +526,7 @@ class HashedClozeReader:
         all_event_reps = [
             self.event_struct.event_repr(
                 e['predicate'], e['frame'],
-                self.get_args_as_list(e['args'], True)) for
+                self.get_args_by_role(e['args'], True)) for
             e in event_subset
         ]
 
@@ -579,7 +576,7 @@ class HashedClozeReader:
 
             current_sent = event['sentence_id']
 
-            arg_list = self.get_args_as_list(event['args'], False)
+            arg_list = list(self.get_args_by_role(event['args'], False).items())
 
             for arg_index, (slot, arg) in enumerate(arg_list):
                 # Empty args are not interesting.
@@ -601,6 +598,7 @@ class HashedClozeReader:
                 if is_singleton and not self.para.use_ghost:
                     continue
 
+                # TODO: arg_index is used at cloze, do we need it?
                 cross_sample = self.cloze_gen.cross_cloze(
                     arg_list, t_doc_args, arg_index)
                 inside_sample = self.cloze_gen.inside_cloze(

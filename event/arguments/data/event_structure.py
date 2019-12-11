@@ -18,6 +18,13 @@ class EventStruct:
         self.unk_fe_idx = event_emb_vocab.get_index(
             typed_event_vocab.unk_fe, None
         )
+        self.unobserved_arg_idx = event_emb_vocab.get_index(
+            typed_event_vocab.unobserved_arg, None)
+        self.unobserved_fe_idx = event_emb_vocab.get_index(
+            typed_event_vocab.unobserved_fe, None)
+
+        # The cloze data are organized by the following slots.
+        self.fix_slot_names = ['subj', 'obj', 'prep', ]
 
     def event_repr(self, predicate, frame_id, args):
         if self.fix_slot_mode:
@@ -41,7 +48,7 @@ class EventStruct:
 
         # The slot will need to be indexed vocabularies, i.e. frame elements.
         # And they need to be hashed to number first.
-        for slot, arg in args:
+        for slot, arg in args.items():
             if slot == -1:
                 slot = self.unk_fe_idx
             slot_comps.append(slot)
@@ -82,12 +89,9 @@ class EventStruct:
 
         # TODO: the current setup for argument slot position in the fix slot
         #   model might mess up, need double check on this mapping method.
-        for _, arg in args:
-            if len(arg) == 0:
-                if self.use_frame:
-                    event_components.append(TypedEventVocab.unobserved_fe)
-                event_components.append(TypedEventVocab.unobserved_arg)
-            else:
+        for slot_name in self.fix_slot_names:
+            if slot_name in args:
+                arg = args[slot_name]
                 # Adding frame elements in argument representation.
                 if self.use_frame:
                     fe = arg['fe']
@@ -96,9 +100,14 @@ class EventStruct:
                     else:
                         event_components.append(fe)
                 event_components.append(arg['arg_role'])
+            else:
+                # Adding unobserved id.
+                if self.use_frame:
+                    event_components.append(self.unobserved_fe_idx)
+                event_components.append(self.unobserved_arg_idx)
 
         if any([c < 0 for c in event_components]):
-            logging.error("None positive component found in event.")
+            logging.error("Non positive component found in event.")
             pdb.set_trace()
 
         return {

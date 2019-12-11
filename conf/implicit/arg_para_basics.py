@@ -37,7 +37,6 @@ c.ArgModelPara.w2v_baseline_avg_topk = 3  # only when topk_average
 
 # Important slot names.
 c.ArgModelPara.gold_field_name = 'gold_role_id'
-c.ArgModelPara.factor_role = 'fe'
 
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "

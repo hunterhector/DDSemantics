@@ -738,9 +738,9 @@ class EventCoherenceModel(ArgCompatibleModel):
     def event_repr(self, batch_event_data, batch_info):
         if self.para.arg_representation_method == 'fix_slots':
             # batch x instance_size x event_component
-            batch_event_rep = batch_event_data['event_components']
+            batch_event_rep = batch_event_data['event_component']
             # batch x context_size x event_component
-            batch_context = batch_info['context_events']
+            batch_context = batch_info['context_event_component']
 
             context_emb = self.event_embedding(batch_context)
             event_emb = self.event_embedding(batch_event_rep)

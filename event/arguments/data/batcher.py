@@ -154,7 +154,10 @@ class ClozeBatcher:
 
             if key.startswith('context_'):
                 padded = self.__batch_pad(key, value, self.max_context_size)
-                vectorized = to_torch(padded, self.data_types[key])
+                try:
+                    vectorized = to_torch(padded, self.data_types[key])
+                except Exception:
+                    pdb.set_trace()
                 common_data[key] = batch_combine(vectorized, self.device)
             else:
                 padded = self.__batch_pad(key, value, self.max_instance_size)
