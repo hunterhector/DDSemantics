@@ -71,6 +71,30 @@ def data_gen(data_path, from_line=None, until_line=None):
                 yield line
 
 
+class CachedTrainData:
+    def __init__(self, reader, train_data, dump_dir, train_sampler, skip_size):
+        self.train_data = train_data
+        self.train_sampler = train_sampler
+        self.dump_dir = dump_dir
+        self.reader = reader
+        self.skip_size = skip_size
+
+    def check_dump_dir(self):
+        return os.path.exists(self.dump_dir) and os.path.exists(
+            os.path.join(self.dump_dir, '.success'))
+
+    def data(self):
+        if self.check_dump_dir():
+            for dump_f in os.listdir(self.dump_dir):
+                dumped = pickle.load(os.path.join(self.dump_dir, dump_f))
+                yield from dumped
+        else:
+            train_gen = self.reader.read_train_batch(
+                data_gen(self.train_data, from_line=self.skip_size),
+                self.train_sampler)
+
+
+
 class ArgRunner(Configurable):
     def __init__(self, **kwargs):
         super(ArgRunner, self).__init__(**kwargs)
@@ -473,17 +497,33 @@ class ArgRunner(Configurable):
                         f'{self.basic_para.validation_size} validation lines '
                         f'for training.')
 
-            if os.path.exists(basic_para.train_dump):
-                pickle.load(os.path.join(basic_para.train_dump))
+            use_dump: bool = False
 
-            for train_data in self.reader.read_train_batch(
+            if os.path.exists(basic_para.train_dump):
+                use_dump = True
+
+                def train_gen():
+                    for dump_f in os.listdir(basic_para.train_dump):
+                        dumped = pickle.load(
+                            os.path.join(basic_para.train_dump, dump_f))
+                        yield from dumped
+            else:
+                train_gen = self.reader.read_train_batch(
                     data_gen(train_in,
                              from_line=self.basic_para.validation_size),
                     train_sampler
-            ):
-                pickle.dump(train_data, 'sample.pickle')
+                )
+
+            train_data_count = 0
+            instance_per_dump = 1000
+            #TODO: Call cache here.
+            for train_data in train_gen:
                 labels, instances, batch_info, b_size, mask, _ = train_data
-                loss = self._get_loss(labels, instances, batch_info, mask)
+
+                coh = self.model(instances, batch_info)
+                loss = F.binary_cross_entropy(coh * mask, labels)
+
+                # loss = self._get_loss(labels, instances, batch_info, mask)
 
                 # Case of a bug.
                 if not loss:
@@ -508,6 +548,12 @@ class ArgRunner(Configurable):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+                # TODO: found nan in the weights.
+                nans_in_weight = torch.isnan(
+                    self.model._linear_combine.weight).nonzero()
+                if nans_in_weight.shape[0] > 0:
+                    pdb.set_trace()
 
                 batch_count += 1
                 epoch_batch_count += 1

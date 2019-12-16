@@ -224,10 +224,10 @@ def cpu_stats():
     print('memory GB:', memoryUse)
 
 
-def make_2d_one_hot(batched_indices, n, device='cuda'):
+def make_2d_one_hot(batched_indices, max_length, device='cuda'):
     b, l = batched_indices.shape
     data = batched_indices.unsqueeze(-1)
-    one_hot = torch.FloatTensor(b, l, n).to(device)
+    one_hot = torch.zeros([b, l, max_length], dtype=torch.float32).to(device)
     one_hot.scatter_(2, data, 1)
     return one_hot
 
