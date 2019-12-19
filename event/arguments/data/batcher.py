@@ -56,9 +56,8 @@ class ClozeBatcher:
     # Keep track of the slot keys, since the size here might be different.
     slot_keys = {'slot', 'slot_value', 'context_slot', 'context_slot_value'}
 
-    def __init__(self, batch_size, device):
+    def __init__(self, batch_size):
         self.batch_size = batch_size
-        self.device = device
 
         self.b_common_data = defaultdict(list)
         self.b_instance_data = defaultdict(list)
@@ -158,11 +157,11 @@ class ClozeBatcher:
                     vectorized = to_torch(padded, self.data_types[key])
                 except Exception:
                     pdb.set_trace()
-                common_data[key] = batch_combine(vectorized, self.device)
+                common_data[key] = batch_combine(vectorized)
             else:
                 padded = self.__batch_pad(key, value, self.max_instance_size)
                 vectorized = to_torch(padded, self.data_types[key])
-                common_data[key] = batch_combine(vectorized, self.device)
+                common_data[key] = batch_combine(vectorized)
 
             sizes[key] = len(padded)
 
@@ -174,13 +173,13 @@ class ClozeBatcher:
             padded = self.__batch_pad(key, value, self.max_instance_size)
 
             vectorized = to_torch(padded, self.data_types[key])
-            instance_data[key] = batch_combine(vectorized, self.device)
+            instance_data[key] = batch_combine(vectorized)
 
             sizes[key] = len(padded)
 
         labels = to_torch(
             pad_2d_list(self.b_labels, self.max_instance_size, axis=1),
-            np.float32).to(self.device)
+            np.float32)
 
         data_size = -1
         for key, s in sizes.items():
@@ -194,7 +193,7 @@ class ClozeBatcher:
         for i, l in enumerate(data_len):
             mask[i][0: l] = 1
 
-        ins_mask = to_torch(mask, np.float32).to(self.device)
+        ins_mask = to_torch(mask, np.float32)
 
         return (
             labels, instance_data, common_data, data_size, ins_mask,

@@ -5,8 +5,6 @@ from collections import Counter
 from collections import defaultdict
 from typing import Dict
 
-import torch
-
 from event.arguments.NIFDetector import NullArgDetector
 from event.arguments.data.batcher import ClozeBatcher
 from event.arguments.data.cloze_gen import ClozeGenerator, PredicateSampler, \
@@ -67,10 +65,6 @@ class HashedClozeReader:
         self.gold_role_field = self.para.gold_field_name
         self.test_limit = 500
 
-        self.device = torch.device(
-            "cuda" if para.use_gpu and torch.cuda.is_available() else "cpu"
-        )
-
         self.event_struct = EventStruct(
             resources.event_embed_vocab, resources.typed_event_vocab,
             para.use_frame, self.fix_slot_mode
@@ -86,14 +80,12 @@ class HashedClozeReader:
         self.use_gold_mention = self.para.use_gold_mention
         self.use_auto_mention = self.para.use_auto_mention
 
-        logger.info("Reading data with device: " + str(self.device))
-
     def read_train_batch(self, data_in, sampler):
         logger.info("Reading data as training batch.")
 
         self.cloze_gen.set_sampler(sampler)
 
-        train_batcher = ClozeBatcher(self.para.batch_size, self.device)
+        train_batcher = ClozeBatcher(self.para.batch_size)
 
         for line in data_in:
             parsed_output = self.create_training_data(line)
@@ -436,7 +428,7 @@ class HashedClozeReader:
 
         """
         # At test time we can use a single doc batch.
-        batcher = ClozeBatcher(1, self.device)
+        batcher = ClozeBatcher(1)
         test_cloze_maker = TestClozeMaker(self.candidate_builder)
 
         for line in test_in:

@@ -7,6 +7,7 @@ import shutil
 from collections import Counter
 import json
 from time import localtime, strftime
+import random
 
 from smart_open import open
 from traitlets.config import Configurable
@@ -72,27 +73,53 @@ def data_gen(data_path, from_line=None, until_line=None):
 
 
 class CachedTrainData:
-    def __init__(self, reader, train_data, dump_dir, train_sampler, skip_size):
-        self.train_data = train_data
+    def __init__(self, reader, data_iter, dump_dir, train_sampler, cache_size):
+        self.data = data_iter
         self.train_sampler = train_sampler
         self.dump_dir = dump_dir
         self.reader = reader
-        self.skip_size = skip_size
+        self.cache_size = cache_size
 
     def check_dump_dir(self):
         return os.path.exists(self.dump_dir) and os.path.exists(
             os.path.join(self.dump_dir, '.success'))
 
+    def get_dump_files(self):
+        return random.random(os.listdir(self.dump_dir))
+
     def data(self):
         if self.check_dump_dir():
-            for dump_f in os.listdir(self.dump_dir):
-                dumped = pickle.load(os.path.join(self.dump_dir, dump_f))
-                yield from dumped
+            for dump_f in self.get_dump_files():
+                with open(os.path.join(self.dump_dir, dump_f), 'rb') as f:
+                    try:
+                        while True:
+                            yield pickle.load(f)
+                    except EOFError:
+                        pass
         else:
-            train_gen = self.reader.read_train_batch(
-                data_gen(self.train_data, from_line=self.skip_size),
-                self.train_sampler)
+            train_gen = self.reader.read_train_batch(self.data,
+                                                     self.train_sampler)
 
+            cache_file = open(os.path.join(self.dump_dir, f'dump_{0}.cache'),
+                              'wb')
+            cache_pair = 0, cache_file
+
+            instance_idx = 0
+            for data in train_gen:
+                instance_idx += 1
+                cache_idx = instance_idx % self.cache_size
+                if cache_idx == cache_pair[0]:
+                    cache_file = cache_pair[1]
+                else:
+                    cache_file = open(
+                        os.path.join(self.dump_dir, f'dump_{cache_idx}.cache'),
+                        'wb')
+                    cache_pair = cache_idx, cache_file
+
+                pickle.dump(data, cache_file)
+
+            with open(os.path.join(self.dump_dir, '.success'), 'w') as f:
+                f.write('success')
 
 
 class ArgRunner(Configurable):
@@ -178,18 +205,17 @@ class ArgRunner(Configurable):
         return check_path
 
     @torch.no_grad()
-    def validation(self, dev_lines, dev_sampler):
+    def validation(self, all_dev_data, dev_sampler):
         dev_loss = 0
         num_batches = 0
         num_instances = 0
 
-        logger.info(f'Validation with {len(dev_lines)} lines.')
+        logger.info(f'Validation with {len(all_dev_data)} batches.')
         dev_sampler.reset()
 
-        for batch_data, debug_data in self.reader.read_train_batch(
-                dev_lines, dev_sampler):
-            labels, batch_instance, batch_common, b_size, mask = batch_data
-            loss = self._get_loss(labels, batch_instance, batch_common, mask)
+        for dev_data in all_dev_data:
+            labels, instances, common_data, b_size, mask, metadata = dev_data
+            loss = self._get_loss(labels, instances, common_data, mask)
 
             if not loss:
                 raise ValueError('Error in computing loss.')
@@ -467,12 +493,17 @@ class ArgRunner(Configurable):
                          data_gen(train_in,
                                   until_line=self.basic_para.validation_size)]
 
+        all_dev_data = []
+        for dev_data in self.reader.read_train_batch(
+                dev_lines, dev_sampler):
+            all_dev_data.append(dev_data)
+
         if self.basic_para.pre_val:
             logger.info("Conduct a pre-validation, this will overwrite best "
                         "loss with the most recent loss.")
 
             dev_loss, n_batches, n_instances = self.validation(
-                dev_lines, dev_sampler
+                all_dev_data, dev_sampler
             )
 
             best_loss = dev_loss
@@ -486,6 +517,11 @@ class ArgRunner(Configurable):
         recent_loss = 0
         log_freq = 100
 
+        train_dataset = CachedTrainData(
+            self.reader,
+            data_gen(train_in, from_line=self.basic_para.validation_size),
+            self.basic_para.train_dump, train_sampler, 1000)
+
         for epoch in range(start_epoch, self.nb_epochs):
             logger.info("Starting epoch {}.".format(epoch))
             epoch_batch_count = 0
@@ -497,33 +533,10 @@ class ArgRunner(Configurable):
                         f'{self.basic_para.validation_size} validation lines '
                         f'for training.')
 
-            use_dump: bool = False
+            for instance_data in train_dataset.data():
+                labels, instances, batch_info, b_size, mask, _ = instance_data
 
-            if os.path.exists(basic_para.train_dump):
-                use_dump = True
-
-                def train_gen():
-                    for dump_f in os.listdir(basic_para.train_dump):
-                        dumped = pickle.load(
-                            os.path.join(basic_para.train_dump, dump_f))
-                        yield from dumped
-            else:
-                train_gen = self.reader.read_train_batch(
-                    data_gen(train_in,
-                             from_line=self.basic_para.validation_size),
-                    train_sampler
-                )
-
-            train_data_count = 0
-            instance_per_dump = 1000
-            #TODO: Call cache here.
-            for train_data in train_gen:
-                labels, instances, batch_info, b_size, mask, _ = train_data
-
-                coh = self.model(instances, batch_info)
-                loss = F.binary_cross_entropy(coh * mask, labels)
-
-                # loss = self._get_loss(labels, instances, batch_info, mask)
+                loss = self._get_loss(labels, instances, batch_info, mask)
 
                 # Case of a bug.
                 if not loss:
@@ -591,7 +604,7 @@ class ArgRunner(Configurable):
 
             logger.info("Computing validation loss.")
             dev_loss, n_batches, n_instances = self.validation(
-                dev_lines, dev_sampler)
+                all_dev_data, dev_sampler)
 
             logger.info(
                 f"Finished epoch {epoch:d}, "
