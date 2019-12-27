@@ -72,13 +72,15 @@ def data_gen(data_path, from_line=None, until_line=None):
                 yield line
 
 
-class CachedTrainData:
-    def __init__(self, reader, data_iter, dump_dir, train_sampler, cache_size):
-        self.data = data_iter
+class CachableDataSource:
+    def __init__(self, reader, data_iter, train_sampler, device,
+                 cache_size=-1, dump_dir=None):
+        self.data_source = data_iter
         self.train_sampler = train_sampler
         self.dump_dir = dump_dir
         self.reader = reader
         self.cache_size = cache_size
+        self.device = device
 
     def check_dump_dir(self):
         return os.path.exists(self.dump_dir) and os.path.exists(
@@ -87,27 +89,50 @@ class CachedTrainData:
     def get_dump_files(self):
         return random.random(os.listdir(self.dump_dir))
 
+    def to_device(self, data_batch):
+        (labels, instance_data, common_data, data_size, ins_mask,
+         meta) = data_batch
+        labels = labels.to(self.device)
+        ins_mask = ins_mask.to(self.device)
+
+        for key, d in instance_data.items():
+            instance_data[key] = d.to(self.device)
+        for key, d in common_data.items():
+            common_data[key] = d.to(self.device)
+        for key, d in meta.items():
+            meta[key] = d.to(self.device)
+
+        return labels, instance_data, common_data, data_size, ins_mask, meta
+
     def data(self):
         if self.check_dump_dir():
             for dump_f in self.get_dump_files():
                 with open(os.path.join(self.dump_dir, dump_f), 'rb') as f:
                     try:
                         while True:
-                            yield pickle.load(f)
+                            yield self.to_device(pickle.load(f))
                     except EOFError:
                         pass
         else:
-            train_gen = self.reader.read_train_batch(self.data,
+            train_gen = self.reader.read_train_batch(self.data_source,
                                                      self.train_sampler)
 
-            cache_file = open(os.path.join(self.dump_dir, f'dump_{0}.cache'),
-                              'wb')
+            if not os.path.exists(self.dump_dir):
+                os.makedirs(self.dump_dir)
+
+            # TODO: All data are cached here without sampling, but we can add
+            #  sampling if we don't sample inside the reader, we can do them
+            #  here?
+            cache_path = os.path.join(self.dump_dir, f'dump_{0}.cache')
+            cache_file = open(cache_path, 'wb')
             cache_pair = 0, cache_file
 
             instance_idx = 0
-            for data in train_gen:
+            for data_batch in train_gen:
+                yield self.to_device(data_batch)
                 instance_idx += 1
-                cache_idx = instance_idx % self.cache_size
+
+                cache_idx = int(instance_idx / self.cache_size)
                 if cache_idx == cache_pair[0]:
                     cache_file = cache_pair[1]
                 else:
@@ -116,7 +141,7 @@ class CachedTrainData:
                         'wb')
                     cache_pair = cache_idx, cache_file
 
-                pickle.dump(data, cache_file)
+                pickle.dump(data_batch, cache_file)
 
             with open(os.path.join(self.dump_dir, '.success'), 'w') as f:
                 f.write('success')
@@ -494,8 +519,8 @@ class ArgRunner(Configurable):
                                   until_line=self.basic_para.validation_size)]
 
         all_dev_data = []
-        for dev_data in self.reader.read_train_batch(
-                dev_lines, dev_sampler):
+        for dev_data in CachableDataSource(self.reader, dev_lines, dev_sampler,
+                                           self.device).data():
             all_dev_data.append(dev_data)
 
         if self.basic_para.pre_val:
@@ -517,10 +542,12 @@ class ArgRunner(Configurable):
         recent_loss = 0
         log_freq = 100
 
-        train_dataset = CachedTrainData(
+        train_dataset = CachableDataSource(
             self.reader,
             data_gen(train_in, from_line=self.basic_para.validation_size),
-            self.basic_para.train_dump, train_sampler, 1000)
+            train_sampler, self.device, self.basic_para.train_cache_size,
+            self.basic_para.train_dump
+        )
 
         for epoch in range(start_epoch, self.nb_epochs):
             logger.info("Starting epoch {}.".format(epoch))
@@ -705,6 +732,8 @@ if __name__ == '__main__':
         run_name = Unicode(help='Run name.', default_value='default').tag(
             config=True)
         train_dump = Unicode(help='Path to training dump.').tag(config=True)
+        train_cache_size = Integer(help='Number of items per cache').tag(
+            config=True)
         model_dir = Unicode(help='Model directory.').tag(config=True)
         log_dir = Unicode(help='Logging directory.').tag(config=True)
         cmd_log = Bool(help='Log on command prompt only.',

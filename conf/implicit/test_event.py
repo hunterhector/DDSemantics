@@ -15,3 +15,4 @@ c.ArgModelPara.use_gold_mention = True
 c.Basic.test_in = os.path.join(base, 'nombank_with_gc', 'processed',
                                'cloze_hashed.json.gz')
 c.Basic.do_test = True
+c.Basic.run_baseline = False

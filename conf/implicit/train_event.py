@@ -14,5 +14,7 @@ c.ArgModelPara.use_gold_mention = False
 raw_corpus_name = 'gigaword_events'
 
 # Runner parameters
-c.Basic.train_in = os.path.join(base, raw_corpus_name, 'hashed')
+c.Basic.train_in = os.path.join(base, raw_corpus_name, 'hashed_test')
 c.Basic.debug_dir = os.path.join(base, raw_corpus_name, 'debug')
+c.Basic.train_dump = os.path.join(base, raw_corpus_name, 'train_cache')
+c.Basic.train_cache_size = 1000

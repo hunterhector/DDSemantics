@@ -785,8 +785,8 @@ class EventCoherenceModel(ArgCompatibleModel):
 
     def __slot_indicator(self, slot_indicator):
         if self.para.arg_representation_method == 'fix_slots':
-            return util.make_2d_one_hot(slot_indicator, self.num_slots,
-                                              self.device)
+            return util.make_2d_one_hot(
+                slot_indicator, self.num_slots, self.device)
         else:
             # Apply the MLP reduction on the embedding.
             return self.slot_indicator_reduction(
