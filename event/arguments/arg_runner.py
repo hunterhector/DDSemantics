@@ -83,11 +83,14 @@ class CachableDataSource:
         self.device = device
 
     def check_dump_dir(self):
-        return os.path.exists(self.dump_dir) and os.path.exists(
-            os.path.join(self.dump_dir, '.success'))
+        return (self.dump_dir is not None and os.path.exists(
+            self.dump_dir) and os.path.exists(
+            os.path.join(self.dump_dir, '.success')))
 
     def get_dump_files(self):
-        return random.random(os.listdir(self.dump_dir))
+        file_list = os.listdir(self.dump_dir)
+        random.shuffle(file_list)
+        return file_list
 
     def to_device(self, data_batch):
         (labels, instance_data, common_data, data_size, ins_mask,
@@ -113,38 +116,44 @@ class CachableDataSource:
                             yield self.to_device(pickle.load(f))
                     except EOFError:
                         pass
+                    except Exception as e:
+                        print(e)
+                        pdb.set_trace()
         else:
             train_gen = self.reader.read_train_batch(self.data_source,
                                                      self.train_sampler)
 
-            if not os.path.exists(self.dump_dir):
+            if self.dump_dir is not None and not os.path.exists(self.dump_dir):
                 os.makedirs(self.dump_dir)
 
             # TODO: All data are cached here without sampling, but we can add
             #  sampling if we don't sample inside the reader, we can do them
             #  here?
-            cache_path = os.path.join(self.dump_dir, f'dump_{0}.cache')
-            cache_file = open(cache_path, 'wb')
-            cache_pair = 0, cache_file
+            if self.dump_dir is not None:
+                cache_path = os.path.join(self.dump_dir, f'dump_{0}.cache')
+                cache_file = open(cache_path, 'wb')
+                cache_pair = 0, cache_file
 
             instance_idx = 0
             for data_batch in train_gen:
                 yield self.to_device(data_batch)
                 instance_idx += 1
 
-                cache_idx = int(instance_idx / self.cache_size)
-                if cache_idx == cache_pair[0]:
-                    cache_file = cache_pair[1]
-                else:
-                    cache_file = open(
-                        os.path.join(self.dump_dir, f'dump_{cache_idx}.cache'),
-                        'wb')
-                    cache_pair = cache_idx, cache_file
+                if self.dump_dir is not None:
+                    cache_idx = int(instance_idx / self.cache_size)
+                    if cache_idx == cache_pair[0]:
+                        cache_file = cache_pair[1]
+                    else:
+                        cache_file = open(
+                            os.path.join(self.dump_dir,
+                                         f'dump_{cache_idx}.cache'), 'wb')
+                        cache_pair = cache_idx, cache_file
 
-                pickle.dump(data_batch, cache_file)
+                    pickle.dump(data_batch, cache_file)
 
-            with open(os.path.join(self.dump_dir, '.success'), 'w') as f:
-                f.write('success')
+                    with open(os.path.join(self.dump_dir, '.success'),
+                              'w') as f:
+                        f.write('success')
 
 
 class ArgRunner(Configurable):
@@ -159,12 +168,11 @@ class ArgRunner(Configurable):
         # may change the embedding size (adding some extra words)
         self.reader = HashedClozeReader(self.resources, self.para)
 
-        self.model_dir = os.path.join(self.basic_para.model_dir,
-                                      self.basic_para.model_name + '_'
-                                      + get_date_stamp())
-        self.debug_dir = os.path.join(self.basic_para.debug_dir,
-                                      self.basic_para.model_name + '_'
-                                      + get_date_stamp())
+        model_suffix = self.basic_para.model_name + '_' + get_date_stamp()
+        self.model_dir = os.path.join(self.basic_para.model_dir, model_suffix)
+        self.debug_dir = os.path.join(self.basic_para.debug_dir, model_suffix)
+        self.train_cache_dir = os.path.join(self.basic_para.train_cache_dir,
+                                            model_suffix)
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -456,11 +464,6 @@ class ArgRunner(Configurable):
 
         logger.info("Training with data from [%s]", train_in)
 
-        model_out_dir = os.path.join(self.basic_para.model_dir, self.model.name)
-        logger.info("Model out directory is [%s]", model_out_dir)
-        if not os.path.exists(model_out_dir):
-            os.makedirs(model_out_dir)
-
         if self.basic_para.valid_in:
             logger.info("Validation with data from [%s]",
                         self.basic_para.valid_in)
@@ -506,8 +509,7 @@ class ArgRunner(Configurable):
             else:
                 logger.info(
                     "No model to resume at '{}', starting from scratch.".format(
-                        checkpoint_path)
-                )
+                        checkpoint_path))
 
         # Read development lines.
         dev_lines = None
@@ -546,7 +548,7 @@ class ArgRunner(Configurable):
             self.reader,
             data_gen(train_in, from_line=self.basic_para.validation_size),
             train_sampler, self.device, self.basic_para.train_cache_size,
-            self.basic_para.train_dump
+            self.train_cache_dir
         )
 
         for epoch in range(start_epoch, self.nb_epochs):
@@ -731,7 +733,8 @@ if __name__ == '__main__':
             config=True)
         run_name = Unicode(help='Run name.', default_value='default').tag(
             config=True)
-        train_dump = Unicode(help='Path to training dump.').tag(config=True)
+        train_cache_dir = Unicode(help='Path to training dump.').tag(
+            config=True)
         train_cache_size = Integer(help='Number of items per cache').tag(
             config=True)
         model_dir = Unicode(help='Model directory.').tag(config=True)
