@@ -83,8 +83,6 @@ class ClozeBatcher:
         self.max_num_slots = 0
         self.max_c_num_slots = 0
 
-        self.doc_count = 0
-
     def __var_pad(self, key, data, pad_length):
         pad_last_axis(data, self.data_dim[key], pad_length)
 
@@ -138,7 +136,8 @@ class ClozeBatcher:
 
     def flush(self):
         if len(self.b_common_data) > 0:
-            return self.create_batch()
+            yield self.create_batch()
+            self.clear()
 
     def create_batch(self):
         instance_data = {}
@@ -153,10 +152,7 @@ class ClozeBatcher:
 
             if key.startswith('context_'):
                 padded = self.__batch_pad(key, value, self.max_context_size)
-                try:
-                    vectorized = to_torch(padded, self.data_types[key])
-                except Exception:
-                    pdb.set_trace()
+                vectorized = to_torch(padded, self.data_types[key])
                 common_data[key] = batch_combine(vectorized)
             else:
                 padded = self.__batch_pad(key, value, self.max_instance_size)

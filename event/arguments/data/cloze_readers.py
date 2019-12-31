@@ -47,9 +47,6 @@ class HashedClozeReader:
 
         self.frame_slots = FrameSlots(self.para.slot_frame_formalism, resources)
 
-        # Specify which role is used to modify the argument string in SRL.
-        self.factor_role = self.para.factor_role
-
         # A set for data with variable length, we then will create paddings
         # and length tensor for it.
         self.__unk_length = set()
@@ -77,8 +74,10 @@ class HashedClozeReader:
         self.cloze_gen = ClozeGenerator(self.candidate_builder,
                                         self.fix_slot_mode)
 
-        self.use_gold_mention = self.para.use_gold_mention
-        self.use_auto_mention = self.para.use_auto_mention
+        # These default values need to be set at test time.
+        self.factor_role = None
+        self.use_gold_mention = False
+        self.use_auto_mention = True
 
     def read_train_batch(self, data_in, sampler):
         logger.info("Reading data as training batch.")
@@ -96,10 +95,10 @@ class HashedClozeReader:
             yield from train_batcher.get_batch(*parsed_output)
 
         if train_batcher.doc_count == 0:
-            raise ValueError("Provided data is empty.")
+            raise ValueError("Batcher did not receive any data in the process.")
 
         # Yield the remaining data.
-        yield train_batcher.flush()
+        yield from train_batcher.flush()
 
     @staticmethod
     def collect_features(doc_info):
@@ -193,7 +192,7 @@ class HashedClozeReader:
 
         Args:
           event_args:
-          ignore_implicit: 
+          ignore_implicit:
 
         Returns:
 
@@ -226,9 +225,10 @@ class HashedClozeReader:
                     # If not defined, then used to dep slots as factor role.
                     factor_role = dep_slot
 
+                # Only one argument per factor role.
                 if factor_role not in slot_args:
                     slot_args[factor_role] = a
-        # args = list(slot_args.items())
+
         return slot_args
 
     def get_one_test_doc(self, doc_info: Dict,
@@ -240,8 +240,6 @@ class HashedClozeReader:
           doc_info: The JSON data of one document.
           nid_detector: NID detector to detect which slot to fill.
           test_cloze_maker: TestClozeMaker
-          use_gold_mentions: Whether to use gold mentions.
-          use_auto_mentions: Whether to use system mentions.
 
         Returns:
 
@@ -496,8 +494,8 @@ class HashedClozeReader:
             # Only a subset in a long document will be used for generating.
             event_subset.append(event)
 
-            for slot, arg in self.get_args_by_role(
-                    event['args'], False).items():
+            for slot, arg in self.get_args_by_role(event['args'],
+                                                   False).items():
                 if len(arg) > 0:
                     # Argument for n-th event, at slot position 'slot'.
                     eid = arg['entity_id']
