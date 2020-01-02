@@ -553,7 +553,7 @@ class ArgRunner(Configurable):
 
         if self.basic_para.pre_val:
             logger.info("Conduct a pre-validation, this will overwrite best "
-                        "loss with the most recent loss.")
+                        "loss from the check point.")
 
             dev_loss, n_batches, n_instances = self.validation(
                 all_dev_data, dev_sampler

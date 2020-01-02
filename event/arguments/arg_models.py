@@ -610,8 +610,8 @@ class EventContextAttentionPool(nn.Module):
         self._vote_method = para.vote_method
 
         if self._vote_method == 'biaffine':
-            self.event_vote_layer = Biaffine(self.para.event_embedding_dim,
-                                             self.para.event_embedding_dim)
+            self.event_vote_layer = Biaffine(para.event_embedding_dim,
+                                             para.event_embedding_dim)
         elif self._vote_method == 'mlp':
             raise NotImplementedError("MLP not yet supported when voting.")
 
