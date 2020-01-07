@@ -45,6 +45,7 @@ def data_gen(data_path, from_line=None, until_line=None):
     line_num = 0
 
     if os.path.isdir(data_path):
+        print('dir')
         last_file = None
         for f in sorted(os.listdir(data_path)):
             if not f.startswith('.') and f.endswith('.gz'):
@@ -64,6 +65,7 @@ def data_gen(data_path, from_line=None, until_line=None):
         with open(data_path) as fin:
             logger.info("Reading from {}".format(data_path))
             for line in fin:
+                pdb.set_trace()
                 line_num += 1
                 if from_line and line_num <= from_line:
                     continue

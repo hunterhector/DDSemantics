@@ -306,6 +306,8 @@ class HashedClozeReader:
 
             test_cases = self.get_test_cases(event, available_slots)
 
+            pdb.set_trace()
+
             for target_slot, test_stub, answers in test_cases:
                 # The detector determine whether we should fill this slot.
                 if nid_detector.should_fill(event, target_slot, test_stub):
@@ -399,6 +401,8 @@ class HashedClozeReader:
                         'slot_indicators': cloze_slot_indicator,
                     }
 
+                    pdb.set_trace()
+
                     for context_eid, event_rep in enumerate(all_event_reps):
                         # In fixed mode, the key is "events", that contain
                         # the representation for the event.
@@ -431,7 +435,7 @@ class HashedClozeReader:
 
         for line in test_in:
             doc_info = json.loads(line)
-
+            pdb.set_trace()
             for test_data in self.get_one_test_doc(doc_info, nid_detector,
                                                    test_cloze_maker):
                 yield from batcher.get_batch(*test_data)

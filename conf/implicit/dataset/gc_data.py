@@ -7,7 +7,7 @@ else:
     working = os.environ['implicit_corpus']
 
 if 'eval_corpus' not in os.environ:
-    raise KeyError("Please supply the external data directory as environment "
+    raise KeyError("Please supply the exte`rnal data directory as environment "
                    "variable: 'eval_corpus'")
 else:
     corpus_path = os.environ['eval_corpus']
