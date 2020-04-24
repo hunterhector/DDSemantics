@@ -1,0 +1,21 @@
+{
+  "name": "wikipedia",
+  "additional_prefixes": [
+    "edu.cmu"
+  ],
+  "imports": [
+    "base_ontology.json"
+  ],
+  "definitions": [
+    {
+      "entry_name": "edu.cmu.wiki.PredictedWikiAnchor",
+      "parent_entry": "forte.data.ontology.top.Annotation",
+      "attributes": [
+        {
+          "name": "target_page_name",
+          "type": "str"
+        }
+      ]
+    }
+  ]
+}
