@@ -165,10 +165,10 @@ def append_num_to_path(file_path, suffix=0):
             os.rename(file_path, new_path)
 
 
-def batch_combine(l_data, device):
+def batch_combine(l_data):
     data = torch.cat(
         [torch.unsqueeze(d, 0) for d in l_data], dim=0
-    ).to(device)
+    )
     return data
 
 
@@ -224,15 +224,15 @@ def cpu_stats():
     print('memory GB:', memoryUse)
 
 
-def make_2d_one_hot(batched_indices, n, device='cuda'):
+def make_2d_one_hot(batched_indices, max_length, device):
     b, l = batched_indices.shape
     data = batched_indices.unsqueeze(-1)
-    one_hot = torch.FloatTensor(b, l, n).to(device)
+    one_hot = torch.zeros([b, l, max_length], dtype=torch.float32).to(device)
     one_hot.scatter_(2, data, 1)
     return one_hot
 
 
-def make_one_hot(labels, device='cuda', C=2):
+def make_one_hot(labels, C=2):
     """Converts an integer label torch.autograd.Variable to a one-hot Variable.
 
     Args:
@@ -246,7 +246,7 @@ def make_one_hot(labels, device='cuda', C=2):
 
     """
     one_hot = torch.FloatTensor(labels.size(0), C, labels.size(2),
-                                labels.size(3)).zero_().to(device)
+                                labels.size(3)).zero_()
     target = one_hot.scatter_(1, labels.data, 1)
 
     return target

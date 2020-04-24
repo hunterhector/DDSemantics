@@ -123,9 +123,6 @@ class ArgModelPara(Configurable):
     ).tag(config=True)
 
     # Other parameters.
-    factor_role = Unicode(
-        help='The field name of the role that is used to determine the '
-             'slot type.').tag(config=True)
     use_gold_mention = Bool(help='Whether to use gold mentions.').tag(
         config=True)
     use_auto_mention = Bool(help='Whether to use auto mentions.').tag(

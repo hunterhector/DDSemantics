@@ -5,6 +5,10 @@ import xml.etree.ElementTree as ET
 from event import util
 
 
+def is_propbank_dep(dep):
+    return dep == 'subj' or dep == 'obj' or dep.startswith('prep_')
+
+
 def remove_slot_info(arg_info):
     content = {}
     for k, v in arg_info.items():
@@ -40,6 +44,8 @@ def get_simple_dep(dep):
         return dep.replace('prepc_', 'prep_')
     elif dep == 'NA':
         return 'NA'
+    elif dep == 'root':
+        return dep
     else:
         # A generic "other" dependency
         return 'dep'

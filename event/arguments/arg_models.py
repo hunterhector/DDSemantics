@@ -8,7 +8,7 @@ import torch
 from texar.torch.modules.encoders import TransformerEncoder
 from texar.torch.modules.embedders import EmbedderBase
 
-import event.util
+from event import util
 from event.arguments.implicit_arg_resources import ImplicitArgResources
 from event.nn.models import KernelPooling
 from conf.implicit import texar_config
@@ -64,7 +64,22 @@ class ArgCompatibleModel(nn.Module):
         one_zeros.scatter_(-1, selector, 0)
         return one_zeros
 
-    def __load_embeddings(self, resources):
+    def make_embedding(self, embedding_path, extra_size, padded: bool):
+        # Add padding or extra weights.
+
+        event_emb = torch.from_numpy(embedding_path)
+
+        # Add extra event vocab at beginning.
+        extras = torch.rand(extra_size, self.para.event_embedding_dim)
+
+        # Add zero padding.
+        if padded:
+            zero = torch.zeros(1, self.para.event_embedding_dim)
+            extras = torch.cat([zero, extras])
+
+        return nn.Parameter(torch.cat((extras, event_emb)))
+
+    def __load_embeddings(self, resources: ImplicitArgResources):
         logger.info("Loading %d x %d event embedding." % (
             resources.event_embed_vocab.get_size(),
             self.para.event_embedding_dim
@@ -73,38 +88,30 @@ class ArgCompatibleModel(nn.Module):
         # Add additional dimension for extra event vocab.
         self.event_embedding = nn.Embedding(
             resources.event_embed_vocab.get_size(),
-            self.para.event_embedding_dim,
+            self.para.event_embedding_dim, padding_idx=0
         )
 
         logger.info("Loading %d x %d word embedding." % (
             resources.word_embed_vocab.get_size(),
-            self.para.word_embedding_dim
+            self.para.word_embedding_dim,
         ))
 
         self.word_embedding = nn.Embedding(
             resources.word_embed_vocab.get_size(),
-            self.para.word_embedding_dim,
-            padding_idx=self.para.word_vocab_size
+            self.para.word_embedding_dim, padding_idx=0
         )
 
         if resources.word_embedding_path is not None:
-            word_embed = torch.from_numpy(resources.word_embedding)
-
-            # Add extra dimensions for word padding at index 0.
-            zeros = torch.zeros(resources.word_embed_vocab.extra_size(),
-                                self.para.word_embedding_dim)
-            self.word_embedding.weight = nn.Parameter(
-                torch.cat((zeros, word_embed))
-            )
+            self.word_embedding.weight = self.make_embedding(
+                resources.word_embedding,
+                resources.word_embed_vocab.extra_size(),
+                resources.word_embed_vocab.padded)
 
         if resources.event_embedding_path is not None:
-            event_emb = torch.from_numpy(resources.event_embedding)
-
-            # Add extra event vocab for arg padding at index 0.
-            zeros = torch.zeros(resources.event_embed_vocab.extra_size(),
-                                self.para.event_embedding_dim)
-            self.event_embedding.weight = nn.Parameter(
-                torch.cat((zeros, event_emb))
+            self.event_embedding.weight = self.make_embedding(
+                resources.event_embedding,
+                resources.event_embed_vocab.extra_size(),
+                resources.event_embed_vocab.padded
             )
 
 
@@ -231,7 +238,7 @@ class BaselineEmbeddingModel(ArgCompatibleModel):
         elif self._score_method == 'average':
             pooled, _ = trans.mean(2, keepdim=False)
         elif self._score_method == 'topk_average':
-            topk_pooled = event.util.topk_with_fill(
+            topk_pooled = util.topk_with_fill(
                 trans, self.para.w2v_baseline_avg_topk, 2, largest=True)
             pooled = topk_pooled.mean(2, keepdim=False)
         else:
@@ -603,8 +610,8 @@ class EventContextAttentionPool(nn.Module):
         self._vote_method = para.vote_method
 
         if self._vote_method == 'biaffine':
-            self.event_vote_layer = Biaffine(self.para.event_embedding_dim,
-                                             self.para.event_embedding_dim)
+            self.event_vote_layer = Biaffine(para.event_embedding_dim,
+                                             para.event_embedding_dim)
         elif self._vote_method == 'mlp':
             raise NotImplementedError("MLP not yet supported when voting.")
 
@@ -731,9 +738,9 @@ class EventCoherenceModel(ArgCompatibleModel):
     def event_repr(self, batch_event_data, batch_info):
         if self.para.arg_representation_method == 'fix_slots':
             # batch x instance_size x event_component
-            batch_event_rep = batch_event_data['event_components']
+            batch_event_rep = batch_event_data['event_component']
             # batch x context_size x event_component
-            batch_context = batch_info['context_events']
+            batch_context = batch_info['context_event_component']
 
             context_emb = self.event_embedding(batch_context)
             event_emb = self.event_embedding(batch_event_rep)
@@ -778,8 +785,8 @@ class EventCoherenceModel(ArgCompatibleModel):
 
     def __slot_indicator(self, slot_indicator):
         if self.para.arg_representation_method == 'fix_slots':
-            return event.util.make_2d_one_hot(slot_indicator, self.num_slots,
-                                              self.device)
+            return util.make_2d_one_hot(
+                slot_indicator, self.num_slots, self.device)
         else:
             # Apply the MLP reduction on the embedding.
             return self.slot_indicator_reduction(

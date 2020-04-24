@@ -102,12 +102,12 @@ class EventReader:
         self.len_arg_fields = 4
 
     @staticmethod
-    def get_context(sentence, start, end, window_size=5):
-        right_tokens = sentence[end:].strip().split()
+    def get_context(text, start, end, window_size=5):
+        right_tokens = text[end:].strip().split()
         right_win = min(window_size, len(right_tokens))
         right_context = right_tokens[:right_win]
 
-        left_tokens = sentence[:start].strip().split()
+        left_tokens = text[:start].strip().split()
         left_tokens.reverse()
         left_win = min(window_size, len(left_tokens))
 
@@ -117,9 +117,34 @@ class EventReader:
         return left_context, right_context
 
     def read_events(self, data_in, gold_role_field):
+        JOINED_TEXT = 'joined_text_format'
+        SPLIT_SENT = 'split_sent_format'
+
         for line in data_in:
             doc = json.loads(line)
-            doc_text = doc['text']
+
+            doc_text = ''
+            sentence_spans = []
+
+            if 'text' in doc:
+                doc_format = JOINED_TEXT
+                doc_text = doc['text']
+                sentence_spans = doc['sentences']
+            elif 'sentences' in doc:
+                doc_format = SPLIT_SENT
+                sentences = doc['sentences']
+                doc_text += '\n'.join(sentences)
+
+                offset = 0
+                for sent in sentences:
+                    b = offset
+                    offset += len(sent)
+                    e = offset
+                    sentence_spans.append({'begin': b, 'end': e})
+                    offset += 1
+            else:
+                raise KeyError("Unknown document format.")
+
             docid = doc['docid']
 
             events = []
@@ -144,19 +169,24 @@ class EventReader:
                             'entityType']
 
             for event_info in doc['events']:
-                raw_context = self.get_context(
-                    doc_text,
-                    event_info['predicateStart'],
-                    event_info['predicateEnd'],
-                )
+                pred_start, pred_end = event_info['predicateStart'], \
+                                       event_info['predicateEnd']
+
+                if doc_format == SPLIT_SENT:
+                    arg_sent_id = event_info['sentenceId']
+                    pred_sent_begin = sentence_spans[arg_sent_id]['begin']
+                    pred_start += pred_sent_begin
+                    pred_end += pred_sent_begin
+
+                raw_context = self.get_context(doc_text, pred_start, pred_end)
 
                 event = {
                     'predicate': event_info['predicate'],
                     'predicate_context': raw_context,
                     'frame': event_info.get('frame', 'NA'),
                     'arguments': [],
-                    'predicate_start': event_info['predicateStart'],
-                    'predicate_end': event_info['predicateEnd'],
+                    'predicate_start': pred_start,
+                    'predicate_end': pred_end,
                     'sentence_id': event_info['sentenceId'],
                     'event_type': event_info.get('eventType', 'NA'),
                     'is_target': event_info.get('fromGC', False)
@@ -176,21 +206,34 @@ class EventReader:
                     else:
                         represent = arg_info['text']
 
-                    # TODO: can automate the field mapping here.
+                    arg_start, arg_end = arg_info['argStart'], arg_info[
+                        'argEnd']
+
+                    if doc_format == SPLIT_SENT:
+                        # The deprecated split sentence format forgot the
+                        # sentence id for arguments, we can still use the
+                        # predicate id at training time.
+                        arg_sent_id = event_info['sentenceId']
+                        arg_sent_begin = sentence_spans[arg_sent_id]['begin']
+                        arg_start += arg_sent_begin
+                        arg_end += arg_sent_begin
+                    elif doc_format == JOINED_TEXT:
+                        arg_sent_id = arg_info['sentenceId']
+
                     arg = {
                         'dep': revert_nmod(arg_info.get('dep', 'NA')),
                         'fe': arg_info['feName'],
                         'arg_context': arg_context,
                         'entity_id': arg_info['entityId'],
                         'resolvable': False,
-                        'arg_start': arg_info['argStart'],
-                        'arg_end': arg_info['argEnd'],
-                        'sentence_id': arg_info['sentenceId'],
+                        'arg_start': arg_start,
+                        'arg_end': arg_end,
+                        'sentence_id': arg_sent_id,
                         'role': arg_info.get('argument_role', 'NA'),
                         'arg_phrase': arg_info['argumentPhrase'],
                         'text': arg_info['text'],
                         'represent': represent,
-                        'source': arg_info.get('source', 'NA'),
+                        'source': arg_info.get('source', 'automatic'),
                     }
 
                     gold_role = arg_info.get(gold_role_field, 'NA')
@@ -211,9 +254,7 @@ class EventReader:
                         if 'entity_type' in its_entity:
                             arg['ner'] = its_entity['entity_type']
 
-                    entity_spans[arg_info['entityId']].add(
-                        (arg['arg_start'], arg['arg_end'])
-                    )
+                    entity_spans[arg_info['entityId']].add((arg_start, arg_end))
 
                     event['arguments'].append(arg)
 
@@ -222,7 +263,7 @@ class EventReader:
                     if len(entity_spans[arg['entity_id']]) > 1:
                         arg['resolvable'] = True
 
-            yield docid, events, entities, doc['sentences']
+            yield docid, events, entities, sentence_spans
 
     def _same_entity(self, ent1, ent2):
         return any([ent1[f] == ent2[f] for f in self.entity_equal_fields])

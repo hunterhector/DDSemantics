@@ -43,16 +43,20 @@ class ImplicitArgResources(Configurable):
         self.event_embedding = np.load(self.event_embedding_path)
         self.word_embedding = np.load(self.word_embedding_path)
 
-        self.event_embed_vocab = EmbbedingVocab(self.event_vocab_path, True)
+        # Add padding and two unk to the vocab.
+        self.event_embed_vocab = EmbbedingVocab.with_extras(
+            self.event_vocab_path)
+
+        # Add padding to the vocab.
         self.word_embed_vocab = EmbbedingVocab(self.word_vocab_path, True)
+
         self.predicate_count = self.count_predicates(self.event_vocab_path)
 
         logger.info(
             f"{len(self.event_embed_vocab.vocab)} events in embedding.")
 
         logger.info(
-            f"{len(self.word_embed_vocab.vocab)} words in embedding."
-        )
+            f"{len(self.word_embed_vocab.vocab)} words in embedding.")
 
         self.typed_event_vocab = TypedEventVocab(self.raw_lookup_path)
         logger.info("Loaded typed vocab, including oov words.")

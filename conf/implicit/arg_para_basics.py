@@ -12,10 +12,9 @@ c.ArgModelPara.event_embedding_dim = 300
 c.ArgModelPara.word_vocab_size = 228575
 c.ArgModelPara.word_embedding_dim = 300
 c.ArgModelPara.nb_epochs = 20
-# c.ArgModelPara.num_event_components = 8
 c.ArgModelPara.num_extracted_features = 11
 c.ArgModelPara.max_events = 120
-c.ArgModelPara.batch_size = 128
+c.ArgModelPara.batch_size = 512
 
 # Model parameters that changes the architectures
 c.ArgModelPara.multi_context = True
@@ -37,7 +36,6 @@ c.ArgModelPara.w2v_baseline_avg_topk = 3  # only when topk_average
 
 # Important slot names.
 c.ArgModelPara.gold_field_name = 'gold_role_id'
-c.ArgModelPara.factor_role = 'fe'
 
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "

@@ -7,7 +7,6 @@ else:
     base = os.environ['implicit_corpus']
 
 # Use the automatically predicted FE in training.
-c.ArgModelPara.factor_role = 'fe'
 c.ArgModelPara.use_auto_mention = True
 c.ArgModelPara.use_gold_mention = False
 
@@ -15,3 +14,4 @@ raw_corpus_name = 'gigaword_frames'
 
 c.Basic.train_in = os.path.join(base, raw_corpus_name, 'hashed')
 c.Basic.debug_dir = os.path.join(base, raw_corpus_name, 'debug')
+c.Basic.train_factor_role = 'fe'

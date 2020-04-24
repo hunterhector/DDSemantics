@@ -7,6 +7,7 @@ import shutil
 from collections import Counter
 import json
 from time import localtime, strftime
+import random
 
 from smart_open import open
 from traitlets.config import Configurable
@@ -34,7 +35,7 @@ from event.arguments.evaluation import ImplicitEval
 from event.arguments.data.cloze_gen import ClozeSampler
 from event.util import load_mixed_configs
 from event.util import (
-    set_file_log, set_basic_log, ensure_dir, append_num_to_path, get_date_stamp
+    set_file_log, set_basic_log, ensure_dir, append_num_to_path
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ def data_gen(data_path, from_line=None, until_line=None):
     line_num = 0
 
     if os.path.isdir(data_path):
+        print('dir')
         last_file = None
         for f in sorted(os.listdir(data_path)):
             if not f.startswith('.') and f.endswith('.gz'):
@@ -63,12 +65,100 @@ def data_gen(data_path, from_line=None, until_line=None):
         with open(data_path) as fin:
             logger.info("Reading from {}".format(data_path))
             for line in fin:
+                pdb.set_trace()
                 line_num += 1
                 if from_line and line_num <= from_line:
                     continue
                 if until_line and line_num > until_line:
                     break
                 yield line
+
+
+class CachableDataSource:
+    def __init__(self, reader, data_iter, train_sampler, device,
+                 cache_size=-1, dump_dir=None):
+        self.data_source = data_iter
+        self.train_sampler = train_sampler
+        self.dump_dir = dump_dir
+        self.reader = reader
+        self.cache_size = cache_size
+        self.device = device
+
+    def check_dump_dir(self):
+        return (self.dump_dir is not None and os.path.exists(
+            self.dump_dir) and os.path.exists(
+            os.path.join(self.dump_dir, '.success')))
+
+    def get_dump_files(self):
+        file_list = [f for f in os.listdir(self.dump_dir) if
+                     f.endswith('.cache')]
+        random.shuffle(file_list)
+        return file_list
+
+    def to_device(self, data_batch):
+        (labels, instance_data, common_data, data_size, ins_mask,
+         meta) = data_batch
+        labels = labels.to(self.device)
+        ins_mask = ins_mask.to(self.device)
+
+        for key, d in instance_data.items():
+            instance_data[key] = d.to(self.device)
+        for key, d in common_data.items():
+            common_data[key] = d.to(self.device)
+        for key, d in meta.items():
+            meta[key] = d.to(self.device)
+
+        return labels, instance_data, common_data, data_size, ins_mask, meta
+
+    def data(self):
+        if self.check_dump_dir():
+            logger.info("Reading from dumped instances.")
+            for dump_f in self.get_dump_files():
+                with open(os.path.join(self.dump_dir, dump_f), 'rb') as f:
+                    try:
+                        while True:
+                            yield self.to_device(pickle.load(f))
+                    except EOFError:
+                        pass
+                    except Exception as e:
+                        print(e)
+                        pdb.set_trace()
+        else:
+            logger.info("Reading from raw data source.")
+            train_gen = self.reader.read_train_batch(self.data_source,
+                                                     self.train_sampler)
+
+            if self.dump_dir is not None and not os.path.exists(self.dump_dir):
+                os.makedirs(self.dump_dir)
+
+            # TODO: All data are cached here without sampling, but we can add
+            #  sampling if we don't sample inside the reader, we can do them
+            #  here?
+            if self.dump_dir is not None:
+                cache_path = os.path.join(self.dump_dir, f'dump_{0}.cache')
+                cache_file = open(cache_path, 'wb')
+                cache_pair = 0, cache_file
+
+            instance_idx = 0
+            for data_batch in train_gen:
+                yield self.to_device(data_batch)
+                instance_idx += 1
+
+                if self.dump_dir is not None:
+                    cache_idx = int(instance_idx / self.cache_size)
+                    if cache_idx == cache_pair[0]:
+                        cache_file = cache_pair[1]
+                    else:
+                        cache_file = open(
+                            os.path.join(self.dump_dir,
+                                         f'dump_{cache_idx}.cache'), 'wb')
+                        cache_pair = cache_idx, cache_file
+
+                    pickle.dump(data_batch, cache_file)
+
+            if self.dump_dir is not None:
+                with open(os.path.join(self.dump_dir, '.success'), 'w') as f:
+                    f.write('success')
 
 
 class ArgRunner(Configurable):
@@ -83,12 +173,13 @@ class ArgRunner(Configurable):
         # may change the embedding size (adding some extra words)
         self.reader = HashedClozeReader(self.resources, self.para)
 
-        self.model_dir = os.path.join(self.basic_para.model_dir,
-                                      self.basic_para.model_name + '_'
-                                      + get_date_stamp())
-        self.debug_dir = os.path.join(self.basic_para.debug_dir,
-                                      self.basic_para.model_name + '_'
-                                      + get_date_stamp())
+        self.test_factor_role = self.basic_para.test_factor_role
+
+        model_suffix = self.basic_para.model_name
+        self.model_dir = os.path.join(self.basic_para.model_dir, model_suffix)
+        self.debug_dir = os.path.join(self.basic_para.debug_dir, model_suffix)
+        self.train_cache_dir = os.path.join(self.basic_para.train_cache_dir,
+                                            self.basic_para.model_name)
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -101,10 +192,14 @@ class ArgRunner(Configurable):
         self.checkpoint_name = 'checkpoint.pth'
         self.best_model_name = 'model_best.pth'
 
-        self.device = torch.device(
-            "cuda" if self.para.use_gpu and torch.cuda.is_available()
-            else "cpu"
-        )
+        if self.para.use_gpu:
+            if torch.cuda.is_available():
+                self.device = 'cuda'
+            else:
+                raise RuntimeError("CUDA not available.")
+        else:
+            self.device = 'cpu'
+
         self.nb_epochs = self.para.nb_epochs
 
         if self.para.model_type:
@@ -154,18 +249,17 @@ class ArgRunner(Configurable):
         return check_path
 
     @torch.no_grad()
-    def validation(self, dev_lines, dev_sampler):
+    def validation(self, all_dev_data, dev_sampler):
         dev_loss = 0
         num_batches = 0
         num_instances = 0
 
-        logger.info(f'Validation with {len(dev_lines)} lines.')
+        logger.info(f'Validation with {len(all_dev_data)} batches.')
         dev_sampler.reset()
 
-        for batch_data, debug_data in self.reader.read_train_batch(
-                dev_lines, dev_sampler):
-            labels, batch_instance, batch_common, b_size, mask = batch_data
-            loss = self._get_loss(labels, batch_instance, batch_common, mask)
+        for dev_data in all_dev_data:
+            labels, instances, common_data, b_size, mask, metadata = dev_data
+            loss = self._get_loss(labels, instances, common_data, mask)
 
             if not loss:
                 raise ValueError('Error in computing loss.')
@@ -205,14 +299,22 @@ class ArgRunner(Configurable):
                 "Serialized model not existing, test without loading.")
 
     @torch.no_grad()
-    def __test(self, model, test_lines, nid_detector, auto_test=False,
-               eval_dir=None):
+    def __test(self, model, test_lines, nid_detector,
+               auto_test=False, eval_dir=None):
         self.model.eval()
 
         evaluator = ImplicitEval(eval_dir)
         instance_count = 0
 
         self.reader.auto_test = auto_test
+        self.reader.factor_role = self.test_factor_role
+        self.reader.use_gold_mention = True
+        self.reader.use_auto_mention = False
+
+        logger.info(
+            f"During testing, factor role is [{self.reader.factor_role}], "
+            f"use gold mention: {self.reader.use_gold_mention}, "
+            f"use auto mention: {self.reader.use_auto_mention}")
 
         logger.info(f"Evaluation result will be stored at {eval_dir}")
 
@@ -254,6 +356,7 @@ class ArgRunner(Configurable):
                 basic_para.log_dir, random_baseline.name,
                 f'self_study_{basic_para.self_test_size}',
             ),
+            test_factor_role=basic_para.test_factor_role,
             auto_test=True,
         )
 
@@ -379,12 +482,15 @@ class ArgRunner(Configurable):
         train_sampler = ClozeSampler()
         dev_sampler = ClozeSampler(seed=7)
 
-        logger.info("Training with data from [%s]", train_in)
+        self.reader.factor_role = basic_para.train_factor_role
+        self.reader.use_gold_mention = True
+        self.reader.use_auto_mention = True
+        logger.info(
+            f"During training, factor role is [{self.reader.factor_role}], "
+            f"use gold mention: {self.reader.use_gold_mention}, "
+            f"use auto mention: {self.reader.use_auto_mention}")
 
-        model_out_dir = os.path.join(self.basic_para.model_dir, self.model.name)
-        logger.info("Model out directory is [%s]", model_out_dir)
-        if not os.path.exists(model_out_dir):
-            os.makedirs(model_out_dir)
+        logger.info("Training with data from [%s]", train_in)
 
         if self.basic_para.valid_in:
             logger.info("Validation with data from [%s]",
@@ -431,8 +537,7 @@ class ArgRunner(Configurable):
             else:
                 logger.info(
                     "No model to resume at '{}', starting from scratch.".format(
-                        checkpoint_path)
-                )
+                        checkpoint_path))
 
         # Read development lines.
         dev_lines = None
@@ -443,12 +548,17 @@ class ArgRunner(Configurable):
                          data_gen(train_in,
                                   until_line=self.basic_para.validation_size)]
 
+        all_dev_data = []
+        for dev_data in CachableDataSource(self.reader, dev_lines, dev_sampler,
+                                           self.device).data():
+            all_dev_data.append(dev_data)
+
         if self.basic_para.pre_val:
             logger.info("Conduct a pre-validation, this will overwrite best "
-                        "loss with the most recent loss.")
+                        "loss from the check point.")
 
             dev_loss, n_batches, n_instances = self.validation(
-                dev_lines, dev_sampler
+                all_dev_data, dev_sampler
             )
 
             best_loss = dev_loss
@@ -462,6 +572,13 @@ class ArgRunner(Configurable):
         recent_loss = 0
         log_freq = 100
 
+        train_dataset = CachableDataSource(
+            self.reader,
+            data_gen(train_in, from_line=self.basic_para.validation_size),
+            train_sampler, self.device, self.basic_para.train_cache_size,
+            self.train_cache_dir
+        )
+
         for epoch in range(start_epoch, self.nb_epochs):
             logger.info("Starting epoch {}.".format(epoch))
             epoch_batch_count = 0
@@ -473,12 +590,9 @@ class ArgRunner(Configurable):
                         f'{self.basic_para.validation_size} validation lines '
                         f'for training.')
 
-            for train_data in self.reader.read_train_batch(
-                    data_gen(train_in,
-                             from_line=self.basic_para.validation_size),
-                    train_sampler
-            ):
-                labels, instances, batch_info, b_size, mask, _ = train_data
+            for instance_data in train_dataset.data():
+                labels, instances, batch_info, b_size, mask, _ = instance_data
+
                 loss = self._get_loss(labels, instances, batch_info, mask)
 
                 # Case of a bug.
@@ -505,6 +619,12 @@ class ArgRunner(Configurable):
                 loss.backward()
                 optimizer.step()
 
+                # TODO: found nan in the weights.
+                nans_in_weight = torch.isnan(
+                    self.model._linear_combine.weight).nonzero()
+                if nans_in_weight.shape[0] > 0:
+                    pdb.set_trace()
+
                 batch_count += 1
                 epoch_batch_count += 1
 
@@ -530,6 +650,34 @@ class ArgRunner(Configurable):
 
                     recent_loss = 0
 
+            logger.info("Computing validation loss.")
+            dev_loss, n_batches, n_instances = self.validation(
+                all_dev_data, dev_sampler)
+
+            logger.info(
+                f"Finished epoch {epoch:d}, "
+                f"avg. training loss {total_loss / batch_count:.4f}, "
+                f"validation loss {dev_loss / n_batches:.4f}"
+            )
+
+            new_best = False
+            if not best_loss or dev_loss < best_loss:
+                best_loss = dev_loss
+                new_best = True
+
+                logger.info(f"Best loss is {best_loss:.4f} "
+                            f"(avg. {best_loss / n_batches:.4f}). "
+                            f"This is a new best.")
+            else:
+                logger.info(f"Best loss is {best_loss:.4f} "
+                            f"(avg. {best_loss / n_batches:.4f}).")
+
+            if dev_loss < previous_dev_loss:
+                previous_dev_loss = dev_loss
+                worse = 0
+            else:
+                worse += 1
+
             checkpoint_path = self.__save_checkpoint({
                 'epoch': epoch + 1,
                 'state_dict': self.model.state_dict(),
@@ -539,37 +687,18 @@ class ArgRunner(Configurable):
                 'worse': worse,
             }, self.checkpoint_name)
 
-            logger.info("Computing validation loss.")
-            dev_loss, n_batches, n_instances = self.validation(
-                dev_lines, dev_sampler)
-
-            logger.info(
-                f"Finished epoch {epoch:d}, "
-                f"avg. training loss {total_loss / batch_count:.4f}, "
-                f"validation loss {dev_loss / n_batches:.4f}"
-            )
-
-            if not best_loss or dev_loss < best_loss:
-                best_loss = dev_loss
+            if new_best:
                 best_path = os.path.join(self.model_dir, self.best_model_name)
                 logger.info("Saving it as best model")
                 shutil.copyfile(checkpoint_path, best_path)
 
-            logger.info(f"Best loss is {best_loss:.4f} "
-                        f"(avg. {best_loss / n_batches:.4f}).")
-
             # Whether stop now.
-            if dev_loss < previous_dev_loss:
-                previous_dev_loss = dev_loss
-                worse = 0
-            else:
-                worse += 1
-                if worse == self.para.early_stop_patience:
-                    logger.info(
-                        (f"Dev loss increase from {previous_dev_loss:.4f} "
-                         f"to {dev_loss:.4f}, stop at Epoch {epoch:d}")
-                    )
-                    break
+            if worse == self.para.early_stop_patience:
+                logger.info(
+                    (f"Dev loss increase from {previous_dev_loss:.4f} "
+                     f"to {dev_loss:.4f}, stop at Epoch {epoch:d}")
+                )
+                break
 
         for pred, count in target_pred_count.items():
             logger.info("Overall, %s is observed %d times." % (pred, count))
@@ -614,6 +743,12 @@ def main(conf):
         runner.train(basic_para, resume=True)
 
     if basic_para.do_test:
+        if not basic_para.test_in:
+            logger.error("Test data path is not provided.")
+
+        if not os.path.exists(basic_para.test_in):
+            logger.error(f"Cannot find test path at {basic_para.test_in}")
+
         result_dir = os.path.join(
             basic_para.log_dir, basic_para.model_name, basic_para.run_name,
             basic_para.test_data
@@ -641,6 +776,10 @@ if __name__ == '__main__':
             config=True)
         run_name = Unicode(help='Run name.', default_value='default').tag(
             config=True)
+        train_cache_dir = Unicode(help='Path to training dump.').tag(
+            config=True)
+        train_cache_size = Integer(help='Number of items per cache').tag(
+            config=True)
         model_dir = Unicode(help='Model directory.').tag(config=True)
         log_dir = Unicode(help='Logging directory.').tag(config=True)
         cmd_log = Bool(help='Log on command prompt only.',
@@ -655,6 +794,13 @@ if __name__ == '__main__':
             config=True)
         debug_mode = Bool(help='Debug mode', default_value=False).tag(
             config=True)
+
+        test_factor_role = Unicode(
+            help='The field name of the role that is used to '
+                 'determine the slot type.').tag(config=True)
+        train_factor_role = Unicode(
+            help='The field name of the role that is used to '
+                 'determine the slot type.').tag(config=True)
 
 
     conf = load_mixed_configs()

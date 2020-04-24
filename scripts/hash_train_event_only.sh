@@ -9,7 +9,7 @@ fi
 
 hash_dir='hashed_new'
 
-if [[ ! -d ${implicit_corpus}/gigaword_frames/${hash_dir} ]]; then
+if [[ ! -d ${implicit_corpus}/gigaword_events/${hash_dir} ]]; then
     echo 'Going to do hashing'
     mkdir -p ${implicit_corpus}/gigaword_events/${hash_dir}
     cd ~/projects/DDSemantics

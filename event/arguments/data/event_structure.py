@@ -3,8 +3,6 @@ import pdb
 
 from event.arguments.prepare.event_vocab import EmbbedingVocab, TypedEventVocab
 
-ghost_entity_text = '__ghost_component__'
-
 
 class EventStruct:
     def __init__(self,
@@ -15,23 +13,18 @@ class EventStruct:
         self.fix_slot_mode = fix_slot_mode
         self.use_frame = use_frame
 
-        # Some extra embeddings.
-        self.unobserved_fe = event_emb_vocab.add_extra(
-            '__unobserved_fe__')
-        self.unobserved_arg = event_emb_vocab.add_extra(
-            '__unobserved_arg__')
-        self.ghost_component = event_emb_vocab.add_extra(
-            ghost_entity_text)
-
         self.unk_frame_idx = event_emb_vocab.get_index(
             typed_event_vocab.unk_frame, None)
-        self.unk_predicate_idx = event_emb_vocab.get_index(
-            typed_event_vocab.unk_predicate, None)
-        self.unk_arg_idx = event_emb_vocab.get_index(
-            typed_event_vocab.get_unk_arg_rep, None)
         self.unk_fe_idx = event_emb_vocab.get_index(
             typed_event_vocab.unk_fe, None
         )
+        self.unobserved_arg_idx = event_emb_vocab.get_index(
+            typed_event_vocab.unobserved_arg, None)
+        self.unobserved_fe_idx = event_emb_vocab.get_index(
+            typed_event_vocab.unobserved_fe, None)
+
+        # The cloze data are organized by the following slots.
+        self.fix_slot_names = ['subj', 'obj', 'prep', ]
 
     def event_repr(self, predicate, frame_id, args):
         if self.fix_slot_mode:
@@ -55,15 +48,15 @@ class EventStruct:
 
         # The slot will need to be indexed vocabularies, i.e. frame elements.
         # And they need to be hashed to number first.
-        for slot, arg in args:
+        for slot, arg in args.items():
             if slot == -1:
                 slot = self.unk_fe_idx
             slot_comps.append(slot)
             slot_value_comps.append(arg['arg_role'])
 
         if len(slot_comps) == 0:
-            slot_comps.append(self.unobserved_fe)
-            slot_value_comps.append(self.unobserved_arg)
+            slot_comps.append(TypedEventVocab.unobserved_fe)
+            slot_value_comps.append(TypedEventVocab.unobserved_arg)
 
         frame_id = self.unk_frame_idx if frame_id == -1 else frame_id
 
@@ -96,12 +89,9 @@ class EventStruct:
 
         # TODO: the current setup for argument slot position in the fix slot
         #   model might mess up, need double check on this mapping method.
-        for _, arg in args:
-            if len(arg) == 0:
-                if self.use_frame:
-                    event_components.append(self.unobserved_fe)
-                event_components.append(self.unobserved_arg)
-            else:
+        for slot_name in self.fix_slot_names:
+            if slot_name in args:
+                arg = args[slot_name]
                 # Adding frame elements in argument representation.
                 if self.use_frame:
                     fe = arg['fe']
@@ -110,9 +100,14 @@ class EventStruct:
                     else:
                         event_components.append(fe)
                 event_components.append(arg['arg_role'])
+            else:
+                # Adding unobserved id.
+                if self.use_frame:
+                    event_components.append(self.unobserved_fe_idx)
+                event_components.append(self.unobserved_arg_idx)
 
         if any([c < 0 for c in event_components]):
-            logging.error("None positive component found in event.")
+            logging.error("Non positive component found in event.")
             pdb.set_trace()
 
         return {
