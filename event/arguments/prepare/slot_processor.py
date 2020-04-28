@@ -1,3 +1,4 @@
+import logging
 import os
 from collections import defaultdict, Counter
 from operator import itemgetter
@@ -88,9 +89,18 @@ def sort_arg_priority(args, pred_start, pred_end):
     return [p[1] for p in sorted(p_arg_list, key=itemgetter(0))]
 
 
+def get_simple_predicate(predicate):
+    predicate = util.remove_neg(predicate)
+    if '-' in predicate:
+        last_part = predicate.split('-')[-1]
+        return last_part
+    else:
+        return predicate
+
+
 class SlotHandler:
     def __init__(self, frame_dir, frame_dep_map, dep_frame_map,
-                 nombank_arg_map):
+                 nombank_arg_map, frame_formalism):
         self.frame_priority = self.__load_fe_orders(frame_dir)
         self.frame_deps, self.frame_counts = self.__load_frame_map(
             frame_dep_map)
@@ -98,6 +108,8 @@ class SlotHandler:
         self.nombank_mapping = self.__load_nombank_map(
             nombank_arg_map
         )
+
+        self.frame_formalism = frame_formalism
 
         self.dep_frames, self.dep_counts = self.__load_frame_map(dep_frame_map)
 
@@ -198,51 +210,7 @@ class SlotHandler:
                     arg_list.append(('NA', fe, arg, 'origin'))
         return imputed_deps
 
-    def organize_args(self, event):
-        # Step 0, read slot information
-        args = event['arguments']
-        # TODO: handle slashed events (small-investor)
-        predicate = util.remove_neg(event.get('predicate'))
-        frame = event.get('frame', 'NA')
-
-        # List of resolved arguments.
-        arg_list = []
-
-        # Arguments that have a valid dependency.
-        # dep_slots = {}
-        dep_slots = defaultdict(list)
-        # Arguments that have a valid frame element.
-        # frame_slots = {}
-        fe_slots = defaultdict(list)
-
-        test_arg_list = []
-
-        for arg in args:
-            dep = arg['dep']
-            fe = arg['fe']
-
-            # There are a few defined mapping for the target predicates.
-            if predicate in self.nombank_mapping and 'propbank_role' in arg:
-                this_nom_map = self.nombank_mapping[predicate][1]
-                prop_role = arg['propbank_role'].replace('i_', '')
-                if prop_role in this_nom_map:
-                    dep = this_nom_map[prop_role]
-
-            plain_arg = remove_slot_info(arg)
-
-            if fe == 'NA' and not dep == 'NA' and not dep.startswith('prep_'):
-                # Try to impute the FE from dependency label.
-                # TODO: The bug is here, when we map arguments here,
-                #  if the dependency is the same then we lose a lot.
-                dep_slots[dep].append(plain_arg)
-            elif dep == 'NA' and not fe == 'NA':
-                # Try to impute the dependency from FE
-                fe_slots[fe].append(plain_arg)
-            else:
-                # Add the others directly to the list.
-                arg_list.append((dep, fe, plain_arg, 'origin'))
-                test_arg_list.append((dep, fe, plain_arg, 'origin'))
-
+    def impute_arg_list(self, arg_list, predicate, frame, dep_slots, fe_slots):
         # Step 1, impute dependency or FE slot.
         imputed_fes = self.impute_fe(
             arg_list, predicate, frame, dep_slots, fe_slots)
@@ -269,6 +237,58 @@ class SlotHandler:
                     else:
                         arg_list.append(('NA', fe, arg, 'origin'))
                 most_common = False
+
+    def organize_args(self, event):
+        # Step 0, read slot information
+        args = event['arguments']
+        # TODO: handle slashed events (small-investor)
+        predicate = get_simple_predicate(event.get('predicate'))
+        frame = event.get('frame', 'NA')
+
+        # List of resolved arguments.
+        arg_list = []
+
+        # Arguments that have a valid dependency.
+        dep_slots = defaultdict(list)
+        # Arguments that have a valid frame element.
+        fe_slots = defaultdict(list)
+
+        for arg in args:
+            dep = arg['dep']
+            fe = arg['fe']
+
+            # There are a few defined dependencies for our target predicates.
+            if predicate in self.nombank_mapping:
+                prop_key = 'propbank_role'
+                if arg['source'] == 'gold':
+                    prop_key = 'gold_role'
+
+                if prop_key in arg and not arg[prop_key] == 'NA':
+                    prop_role = arg[prop_key].replace('i_', '')
+                    this_nom_map = self.nombank_mapping[predicate][1]
+                    if prop_role in this_nom_map:
+                        dep = this_nom_map[prop_role]
+
+            plain_arg = remove_slot_info(arg)
+
+            if arg['source'] == 'gold':
+                # If using gold argument, do not perform any guessing.
+                arg_list.append((dep, fe, plain_arg, 'origin'))
+            else:
+                if (fe == 'NA' and not dep == 'NA'
+                        and not dep.startswith('prep_')):
+                    # Try to impute the FE from dependency label.
+                    dep_slots[dep].append(plain_arg)
+                elif dep == 'NA' and not fe == 'NA':
+                    # Try to impute the dependency from FE
+                    fe_slots[fe].append(plain_arg)
+                else:
+                    # Add the others directly to the list.
+                    arg_list.append((dep, fe, plain_arg, 'origin'))
+
+        self.impute_arg_list(
+            arg_list, predicate, frame, dep_slots, fe_slots
+        )
 
         arg_candidates = {
             'subj': [],

@@ -8,6 +8,7 @@ from collections import Counter
 import json
 from time import localtime, strftime
 import random
+from typing import Dict
 
 from smart_open import open
 from traitlets.config import Configurable
@@ -45,7 +46,6 @@ def data_gen(data_path, from_line=None, until_line=None):
     line_num = 0
 
     if os.path.isdir(data_path):
-        print('dir')
         last_file = None
         for f in sorted(os.listdir(data_path)):
             if not f.startswith('.') and f.endswith('.gz'):
@@ -65,13 +65,21 @@ def data_gen(data_path, from_line=None, until_line=None):
         with open(data_path) as fin:
             logger.info("Reading from {}".format(data_path))
             for line in fin:
-                pdb.set_trace()
                 line_num += 1
                 if from_line and line_num <= from_line:
                     continue
                 if until_line and line_num > until_line:
                     break
                 yield line
+
+
+def to_device(data, device):
+    if isinstance(data, Dict):
+        for key, d in data.items():
+            data[key] = d.to(device)
+        return data
+    else:
+        return data.to(device)
 
 
 class CachableDataSource:
@@ -95,21 +103,6 @@ class CachableDataSource:
         random.shuffle(file_list)
         return file_list
 
-    def to_device(self, data_batch):
-        (labels, instance_data, common_data, data_size, ins_mask,
-         meta) = data_batch
-        labels = labels.to(self.device)
-        ins_mask = ins_mask.to(self.device)
-
-        for key, d in instance_data.items():
-            instance_data[key] = d.to(self.device)
-        for key, d in common_data.items():
-            common_data[key] = d.to(self.device)
-        for key, d in meta.items():
-            meta[key] = d.to(self.device)
-
-        return labels, instance_data, common_data, data_size, ins_mask, meta
-
     def data(self):
         if self.check_dump_dir():
             logger.info("Reading from dumped instances.")
@@ -117,7 +110,7 @@ class CachableDataSource:
                 with open(os.path.join(self.dump_dir, dump_f), 'rb') as f:
                     try:
                         while True:
-                            yield self.to_device(pickle.load(f))
+                            yield to_device(pickle.load(f), self.device)
                     except EOFError:
                         pass
                     except Exception as e:
@@ -141,7 +134,7 @@ class CachableDataSource:
 
             instance_idx = 0
             for data_batch in train_gen:
-                yield self.to_device(data_batch)
+                yield [to_device(d, self.device) for d in data_batch]
                 instance_idx += 1
 
                 if self.dump_dir is not None:
@@ -321,7 +314,8 @@ class ArgRunner(Configurable):
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             (labels, instances, common_data, _, _, metadata) = test_data
 
-            coh = model(instances, common_data)
+            coh = model(to_device(instances, self.device),
+                        to_device(common_data, self.device))
 
             coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
 

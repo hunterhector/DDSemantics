@@ -66,7 +66,8 @@ class ImplicitArgResources(Configurable):
         self.slot_handler = SlotHandler(hash_params.frame_files,
                                         hash_params.frame_dep_map,
                                         hash_params.dep_frame_map,
-                                        hash_params.nom_map)
+                                        hash_params.nom_map,
+                                        hash_params.frame_formalism)
 
         self.h_nom_dep_map, self.h_nom_slots = self.hash_nom_mappings()
         self.h_frame_dep_map, self.h_frame_slots = self.hash_frame_mappings()

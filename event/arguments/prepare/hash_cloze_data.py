@@ -45,23 +45,40 @@ def get_propbank_role_index(role):
     return role_idx
 
 
+def get_dep_group(arg_info):
+    """
+    Figure out a rough dependency group for the argument. If this is generated
+    data, we can map the system dependency to the group (i.e. nsubj -> subj).
+    If this is gold standard data, we should use the gold standard role to
+    figure this out.
+
+    This method is only used when we wanted to use a fix slot mode.
+
+    :param arg_info:
+    :return:
+    """
+    if arg_info['source'] == 'gold':
+        from_parsed_dep = get_simple_dep(arg_info['dep'])
+        if is_propbank_dep(from_parsed_dep):
+            return from_parsed_dep
+        else:
+            gold_role = arg_info['gold_role']
+            if hash_params.frame_formalism == 'Propbank':
+                pass
+    else:
+        pass
+
+
 def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
              typed_event_vocab, entity_represents):
+    simple_dep = dep
     if hash_params.frame_formalism == 'Propbank':
-        dep = get_simple_dep(dep)
-        if not is_propbank_dep(dep):
-            return {}
+        simple_dep = get_simple_dep(dep)
 
     entity_rep = typed_event_vocab.get_arg_entity_rep(
         arg, entity_represents.get(arg['entity_id']))
 
-    # TODO: We should not use dep (system predicted) dependency here when
-    #   dealing with gold standard text, we should get the reverse mapping
-    #   from arg_role -> dep, and use that here instead. And need to rehash
-    #   test data after this.
-    #   But what's the mapping? how do we know which argX to use given
-    #   dependency?
-    arg_role = typed_event_vocab.get_arg_rep(dep, entity_rep)
+    arg_role = typed_event_vocab.get_arg_rep(simple_dep, entity_rep)
     arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
@@ -69,7 +86,7 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
         arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
-        arg_role = typed_event_vocab.get_unk_arg_with_dep(dep)
+        arg_role = typed_event_vocab.get_unk_arg_with_dep(simple_dep)
         arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
@@ -77,12 +94,9 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
         arg_role_id = event_emb_vocab.get_index(arg_role, None)
 
     if arg_role_id == -1:
-        print(dep, entity_rep)
         logging.info(
-            f"The argument with {dep}:{entity_rep} cannot be mapped to "
+            f"The argument with {simple_dep}:{entity_rep} cannot be mapped to "
             f"vocabulary, ignore this argument.")
-        import pdb
-        pdb.set_trace()
         return {}
 
     fe_id = event_emb_vocab.get_index(
@@ -94,7 +108,7 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
 
     hashed_arg = dict([(k, v) for (k, v) in arg.items()])
 
-    if 'gold_role' in hashed_arg:
+    if 'gold_role' in hashed_arg and hashed_arg['source'] == 'gold':
         if hash_params.frame_formalism == 'Propbank':
             hashed_arg['gold_role_id'] = get_propbank_role_index(
                 hashed_arg['gold_role'])
@@ -106,8 +120,9 @@ def hash_arg(arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
     hashed_arg.pop('arg_context', None)
     hashed_arg.pop('role', None)
 
+    hashed_arg['arg_role_text'] = arg_role
     hashed_arg['arg_role'] = arg_role_id
-    hashed_arg['dep'] = dep
+    hashed_arg['dep'] = simple_dep
     hashed_arg['represent'] = entity_rep
     hashed_arg['fe'] = fe_id
     hashed_arg['context'] = hashed_context
@@ -176,14 +191,14 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                     arg, dep, frame, fe, event_emb_vocab, word_emb_vocab,
                     typed_event_vocab, entity_represents,
                 )
+                import pdb
 
                 if hashed_arg:
                     hashed_arg_list.append(hashed_arg)
 
                     if hashed_arg['implicit']:
-                        if 'gold_role' not in arg:
-                            logging.warning(f'Gold role at field '
-                                            f'goldRole is NA.')
+                        if hashed_arg.get('gold_role', 'NA') == 'NA':
+                            logging.warning('gold_role is NA for implicit arg.')
                         else:
                             gold_role = arg['gold_role']
                             implicit_slots_all.add(gold_role)
@@ -192,6 +207,12 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
                                 implicit_slots_no_incorp.add(gold_role)
                                 if not hashed_arg['succeeding']:
                                     implicit_slots_preceed.add(gold_role)
+
+                    if (hashed_arg['implicit'] and
+                            'unk' in hashed_arg['arg_role_text']):
+                        # Maybe deal with it.
+                        pass
+
             full_args[slot] = hashed_arg_list
 
         num_actual = len(event_info["arguments"])
@@ -200,10 +221,13 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
         if hash_params.strict_arg_count and not num_actual == num_full_args:
             print(f'Actual number of args {num_actual}')
-            print(f'Hashed args contains {num_full_args} args')
             print(f'mapped args contains {num_mapped_args} args')
+            print(f'Hashed args contains {num_full_args} args')
 
             pprint(event_info['arguments'])
+            print('------------------------')
+            pprint(mapped_args)
+            print('------------------------')
             pprint(full_args)
 
             raise ValueError("Incorrect argument numbers.")
@@ -240,7 +264,8 @@ def hash_data():
     slot_handler = SlotHandler(hash_params.frame_files,
                                hash_params.frame_dep_map,
                                hash_params.dep_frame_map,
-                               hash_params.nom_map)
+                               hash_params.nom_map,
+                               hash_params.frame_formalism)
 
     typed_event_vocab = TypedEventVocab(hash_params.component_vocab_dir)
 
@@ -310,7 +335,7 @@ class HashParam(Configurable):
     use_gold_frame = Bool(
         help='Use gold the gold frame produced by annotation',
         default_value=False).tag(config=True)
-    strict_arg_count = Bool(help='Force loseles number of arguments',
+    strict_arg_count = Bool(help='Force lossless number of arguments',
                             default_value=False).tag(config=True)
 
 
