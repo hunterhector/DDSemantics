@@ -25,6 +25,9 @@ Test set setups:
 1. Create the automatically constructed training set
     1. Find a domain relevant corpus and parse it with the pipeline
     1. Use the pre-parsed annotated Gigaword NYT portion
+1. Auxiliary data
+    1. Calculate the proposition mapping: 
+        1. ```bin/run_pipeline.sh argument-modeling edu.cmu.cs.lti.script.annotators.argument.PropDepMapper ~/corpora/annotated_gigaword_uima/semafor_gigaword/NYT/${year} ~/workspace/implicit/frame_maps/prop_dep/${year}.tsv```    
 1. Obtain the relevant corpus
     1. For G&C Corpus
         1. Read both Propbank and Nombank into the annotations format

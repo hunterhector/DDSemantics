@@ -1,9 +1,11 @@
 import logging
+import pdb
 import os
 from collections import defaultdict, Counter
 from operator import itemgetter
 import xml.etree.ElementTree as ET
 from event import util
+import re
 
 
 def is_propbank_dep(dep):
@@ -99,22 +101,71 @@ def get_simple_predicate(predicate):
 
 
 class SlotHandler:
-    def __init__(self, frame_dir, frame_dep_map, dep_frame_map,
-                 nombank_arg_map, frame_formalism):
-        self.frame_priority = self.__load_fe_orders(frame_dir)
-        self.frame_deps, self.frame_counts = self.__load_frame_map(
-            frame_dep_map)
-
-        self.nombank_mapping = self.__load_nombank_map(
-            nombank_arg_map
+    def __init__(self, hash_params):
+        self.frame_priority = self.load_fe_orders(
+            hash_params.framenet_frame_files)
+        self.frame_deps, self.frame_counts = self.load_frame_map(
+            hash_params.frame_dep_map)
+        self.nombank_mapping = self.load_nombank_map(
+            hash_params.nom_map
         )
+        self.verb_nom_form = self.load_verb_nom_forms(
+            hash_params.nombank_frame_files)
 
-        self.frame_formalism = frame_formalism
+        # This map contains the statistics by gathering the mapping from
+        #  a verb's propbank role to dependency.
+        self.prop_deps = self.load_prop_map(hash_params.prop_dep_map)
 
-        self.dep_frames, self.dep_counts = self.__load_frame_map(dep_frame_map)
+        self.frame_formalism = hash_params.frame_formalism
+
+        self.dep_frames, self.dep_counts = self.load_frame_map(
+            hash_params.dep_frame_map)
 
     @staticmethod
-    def __load_nombank_map(nombank_arg_map):
+    def load_prop_map(prop_dep_map):
+        prop_deps = {}
+
+        def take_dep(dep_counts_):
+            counter = Counter()
+            for dc in dep_counts_.split():
+                d, c = dc.split(':')
+                if d.endswith('subj') or d.endswith('obj') or d.startswith(
+                        'prep'):
+                    counter[d.replace('prepc', 'prep')] = int(c)
+            return counter
+
+        verb_dep_arg = {}
+        with open(prop_dep_map) as map_file:
+            # buy arg0    subj:10000 dobj:100
+            for line in map_file:
+                parts = re.split(r'\t+', line.strip())
+                if len(parts) == 3:
+                    verb, prop_type, dep_count = parts
+
+                    if prop_type.startswith('ARGM') \
+                            or prop_type.startswith('ARGA'):
+                        continue
+
+                    if verb not in verb_dep_arg:
+                        verb_dep_arg[verb] = []
+
+                    prop_type_ = prop_type.split('-')[0]
+                    for d, c in take_dep(dep_count).items():
+                        verb_dep_arg[verb].append((c, d, prop_type_))
+
+        for verb, dep_props in verb_dep_arg.items():
+            mapped_items = set()
+
+            for _, dep, prop in sorted(dep_props, reverse=True):
+                if dep not in mapped_items and prop not in mapped_items:
+                    mapped_items.add(dep)
+                    mapped_items.add(prop)
+                    prop_deps[(verb, prop)] = dep
+
+        return prop_deps
+
+    @staticmethod
+    def load_nombank_map(nombank_arg_map):
         nom_map = {}
 
         with open(nombank_arg_map) as map_file:
@@ -134,7 +185,26 @@ class SlotHandler:
         return nom_map
 
     @staticmethod
-    def __load_fe_orders(frame_dir):
+    def load_verb_nom_forms(nom_frame_dir):
+        verb_nom_map = {}
+        for frame_file in os.listdir(nom_frame_dir):
+            if not frame_file.endswith('.xml'):
+                continue
+            with open(os.path.join(nom_frame_dir, frame_file)) as ff:
+                frame = ET.parse(ff).getroot()
+                p_node = frame.find('predicate')
+                p_lemma = p_node.attrib["lemma"]
+
+                roleset_node = p_node.find('roleset')
+
+                verb_source = roleset_node.attrib.get('source', None)
+                if verb_source:
+                    verb_form = verb_source.split('-')[-1].split('.')[0]
+                    verb_nom_map[verb_form] = p_lemma
+        return verb_nom_map
+
+    @staticmethod
+    def load_fe_orders(frame_dir):
         frame_priority = {}
 
         for f in os.listdir(frame_dir):
@@ -155,7 +225,7 @@ class SlotHandler:
         return frame_priority
 
     @staticmethod
-    def __load_frame_map(frame_map_file):
+    def load_frame_map(frame_map_file):
         fmap = {}
         counts = {}
         with open(frame_map_file) as frame_maps:

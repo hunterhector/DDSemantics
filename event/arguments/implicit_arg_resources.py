@@ -31,13 +31,6 @@ class ImplicitArgResources(Configurable):
     min_vocab_count = Int(help='The min vocab cutoff threshold.',
                           default_value=50).tag(config=True)
 
-    nombank_arg_slot_map = Unicode(
-        help='A map from predicate and slots to the prespective dependency '
-             'type.').tag(config=True)
-    framenet_frame_path = Unicode(
-        help='The path that stores FrameNet frames.'
-    ).tag(config=True)
-
     def __init__(self, **kwargs):
         super(ImplicitArgResources, self).__init__(**kwargs)
         self.event_embedding = np.load(self.event_embedding_path)
@@ -63,11 +56,7 @@ class ImplicitArgResources(Configurable):
 
         hash_params = HashParam(**kwargs)
 
-        self.slot_handler = SlotHandler(hash_params.frame_files,
-                                        hash_params.frame_dep_map,
-                                        hash_params.dep_frame_map,
-                                        hash_params.nom_map,
-                                        hash_params.frame_formalism)
+        self.slot_handler = SlotHandler(hash_params)
 
         self.h_nom_dep_map, self.h_nom_slots = self.hash_nom_mappings()
         self.h_frame_dep_map, self.h_frame_slots = self.hash_frame_mappings()
@@ -125,20 +114,28 @@ class ImplicitArgResources(Configurable):
         return h_frame_dep_map, h_frame_slots
 
     def hash_nom_mappings(self):
-        """The mapping information in the slot handler are string based, we convert
-        them to the hashed version for easy reading.
-        :return:
+        """The mapping information in the slot handler are string based, we
+        convert them to the hashed version for easy reading.
 
         Args:
 
         Returns:
 
         """
-        nom_map = self.slot_handler.nombank_mapping
 
+        def prop_to_index(argx):
+            r = argx.lower()
+            if r[3] == 'M':
+                return 4
+            else:
+                return int(r[3])
+            #
+
+        # This nombank mapping is the one hand-crafted, contains the 10
+        #  nombank predicates.
+        nom_map = self.slot_handler.nombank_mapping
         predicate_slots = {}
         nom_dep_map = {}
-
         for nom, (verb_form, arg_map) in nom_map.items():
             pred_id = self.typed_event_vocab.get_pred_rep(
                 {'predicate': nom, 'verb_form': verb_form}
@@ -148,9 +145,27 @@ class ImplicitArgResources(Configurable):
 
             for arg_role, dep in arg_map.items():
                 if not dep == '-':
-                    arg_index = int(arg_role[3:])
+                    arg_index = prop_to_index(arg_role)
                     predicate_slots[pred_id].append(arg_index)
                     nom_dep_map[(pred_id, arg_index)] = dep
+
+        # This mapping is automatically gathered from data, mapping from the
+        #  verb and proposition to the dependency.
+        prop_deps = self.slot_handler.prop_deps
+
+        # TODO: Here, we should read the prop dep data by converting the
+        #   predicates into nomninals, by using the nom->verb mapping
+        # The nom-> verb mapping
+
+        for (verb, prop_role), dep in prop_deps.items():
+            if verb in self.slot_handler.verb_nom_form:
+                nom = self.slot_handler.verb_nom_form[verb]
+                pred_id = self.typed_event_vocab.get_pred_rep(
+                    {'predicate': nom, 'verb_form': verb}
+                )
+
+                arg_index = prop_to_index(prop_role)
+                nom_dep_map[(pred_id, arg_index)] = dep
 
         return nom_dep_map, predicate_slots
 

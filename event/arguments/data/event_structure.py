@@ -1,5 +1,6 @@
 import logging
 import pdb
+from pprint import pprint
 
 from event.arguments.prepare.event_vocab import EmbbedingVocab, TypedEventVocab
 
@@ -87,8 +88,7 @@ class EventStruct:
             fid = self.unk_frame_idx if frame_id == -1 else frame_id
             event_components.append(fid)
 
-        # TODO: the current setup for argument slot position in the fix slot
-        #   model might mess up, need double check on this mapping method.
+        # TODO: fix slot names are names, but we are using the index of slot_name now, find out slot_name index, and correct here.
         for slot_name in self.fix_slot_names:
             if slot_name in args:
                 arg = args[slot_name]

@@ -35,7 +35,7 @@ c.ArgModelPara.w2v_event_repr = 'concat'  # concat, sum
 c.ArgModelPara.w2v_baseline_avg_topk = 3  # only when topk_average
 
 # Important slot names.
-c.ArgModelPara.gold_field_name = 'gold_role_id'
+c.ArgModelPara.gold_role_field = 'gold_role_id'
 
 if 'implicit_corpus' not in os.environ:
     raise KeyError("Please supply the directory as environment "
@@ -47,10 +47,6 @@ c.ImplicitArgResources.word_embedding_path = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.pickle.wv.vectors.npy')
 c.ImplicitArgResources.word_vocab_path = os.path.join(
     base, 'gigaword_word_embeddings', 'word_embeddings.voc')
-
-c.ImplicitArgResources.nombank_arg_slot_map = 'resources/nombankArgMap.tsv'
-c.ImplicitArgResources.framenet_frame_path = os.path.join(
-    base, 'resources/fndata-1.5/frame')
 
 c.ImplicitArgResources.min_vocab_count = 50
 

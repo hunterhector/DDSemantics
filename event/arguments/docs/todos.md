@@ -1,9 +1,14 @@
 # List of TODOs 
 
+1. How do the nombank arguments to be layout as dependencies?
+    1. It seems that only the 10 predicates in G&C are read, so they have a
+       manual mapping for those predicates.
+    1. I can find some arguments that are out of such scope:
+       1. http://addis.sp.cs.cmu.edu:8001/index.xhtml#/nombank_gc/data/wsj_0203.mrg
+       1. such as stock as an i-arg for sales, but missed here.
 1. Training speedup?
+    1. Done the speedup, but seems to be wrong in training.
 1. Add headword comparison feature to account for OOV words.
-1. Test   
-   1. How to map arg0-arg4 correctly to the 3 slots?
 1. During training, two verbs may share the same exact span, this could be an
  important source of information, but the standard way of creating cloze task
   is to remove the span, hence the information is lost.

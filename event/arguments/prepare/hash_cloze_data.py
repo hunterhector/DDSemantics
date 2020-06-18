@@ -7,9 +7,7 @@ from event.arguments.prepare.slot_processor import (
     SlotHandler, get_simple_dep, is_propbank_dep)
 from collections import Counter
 import json
-from traitlets import (
-    Unicode, Bool
-)
+from traitlets import (Unicode, Bool)
 from traitlets.config import Configurable
 from pprint import pprint
 from event.io.dataset import utils as data_utils
@@ -261,11 +259,7 @@ def hash_one_doc(docid, events, entities, event_emb_vocab, word_emb_vocab,
 
 
 def hash_data():
-    slot_handler = SlotHandler(hash_params.frame_files,
-                               hash_params.frame_dep_map,
-                               hash_params.dep_frame_map,
-                               hash_params.nom_map,
-                               hash_params.frame_formalism)
+    slot_handler = SlotHandler(hash_params)
 
     typed_event_vocab = TypedEventVocab(hash_params.component_vocab_dir)
 
@@ -324,8 +318,14 @@ class HashParam(Configurable):
     dep_frame_map = Unicode(
         help='Mapping from frame elements to predicate dependencies.'
     ).tag(config=True)
+    prop_dep_map = Unicode(
+        help='Mapping from verb argument (props) to dependency.'
+    ).tag(config=True)
     raw_data = Unicode(help='The dataset to hash.').tag(config=True)
-    frame_files = Unicode(help="Frame file data.").tag(config=True)
+    framenet_frame_files = Unicode(
+        help="Directory to framenet Frame files.").tag(config=True)
+    nombank_frame_files = Unicode(
+        help="Directory to nombank frame files").tag(config=True)
     output_path = Unicode(
         help='Output path of the hashed data.').tag(config=True)
     frame_formalism = Unicode(

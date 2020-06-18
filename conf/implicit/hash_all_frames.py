@@ -16,7 +16,7 @@ c.HashParam.dep_frame_map = os.path.join(
     base, 'frame_maps', 'args_frames_filled.tsv')
 c.HashParam.component_vocab_dir = os.path.join(
     base, 'gigaword_frames', 'vocab/')
-c.HashParam.frame_files = os.path.join(base, 'resources', 'fndata-1.5', 'frame')
+c.HashParam.framenet_frame_files = os.path.join(base, 'resources', 'fndata-1.5', 'frame')
 c.HashParam.nom_map = 'resources/nombankArgMap.tsv'
 c.HashParam.frame_formalism = 'Framenet'
 c.HashParam.use_gold_frame = True

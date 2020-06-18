@@ -803,6 +803,8 @@ class EventCoherenceModel(ArgCompatibleModel):
         Returns:
 
         """
+        pdb.set_trace()
+
         # batch x instance_size x n_features
         batch_features = batch_event_data['features']
 

@@ -12,6 +12,7 @@ c.ArgModelPara.num_slots = 3
 c.ArgModelPara.use_frame = True
 c.ArgModelPara.slot_frame_formalism = 'Propbank'
 c.ArgModelPara.arg_representation_method = 'fix_slots'
+c.ArgModelPara.context_nominal_event = ''
 
 raw_corpus_name = 'gigaword_events'
 

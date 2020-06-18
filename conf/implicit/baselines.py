@@ -73,4 +73,3 @@ c.Basic.model_name = os.path.basename(__file__).replace('.py', '')
 c.Basic.do_training = False
 c.Basic.do_test = False
 c.Basic.run_baselines = True
-c.Basic.gold_field_name = 'propbank_role'

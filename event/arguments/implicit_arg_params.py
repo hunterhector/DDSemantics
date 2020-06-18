@@ -57,6 +57,20 @@ class ArgModelPara(Configurable):
         help='The method used to represent the argument slots.').tag(
         config=True)
 
+    # How to deal with nominal event, we can have a flag for the nominal
+    # event handling
+    #   Possible values:
+    #   1. skip_from_context
+    #   2. map_dependencies
+    context_nominal_event = Unicode(
+        help='How to deal with nominal events in the context.'
+    ).tag(config=True)
+
+    if arg_representation_method == 'fix_slots' and context_nominal_event is None:
+        raise Exception(
+            "In fix slot mode, we have to determine how to deal with context "
+            "nominal events.")
+
     # If we use role_dynamic, then how is the role combined to the arg?
     # Choices:
     # 1. biaffine
@@ -139,5 +153,5 @@ class ArgModelPara(Configurable):
     w2v_event_repr = Unicode(help='Methods for creating the embedding.',
                              default_value='').tag(config=True)
 
-    gold_field_name = Unicode(help='Field name for the gold standard').tag(
+    gold_role_field = Unicode(help='Field name for the gold standard').tag(
         config=True)

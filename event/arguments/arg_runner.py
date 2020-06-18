@@ -326,6 +326,10 @@ class ArgRunner(Configurable):
             if instance_count % 1000 == 0:
                 logger.info("Tested %d instances." % instance_count)
 
+        if len(instance_count) == 0:
+            logger.warning("0 instances found, check data reader.")
+            print("0 instances found, check data reader!")
+
         logger.info("Finish testing %d instances." % instance_count)
 
         if eval_dir:
@@ -415,31 +419,31 @@ class ArgRunner(Configurable):
 
         # W2v baseline.
 
-        # Variation 1: max sim, sum
-        self.para.w2v_baseline_method = 'max_sim'
-        self.para.w2v_event_repr = 'sum'
-        w2v_baseline = BaselineEmbeddingModel(
-            self.para, self.resources, self.device).to(self.device)
-        self.__test(
-            w2v_baseline, data_gen(basic_para.test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'test', 'sum_max'
-            ),
-        )
-
-        # Variation 2: topk, sum
-        self.para.w2v_baseline_method = 'topk_average'
-        self.para.w2v_event_repr = 'sum'
-        w2v_baseline = BaselineEmbeddingModel(
-            self.para, self.resources, self.device).to(self.device)
-        self.__test(
-            w2v_baseline, data_gen(basic_para.test_in),
-            nid_detector=self.nid_detector,
-            eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name, 'test', 'sum_top3',
-            ),
-        )
+        # # Variation 1: max sim, sum
+        # self.para.w2v_baseline_method = 'max_sim'
+        # self.para.w2v_event_repr = 'sum'
+        # w2v_baseline = BaselineEmbeddingModel(
+        #     self.para, self.resources, self.device).to(self.device)
+        # self.__test(
+        #     w2v_baseline, data_gen(basic_para.test_in),
+        #     nid_detector=self.nid_detector,
+        #     eval_dir=os.path.join(
+        #         basic_para.log_dir, w2v_baseline.name, 'test', 'sum_max'
+        #     ),
+        # )
+        #
+        # # Variation 2: topk, sum
+        # self.para.w2v_baseline_method = 'topk_average'
+        # self.para.w2v_event_repr = 'sum'
+        # w2v_baseline = BaselineEmbeddingModel(
+        #     self.para, self.resources, self.device).to(self.device)
+        # self.__test(
+        #     w2v_baseline, data_gen(basic_para.test_in),
+        #     nid_detector=self.nid_detector,
+        #     eval_dir=os.path.join(
+        #         basic_para.log_dir, w2v_baseline.name, 'test', 'sum_top3',
+        #     ),
+        # )
 
         # Frequency baseline.
         most_freq_baseline = MostFrequentModel(

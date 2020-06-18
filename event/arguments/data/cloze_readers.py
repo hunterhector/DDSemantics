@@ -1,6 +1,8 @@
 import copy
 import json
 import logging
+import pdb
+from pprint import pprint
 from collections import Counter
 from collections import defaultdict
 from typing import Dict
@@ -14,8 +16,6 @@ from event.arguments.data.event_structure import EventStruct
 from event.arguments.data.frame_data import FrameSlots
 from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.implicit_arg_resources import ImplicitArgResources
-from pprint import pprint
-import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class HashedClozeReader:
             self.__unk_length = {'slot', 'slot_value', 'context_slot',
                                  'context_slot_value'}
 
-        self.gold_role_field = self.para.gold_field_name
+        self.gold_role_field = self.para.gold_role_field
         self.test_limit = 500
 
         self.event_struct = EventStruct(
@@ -131,8 +131,8 @@ class HashedClozeReader:
 
         # There are different types of slots, given the scenario, some of them
         # can be considered as test cases.
-        # 1. Empty slots, these are not fillable, but can be test case for
-        # the system to determine whether to fill.
+        # 1. Empty slots, these are not fill-able, but can be test cases for
+        #   the system to determine whether to fill.
         # 2. Slot with implicit arguments.
 
         for slot in possible_slots:
@@ -185,6 +185,9 @@ class HashedClozeReader:
                     # system to guess whether it wanted to fill such case.
                     test_cases.append(copy.deepcopy(no_fill_case))
 
+
+        pdb.set_trace()
+
         return test_cases
 
     def get_args_by_role(self, event_args, ignore_implicit):
@@ -232,35 +235,12 @@ class HashedClozeReader:
 
         return slot_args
 
-    def get_one_test_doc(self, doc_info: Dict,
-                         nid_detector: NullArgDetector,
-                         test_cloze_maker: TestClozeMaker):
-        """Parse and get one test document.
-
-        Args:
-          doc_info: The JSON data of one document.
-          nid_detector: NID detector to detect which slot to fill.
-          test_cloze_maker: TestClozeMaker
-
-        Returns:
-
-        """
-        # Collect information such as features and entity positions.
-        features_by_eid = self.collect_features(doc_info)
-
-        # The context used for resolving.
-        all_event_reps = [
-            self.event_struct.event_repr(
-                e['predicate'], e['frame'],
-                self.get_args_by_role(e['args'], True)) for
-            e in doc_info['events']
-        ]
-
-        # Record the entity positions
+    def populate_positions(self, doc_info):
+        # Record the entity positions of the explicit arguments.
         explicit_entity_positions = defaultdict(dict)
 
         # Argument entity mentions: a mapping from the spans to the arguments,
-        # this is useful since spans are specific while the mentions can be
+        # this is useful since spans are unique while the mentions can be
         # shared by different events.
         arg_mentions = {}
 
@@ -294,6 +274,34 @@ class HashedClozeReader:
                         explicit_entity_positions[eid][arg_span] = arg[
                             'sentence_id']
 
+        return explicit_entity_positions, arg_mentions
+
+    def get_one_test_doc(self, doc_info: Dict,
+                         nid_detector: NullArgDetector,
+                         test_cloze_maker: TestClozeMaker):
+        """Parse and get one test document.
+
+        Args:
+          doc_info: The JSON data of one document.
+          nid_detector: NID detector to detect which slot to fill.
+          test_cloze_maker: TestClozeMaker
+
+        Returns:
+
+        """
+        # Collect information such as features and entity positions.
+        features_by_eid = self.collect_features(doc_info)
+        explicit_entity_positions, arg_mentions = self.populate_positions(
+            doc_info)
+
+        # The context used for resolving.
+        all_event_reps = [
+            self.event_struct.event_repr(
+                e['predicate'], e['frame'],
+                self.get_args_by_role(e['args'], True)) for
+            e in doc_info['events']
+        ]
+
         # This creates a list of candidate mentions for this document.
         doc_mentions = [v for v in arg_mentions.values()]
 
@@ -302,9 +310,7 @@ class HashedClozeReader:
             pred_id = event['predicate']
             event_args = event['args']
             arg_by_slot = self.get_args_by_role(event_args, False)
-
             available_slots = self.frame_slots.get_predicate_slots(event)
-
             test_cases = self.get_test_cases(event, available_slots)
 
             for target_slot, test_stub, answers in test_cases:

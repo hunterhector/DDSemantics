@@ -204,9 +204,15 @@ class TypedEventVocab:
         arg_rep = self.make_arg(entity_rep, dep)
         return arg_rep
 
-    # TODO: This will only use the verb form if the nominal form does not
-    #  presented. Not sure which representation works better here.
     def get_pred_rep(self, event):
+        """
+        Take the predicates, and get the vocab index for it. This will first
+         use the predicate itself, if not found, it will try to use the verb
+         form.
+
+        :param event:
+        :return:
+        """
         pred = self.get_vocab_word(event['predicate'], 'predicate')
 
         if pred == self.oovs['predicate']:
