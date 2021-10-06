@@ -18,9 +18,7 @@ from operator import itemgetter
 import html
 
 # Some small differences between FrameNet v1.4 and v1.5
-frame_changes = {
-    'Observable_bodyparts': 'Observable_body_parts'
-}
+frame_changes = {"Observable_bodyparts": "Observable_body_parts"}
 
 
 class TreeNode:
@@ -49,8 +47,7 @@ class TreeNode:
                     more_child = child.get_leaves()
                     leaves.extend(more_child)
 
-            self.leaves = sorted(leaves,
-                                 key=lambda x: int(x.node_id.split('_')[1]))
+            self.leaves = sorted(leaves, key=lambda x: int(x.node_id.split("_")[1]))
 
         return self.leaves
 
@@ -63,7 +60,7 @@ class NeGraXML(DataLoader):
         self.stat_dir = params.stat_out
 
         self.offset = 0
-        self.text = ''
+        self.text = ""
 
         self.id2span = {}
 
@@ -75,7 +72,7 @@ class NeGraXML(DataLoader):
             logging.info("Parsing: " + xml_path)
 
             root = ET.parse(xml_path).getroot()
-            self.corpus.set_corpus_name(root.attrib['corpusname'])
+            self.corpus.set_corpus_name(root.attrib["corpusname"])
 
             doc = DEDocument(self.corpus)
             doc.set_id(self.corpus.corpus_name)
@@ -96,25 +93,26 @@ class NeGraXML(DataLoader):
             yield doc
 
     def read_frame_parse(self, doc, sent):
-        frame_nodes = sent.find("sem").find('frames')
+        frame_nodes = sent.find("sem").find("frames")
 
         if frame_nodes is None:
             logging.info(
-                "No frame node found for doc %s sent %s." % (
-                    doc.docid, sent.attrib['id']))
+                "No frame node found for doc %s sent %s."
+                % (doc.docid, sent.attrib["id"])
+            )
             return
 
         coref_sets = []
 
         for frame in frame_nodes:
-            negra_fname = frame.attrib['name']
+            negra_fname = frame.attrib["name"]
 
-            if negra_fname == 'Coreference':
+            if negra_fname == "Coreference":
                 # Record the coref mentions and proceed.
                 coref_mentions = []
-                for fe in frame.findall('fe'):
-                    fe_node = fe.find('fenode')
-                    fe_id = fe_node.attrib['idref']
+                for fe in frame.findall("fe"):
+                    fe_node = fe.find("fenode")
+                    fe_id = fe_node.attrib["idref"]
                     fe_span = self.id2span[fe_id]
                     coref_mentions.append(fe_span)
                 coref_sets.append(coref_mentions)
@@ -122,9 +120,9 @@ class NeGraXML(DataLoader):
 
             frame_name = frame_changes.get(negra_fname, negra_fname)
 
-            frame_id = frame.attrib['id']
+            frame_id = frame.attrib["id"]
 
-            target_id = frame.find('target').find('fenode').attrib['idref']
+            target_id = frame.find("target").find("fenode").attrib["idref"]
 
             if target_id not in self.id2span:
                 logging.info("Cannot for target span for " + target_id)
@@ -133,34 +131,34 @@ class NeGraXML(DataLoader):
             target_span = self.id2span[target_id]
 
             p = doc.add_predicate(None, target_span, frame_type=frame_name)
-            p.add_meta('id', frame_id)
+            p.add_meta("id", frame_id)
 
-            for fe in frame.findall('fe'):
-                role = fe.attrib['name']
-                fe_node = fe.find('fenode')
+            for fe in frame.findall("fe"):
+                role = fe.attrib["name"]
+                fe_node = fe.find("fenode")
 
                 flags = []
 
                 linked = fe_node is not None
 
-                for flag in fe.findall('flag'):
-                    flag_name = flag.attrib['name']
+                for flag in fe.findall("flag"):
+                    flag_name = flag.attrib["name"]
                     flags.append(flag_name)
-                    if flag_name == 'Definite_Interpretation':
-                        self.stats['DNI'] += 1
+                    if flag_name == "Definite_Interpretation":
+                        self.stats["DNI"] += 1
                         if linked:
-                            self.stats['DNI_resolved'] += 1
+                            self.stats["DNI_resolved"] += 1
                             self.imp_frames[frame_name] += 1
-                    elif flag_name == 'Indefinite_Interpretation':
-                        self.stats['INI'] += 1
+                    elif flag_name == "Indefinite_Interpretation":
+                        self.stats["INI"] += 1
                     else:
                         if linked:
-                            self.stats['Explicit'] += 1
+                            self.stats["Explicit"] += 1
 
                 if not linked:
                     continue
 
-                fe_id = fe_node.attrib['idref']
+                fe_id = fe_node.attrib["idref"]
 
                 if fe_id not in self.id2span:
                     logging.info("Cannot find fe span for " + fe_id)
@@ -172,8 +170,8 @@ class NeGraXML(DataLoader):
                 arg_mention = doc.add_argument_mention(p, arg_em.aid, role)
 
                 for flag in flags:
-                    if flag == 'Definite_Interpretation':
-                        arg_mention.add_meta('implicit', True)
+                    if flag == "Definite_Interpretation":
+                        arg_mention.add_meta("implicit", True)
                     else:
                         arg_mention.add_meta(flag, True)
 
@@ -185,16 +183,16 @@ class NeGraXML(DataLoader):
 
     def build_next_sent(self, doc, c_parse):
         # Build token spans.
-        sep = ' '
+        sep = " "
 
-        sent_token_nodes = c_parse['tokens']
-        id2node = c_parse['id2node']
+        sent_token_nodes = c_parse["tokens"]
+        id2node = c_parse["id2node"]
 
         for i, token_node in enumerate(sent_token_nodes):
             if i == len(sent_token_nodes) - 1:
-                sep = '\n'
+                sep = "\n"
 
-            word = html.unescape(token_node.attributes['word'])
+            word = html.unescape(token_node.attributes["word"])
 
             self.text += word
             self.text += sep
@@ -214,18 +212,16 @@ class NeGraXML(DataLoader):
             if tid not in self.id2span:
                 leave_tokens = node.get_leaves()
 
-                begin_token_span = self.id2span[
-                    leave_tokens[0].attributes['id']]
-                end_token_span = self.id2span[leave_tokens[-1].attributes['id']]
+                begin_token_span = self.id2span[leave_tokens[0].attributes["id"]]
+                end_token_span = self.id2span[leave_tokens[-1].attributes["id"]]
 
-                self.id2span[tid] = Span(begin_token_span.begin,
-                                         end_token_span.end)
+                self.id2span[tid] = Span(begin_token_span.begin, end_token_span.end)
 
     def read_constituent_parse(self, c_graph_node):
-        root_id = c_graph_node.attrib['root']
+        root_id = c_graph_node.attrib["root"]
 
-        term_nodes = c_graph_node.find('terminals')
-        nt_nodes = c_graph_node.find('nonterminals')
+        term_nodes = c_graph_node.find("terminals")
+        nt_nodes = c_graph_node.find("nonterminals")
 
         token_nodes = []
 
@@ -233,7 +229,7 @@ class NeGraXML(DataLoader):
 
         for t_node in term_nodes:
             attrib = t_node.attrib
-            token_node = TreeNode(attrib['id'], is_leaf=True)
+            token_node = TreeNode(attrib["id"], is_leaf=True)
 
             for k, v in attrib.items():
                 token_node.add_attribute(k, v)
@@ -243,18 +239,18 @@ class NeGraXML(DataLoader):
 
         for nt_node in nt_nodes:
             attrib = nt_node.attrib
-            nonterm_node = TreeNode(attrib['id'], root_id == attrib['id'])
-            nonterm_node.add_attribute('tag', attrib['cat'])
+            nonterm_node = TreeNode(attrib["id"], root_id == attrib["id"])
+            nonterm_node.add_attribute("tag", attrib["cat"])
 
-            for edge_node in nt_node.findall('edge'):
-                child_id = edge_node.attrib['idref']
+            for edge_node in nt_node.findall("edge"):
+                child_id = edge_node.attrib["idref"]
                 child_node = id2node[child_id]
                 nonterm_node.add_child(child_node)
             id2node[nonterm_node.node_id] = nonterm_node
 
         return {
-            'tokens': token_nodes,
-            'id2node': id2node,
+            "tokens": token_nodes,
+            "id2node": id2node,
         }
 
     def print_stats(self):
@@ -265,11 +261,12 @@ class NeGraXML(DataLoader):
         if not os.path.exists(self.stat_dir):
             os.makedirs(self.stat_dir)
 
-        with open(os.path.join(self.stat_dir, 'basic_stats.txt'), 'w') as out:
+        with open(os.path.join(self.stat_dir, "basic_stats.txt"), "w") as out:
             for key, value in self.stats.items():
-                out.write(f'{key}: {value}\n')
+                out.write(f"{key}: {value}\n")
 
-        with open(os.path.join(self.stat_dir, 'frame_stats.txt'), 'w') as out:
-            for key, value in sorted(self.imp_frames.items(),
-                                     key=itemgetter(1), reverse=True):
-                out.write(f'{key}\t{value}\n')
+        with open(os.path.join(self.stat_dir, "frame_stats.txt"), "w") as out:
+            for key, value in sorted(
+                self.imp_frames.items(), key=itemgetter(1), reverse=True
+            ):
+                out.write(f"{key}\t{value}\n")

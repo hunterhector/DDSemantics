@@ -1,6 +1,4 @@
-from traitlets import (
-    Unicode
-)
+from traitlets import Unicode
 from traitlets.config import Configurable
 from event import util
 
@@ -18,13 +16,13 @@ def load_embedding(vocab_path, wv_path):
     with open(vocab_path) as vocab_file:
         index = 0
         for line in vocab_file:
-            w, _ = line.split(' ')
+            w, _ = line.split(" ")
             vocab[w] = index
             inverted.append(w)
             index += 1
 
     wv = []
-    if wv_path.endswith('.bin'):
+    if wv_path.endswith(".bin"):
         # Load word2vec model.
         wv_gensim = KeyedVectors.load_word2vec_format(wv_path, binary=True)
         for _, w in enumerate(inverted):
@@ -79,17 +77,17 @@ def most_similar(vector1, all_vector, inverted, k=10):
     heap_by_type = defaultdict(list)
 
     for index, v in enumerate(all_vector):
-        term = inverted[index].replace("-lrb-", '(').replace("-rrb-", ')')
-        word_parts = term.split('-')
+        term = inverted[index].replace("-lrb-", "(").replace("-rrb-", ")")
+        word_parts = term.split("-")
 
         if len(word_parts) > 1:
-            word = '-'.join(word_parts[:-1])
+            word = "-".join(word_parts[:-1])
             t = word_parts[-1].lower()
-            if t.startswith('prep_'):
-                t = 'prep'
+            if t.startswith("prep_"):
+                t = "prep"
         else:
             word = word_parts[0]
-            t = 'frame'
+            t = "frame"
 
         score = cosine(vector1, v)
         heapq.heappush(heap_by_type[t], (score, word))
@@ -105,11 +103,11 @@ def most_similar(vector1, all_vector, inverted, k=10):
     return most_sim_by_type
 
 
-if __name__ == '__main__':
-    class Debug(Configurable):
-        wv_path = Unicode(help='Saved Embedding Vectors').tag(config=True)
-        vocab_path = Unicode(help='Saved Embedding Vocab').tag(config=True)
+if __name__ == "__main__":
 
+    class Debug(Configurable):
+        wv_path = Unicode(help="Saved Embedding Vectors").tag(config=True)
+        vocab_path = Unicode(help="Saved Embedding Vocab").tag(config=True)
 
     conf = util.load_command_line_config(sys.argv[1:])
     para = Debug(config=conf)

@@ -9,22 +9,21 @@ from typing import Dict
 import pdb
 
 from event import util
-from event.arguments.prepare.slot_processor import (get_simple_dep,
-                                                    is_propbank_dep)
+from event.arguments.prepare.slot_processor import get_simple_dep, is_propbank_dep
 
 logger = logging.getLogger(__name__)
 
 
 class TypedEventVocab:
-    unk_predicate = 'unk_predicate-pred'
-    unk_arg_word = 'unk_argument'
-    unk_frame = 'unk_frame'
-    unk_fe = 'unk_fe'
-    unk_prep = 'unk_preposition'
-    unk_dep = 'unk_dep'
-    unobserved_fe = '__unobserved_fe__'
-    unobserved_arg = '__unobserved_arg__'
-    ghost = '__ghost_component__'
+    unk_predicate = "unk_predicate-pred"
+    unk_arg_word = "unk_argument"
+    unk_frame = "unk_frame"
+    unk_fe = "unk_fe"
+    unk_prep = "unk_preposition"
+    unk_dep = "unk_dep"
+    unobserved_fe = "__unobserved_fe__"
+    unobserved_arg = "__unobserved_arg__"
+    ghost = "__ghost_component__"
 
     def __init__(self, vocab_dir, event_data=None):
         self.lookups: Dict[str, Dict[str, int]] = {}
@@ -32,18 +31,19 @@ class TypedEventVocab:
 
         self.vocab_dir = vocab_dir
 
-        if not os.path.exists(os.path.join(vocab_dir, 'predicate.vocab')):
+        if not os.path.exists(os.path.join(vocab_dir, "predicate.vocab")):
             if event_data is None:
-                logging.error("Vocabulary file not exist and not data "
-                              "provided for counting.")
+                logging.error(
+                    "Vocabulary file not exist and not data " "provided for counting."
+                )
 
             logger.info("Counting vocabulary.")
             vocab_counters = self.get_vocab_count(event_data)
             for vocab_name, counter in vocab_counters.items():
-                raw_vocab_path = os.path.join(vocab_dir, vocab_name + '.vocab')
-                with open(raw_vocab_path, 'w') as out:
+                raw_vocab_path = os.path.join(vocab_dir, vocab_name + ".vocab")
+                with open(raw_vocab_path, "w") as out:
                     for key, value in counter.most_common():
-                        out.write('{}\t{}\n'.format(key, value))
+                        out.write("{}\t{}\n".format(key, value))
             logger.info("Done vocabulary counting.")
 
             # Now filter the vocabulary.
@@ -53,10 +53,9 @@ class TypedEventVocab:
 
             logger.info("Writing filtered vocab to disk.")
             for key, vocab in filtered_vocab.items():
-                with open(os.path.join(self.vocab_dir, key + '.vocab'),
-                          'w') as out:
+                with open(os.path.join(self.vocab_dir, key + ".vocab"), "w") as out:
                     for token, count in vocab:
-                        out.write('{}\t{}\n'.format(token, count))
+                        out.write("{}\t{}\n".format(token, count))
 
             self.pickle_counts()
 
@@ -69,45 +68,45 @@ class TypedEventVocab:
 
                 f_name: str
                 for f_name in os.listdir(vocab_dir):
-                    if '_' in f_name and f_name.endswith('.vocab'):
-                        vocab_type = f_name.split('_')[0]
+                    if "_" in f_name and f_name.endswith(".vocab"):
+                        vocab_type = f_name.split("_")[0]
                     else:
                         continue
 
                     self.lookups[vocab_type] = {}
-                    self.oovs[vocab_type] = 'unk_' + vocab_type
+                    self.oovs[vocab_type] = "unk_" + vocab_type
 
                     with open(os.path.join(vocab_dir, f_name)) as vocab_file:
                         index = 0
                         for line in vocab_file:
-                            word, count = line.strip().split('\t')
+                            word, count = line.strip().split("\t")
                             self.lookups[vocab_type][word] = index
                             index += 1
 
                     logger.info(
                         "Loaded {} types for {}".format(
-                            len(self.lookups[vocab_type]), vocab_type))
+                            len(self.lookups[vocab_type]), vocab_type
+                        )
+                    )
 
                 self.pickle_counts()
 
     def pickle_counts(self):
-        with open(os.path.join(self.vocab_dir, 'lookups.pickle'),
-                  'wb') as out:
+        with open(os.path.join(self.vocab_dir, "lookups.pickle"), "wb") as out:
             pickle.dump(self.lookups, out)
 
-        with open(os.path.join(self.vocab_dir, 'oovs.pickle'),
-                  'wb') as out:
+        with open(os.path.join(self.vocab_dir, "oovs.pickle"), "wb") as out:
             pickle.dump(self.oovs, out)
 
     def unpickle_counts(self):
-        lookup_pickle = os.path.join(self.vocab_dir, 'lookups.pickle')
-        oov_pickle = os.path.join(self.vocab_dir, 'oovs.pickle')
+        lookup_pickle = os.path.join(self.vocab_dir, "lookups.pickle")
+        oov_pickle = os.path.join(self.vocab_dir, "oovs.pickle")
 
         if os.path.exists(lookup_pickle) and os.path.exists(oov_pickle):
             logger.info("Directly loading pickled counts.")
-            with open(lookup_pickle, 'rb') as lp:
+            with open(lookup_pickle, "rb") as lp:
                 self.lookups = pickle.load(lp)
-            with open(oov_pickle, 'rb') as op:
+            with open(oov_pickle, "rb") as op:
                 self.oovs = pickle.load(op)
             return True
         else:
@@ -124,7 +123,7 @@ class TypedEventVocab:
 
     @classmethod
     def make_arg(cls, text, role):
-        if role == 'NA':
+        if role == "NA":
             return text + "-" + cls.unk_dep
         else:
             return text + "-" + role
@@ -140,32 +139,30 @@ class TypedEventVocab:
 
     def get_arg_entity_rep(self, arg, entity_text):
         # If a specific entity text is provided.
-        rep = self.oovs['argument']
+        rep = self.oovs["argument"]
 
         if entity_text is not None:
             # Use the argument's own text.
-            rep = self.get_vocab_word(entity_text, 'argument')
+            rep = self.get_vocab_word(entity_text, "argument")
 
-            if rep == self.oovs['argument']:
+            if rep == self.oovs["argument"]:
                 # Use the text after hypen.
-                if '-' in entity_text:
-                    rep = self.get_vocab_word(entity_text.split('-')[-1],
-                                              'argument')
+                if "-" in entity_text:
+                    rep = self.get_vocab_word(entity_text.split("-")[-1], "argument")
 
-        arg_text = arg['text'].lower()
-        if rep == self.oovs['argument']:
+        arg_text = arg["text"].lower()
+        if rep == self.oovs["argument"]:
             # Fall back to use the argument's own text.
-            rep = self.get_vocab_word(arg_text, 'argument')
+            rep = self.get_vocab_word(arg_text, "argument")
 
-            if rep == self.oovs['argument']:
-                if '-' in arg_text:
-                    rep = self.get_vocab_word(arg_text.split('-')[-1],
-                                              'argument')
+            if rep == self.oovs["argument"]:
+                if "-" in arg_text:
+                    rep = self.get_vocab_word(arg_text.split("-")[-1], "argument")
 
-        if rep == self.oovs['argument']:
+        if rep == self.oovs["argument"]:
             # Fall back to NER tag.
-            if 'ner' in arg:
-                rep = arg['ner']
+            if "ner" in arg:
+                rep = arg["ner"]
         return rep
 
     @classmethod
@@ -193,14 +190,14 @@ class TypedEventVocab:
           entity_rep:
 
         Returns:
-          
+
 
         """
         return cls.make_arg(entity_rep, cls.unk_dep)
 
     def get_arg_rep(self, dep, entity_rep):
-        if dep.startswith('prep'):
-            dep = self.get_vocab_word(dep, 'preposition')
+        if dep.startswith("prep"):
+            dep = self.get_vocab_word(dep, "preposition")
         arg_rep = self.make_arg(entity_rep, dep)
         return arg_rep
 
@@ -213,47 +210,58 @@ class TypedEventVocab:
         :param event:
         :return:
         """
-        pred = self.get_vocab_word(event['predicate'], 'predicate')
+        pred = self.get_vocab_word(event["predicate"], "predicate")
 
-        if pred == self.oovs['predicate']:
+        if pred == self.oovs["predicate"]:
             # Try to see if the verb form help.
-            if 'verb_form' in event:
-                pred = self.get_vocab_word(event['verb_form'], 'predicate')
+            if "verb_form" in event:
+                pred = self.get_vocab_word(event["verb_form"], "predicate")
         return self.make_predicate(pred)
 
     def get_fe_rep(self, frame_name, fe_role):
         # return self.make_fe(frame_name, fe_role)
-        return self.get_vocab_word(self.make_fe(frame_name, fe_role), 'fe')
+        return self.get_vocab_word(self.make_fe(frame_name, fe_role), "fe")
 
     @staticmethod
     def filter_by_count(counter, min_count):
-        return [(key, count) for key, count in counter.most_common() if
-                count >= min_count]
+        return [
+            (key, count) for key, count in counter.most_common() if count >= min_count
+        ]
 
-    def filter_vocab(self, vocab_counters, top_num_prep=150,
-                     min_token_count=500, min_fe_count=50, min_frame_count=5):
+    def filter_vocab(
+        self,
+        vocab_counters,
+        top_num_prep=150,
+        min_token_count=500,
+        min_fe_count=50,
+        min_frame_count=5,
+    ):
         filtered_vocab = {
-            'predicate_min_%d' % min_token_count:
-                self.filter_by_count(vocab_counters['predicate'],
-                                     min_token_count),
-            'argument_min_%d' % min_token_count:
-                self.filter_by_count(vocab_counters['argument'],
-                                     min_token_count),
-            'preposition_top_%d' % top_num_prep:
-                vocab_counters['preposition'].most_common(top_num_prep),
-            'fe_min_%d' % min_fe_count:
-                self.filter_by_count(vocab_counters['fe'], min_fe_count),
-            'frame_min_%d' % min_frame_count:
-                self.filter_by_count(vocab_counters['frame'], min_frame_count)
+            "predicate_min_%d"
+            % min_token_count: self.filter_by_count(
+                vocab_counters["predicate"], min_token_count
+            ),
+            "argument_min_%d"
+            % min_token_count: self.filter_by_count(
+                vocab_counters["argument"], min_token_count
+            ),
+            "preposition_top_%d"
+            % top_num_prep: vocab_counters["preposition"].most_common(top_num_prep),
+            "fe_min_%d"
+            % min_fe_count: self.filter_by_count(vocab_counters["fe"], min_fe_count),
+            "frame_min_%d"
+            % min_frame_count: self.filter_by_count(
+                vocab_counters["frame"], min_frame_count
+            ),
         }
 
         for key, counts in filtered_vocab.items():
             # Use the base key name for the vocabulary, not including the
             # cutoff, (i.e. predicate_min_50 -> predicate)
-            name = key.split('_')[0]
+            name = key.split("_")[0]
 
             # Put oov token as a token int he vocab file.
-            oov = 'unk_' + name
+            oov = "unk_" + name
             counts.insert(0, (oov, 0))
 
             self.lookups[name] = {}
@@ -275,35 +283,38 @@ class TypedEventVocab:
             for line in data:
                 doc_info = json.loads(line)
 
-                for event in doc_info['events']:
+                for event in doc_info["events"]:
                     event_count += 1
 
-                    predicate = event['predicate']
-                    vocab_counters['predicate'][predicate] += 1
+                    predicate = event["predicate"]
+                    vocab_counters["predicate"][predicate] += 1
 
-                    frame = event['frame']
-                    if not frame == 'NA':
-                        vocab_counters['frame'][frame] += 1
+                    frame = event["frame"]
+                    if not frame == "NA":
+                        vocab_counters["frame"][frame] += 1
 
-                    for arg in event['arguments']:
-                        fe_name = arg['feName']
-                        syn_role = arg['dep']
-                        arg_text = arg['text'].lower()
+                    for arg in event["arguments"]:
+                        fe_name = arg["feName"]
+                        syn_role = arg["dep"]
+                        arg_text = arg["text"].lower()
 
-                        vocab_counters['argument'][arg_text] += 1
+                        vocab_counters["argument"][arg_text] += 1
 
-                        if not fe_name == 'NA':
-                            vocab_counters['fe'][
-                                self.make_fe(event['frame'], fe_name)
+                        if not fe_name == "NA":
+                            vocab_counters["fe"][
+                                self.make_fe(event["frame"], fe_name)
                             ] += 1
 
-                        if syn_role.startswith('prep'):
-                            vocab_counters['preposition'][syn_role] += 1
+                        if syn_role.startswith("prep"):
+                            vocab_counters["preposition"][syn_role] += 1
 
                 doc_count += 1
                 if doc_count % 1000 == 0:
-                    print('\rCounted vocab for {} events in '
-                          '{} docs.'.format(event_count, doc_count), end='')
+                    print(
+                        "\rCounted vocab for {} events in "
+                        "{} docs.".format(event_count, doc_count),
+                        end="",
+                    )
 
         return vocab_counters
 
@@ -314,7 +325,7 @@ class EmbbedingVocab:
         self.vocab = {}
         self.tf = []
         self.extras = []
-        self.pad = '__PADDING__'
+        self.pad = "__PADDING__"
         self.padded = False
 
         if with_padding:
@@ -341,10 +352,16 @@ class EmbbedingVocab:
         """
 
         return EmbbedingVocab(
-            vocab_file, True,
-            [TypedEventVocab.unk_frame, TypedEventVocab.unk_fe,
-             TypedEventVocab.get_unk_arg_rep(), TypedEventVocab.unobserved_arg,
-             TypedEventVocab.unobserved_fe, TypedEventVocab.ghost]
+            vocab_file,
+            True,
+            [
+                TypedEventVocab.unk_frame,
+                TypedEventVocab.unk_fe,
+                TypedEventVocab.get_unk_arg_rep(),
+                TypedEventVocab.unobserved_arg,
+                TypedEventVocab.unobserved_fe,
+                TypedEventVocab.ghost,
+            ],
         )
 
     def get_index(self, token, unk):
@@ -370,8 +387,10 @@ class EmbbedingVocab:
 
         """
         if name in self.extras:
-            logger.info(f"Extra {name} already exist in vocabulary "
-                        f"at index {self.vocab[name]}")
+            logger.info(
+                f"Extra {name} already exist in vocabulary "
+                f"at index {self.vocab[name]}"
+            )
             return self.vocab[name]
         else:
             self.extras.append(name)
@@ -379,8 +398,10 @@ class EmbbedingVocab:
             self.vocab[name] = extra_index
             self.tf.append(0)
 
-            logger.info(f"Adding {name} as extra dimension {extra_index} "
-                        f"to {self.vocab_file}")
+            logger.info(
+                f"Adding {name} as extra dimension {extra_index} "
+                f"to {self.vocab_file}"
+            )
 
             return extra_index
 
@@ -403,15 +424,21 @@ class EmbbedingVocab:
                 index += 1
 
 
-def create_sentences(doc, event_vocab, output_path, include_frame=False,
-                     use_simple_dep=False, prop_arg_only=False):
+def create_sentences(
+    doc,
+    event_vocab,
+    output_path,
+    include_frame=False,
+    use_simple_dep=False,
+    prop_arg_only=False,
+):
     if include_frame:
         print("Adding frames to sentences.")
 
     doc_count = 0
     event_count = 0
 
-    with gzip.open(doc) as data, gzip.open(output_path, 'w') as out:
+    with gzip.open(doc) as data, gzip.open(output_path, "w") as out:
         for line in data:
             try:
                 doc_info = json.loads(line)
@@ -421,26 +448,28 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False,
             sentence = []
 
             represent_by_id = {}
-            for entity in doc_info['entities']:
-                eid = entity['entityId']
-                represent = entity['representEntityHead']
+            for entity in doc_info["entities"]:
+                eid = entity["entityId"]
+                represent = entity["representEntityHead"]
                 represent_by_id[eid] = represent
 
-            for event in doc_info['events']:
+            for event in doc_info["events"]:
                 event_count += 1
 
                 sentence.append(event_vocab.get_pred_rep(event))
 
-                if include_frame and not event['frame'] == 'NA':
-                    frame = event_vocab.get_vocab_word(event['frame'], 'frame')
+                if include_frame and not event["frame"] == "NA":
+                    frame = event_vocab.get_vocab_word(event["frame"], "frame")
                     sentence.append(frame)
 
-                for arg in event['arguments']:
-                    dep = arg['dep']
+                for arg in event["arguments"]:
+                    dep = arg["dep"]
 
-                    if arg['argStart'] == event['predicateStart'] \
-                            and arg['argEnd'] == event['predicateEnd']:
-                        dep = 'root'
+                    if (
+                        arg["argStart"] == event["predicateStart"]
+                        and arg["argEnd"] == event["predicateEnd"]
+                    ):
+                        dep = "root"
 
                     if use_simple_dep:
                         dep = get_simple_dep(dep)
@@ -448,41 +477,56 @@ def create_sentences(doc, event_vocab, output_path, include_frame=False,
                     if prop_arg_only and not is_propbank_dep(dep):
                         continue
 
-                    sentence.append(event_vocab.get_arg_rep(
-                        dep, event_vocab.get_arg_entity_rep(arg, None)))
+                    sentence.append(
+                        event_vocab.get_arg_rep(
+                            dep, event_vocab.get_arg_entity_rep(arg, None)
+                        )
+                    )
 
-                    if include_frame and not arg['feName'] == 'NA':
-                        fe = event_vocab.get_fe_rep(frame, arg['feName'])
-                        if not fe == event_vocab.oovs['fe']:
+                    if include_frame and not arg["feName"] == "NA":
+                        fe = event_vocab.get_fe_rep(frame, arg["feName"])
+                        if not fe == event_vocab.oovs["fe"]:
                             sentence.append(fe)
 
-                    if 'NA' in sentence:
+                    if "NA" in sentence:
                         pdb.set_trace()
 
             doc_count += 1
 
-            out.write(str.encode(' '.join(sentence) + '\n'))
+            out.write(str.encode(" ".join(sentence) + "\n"))
 
             if event_count % 1000 == 0:
-                print('\rCreated sentences for {} documents, '
-                      '{} events.'.format(doc_count, event_count), end='')
+                print(
+                    "\rCreated sentences for {} documents, "
+                    "{} events.".format(doc_count, event_count),
+                    end="",
+                )
 
-    print('\rCreated sentences for {} documents, '
-          '{} events.\n'.format(doc_count, event_count), end='')
+    print(
+        "\rCreated sentences for {} documents, "
+        "{} events.\n".format(doc_count, event_count),
+        end="",
+    )
 
 
-def write_sentences(sent_out, event_data, event_vocab, include_frame,
-                    simple_dep, prop_arg):
+def write_sentences(
+    sent_out, event_data, event_vocab, include_frame, simple_dep, prop_arg
+):
     if not os.path.exists(sent_out):
         os.makedirs(sent_out)
 
-    fname = 'sent_with_frames.gz' if include_frame else 'sent_pred_only.gz'
+    fname = "sent_with_frames.gz" if include_frame else "sent_pred_only.gz"
 
     out = os.path.join(sent_out, fname)
     if not os.path.exists(out):
         create_sentences(
-            event_data, event_vocab, out, include_frame=include_frame,
-            use_simple_dep=simple_dep, prop_arg_only=prop_arg)
+            event_data,
+            event_vocab,
+            out,
+            include_frame=include_frame,
+            use_simple_dep=simple_dep,
+            prop_arg_only=prop_arg,
+        )
     else:
         logger.info(f"Will not overwrite {out}")
 
@@ -514,18 +558,18 @@ def main(event_data, vocab_dir, sent_out, prop_arg):
         write_sentences(sent_out, event_data, event_vocab, False, False, False)
 
 
-if __name__ == '__main__':
-    parser = util.OptionPerLineParser(description='Event Vocabulary.',
-                                      fromfile_prefix_chars='@')
-    parser.add_argument('--vocab_dir', type=str, help='Vocabulary directory.')
-    parser.add_argument('--input_data', type=str, help='Input data.')
-    parser.add_argument('--sent_out', type=str, help='Sentence out dir.')
-    parser.add_argument('--prop_arg', action='store_true',
-                        help='Propbank arg only.', default=False)
+if __name__ == "__main__":
+    parser = util.OptionPerLineParser(
+        description="Event Vocabulary.", fromfile_prefix_chars="@"
+    )
+    parser.add_argument("--vocab_dir", type=str, help="Vocabulary directory.")
+    parser.add_argument("--input_data", type=str, help="Input data.")
+    parser.add_argument("--sent_out", type=str, help="Sentence out dir.")
+    parser.add_argument(
+        "--prop_arg", action="store_true", help="Propbank arg only.", default=False
+    )
 
     util.set_basic_log()
 
     args = parser.parse_args()
-    main(
-        args.input_data, args.vocab_dir, args.sent_out, args.prop_arg
-    )
+    main(args.input_data, args.vocab_dir, args.sent_out, args.prop_arg)

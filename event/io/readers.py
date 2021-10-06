@@ -13,8 +13,9 @@ def revert_nmod(dep):
 
 
 class Vocab:
-    def __init__(self, base_folder, name, embedding_path=None, emb_dim=100,
-                 ignore_existing=False):
+    def __init__(
+        self, base_folder, name, embedding_path=None, emb_dim=100, ignore_existing=False
+    ):
         self.fixed = False
         self.base_folder = base_folder
         self.name = name
@@ -42,7 +43,7 @@ class Vocab:
         return index
 
     def load_embedding(self, embedding_path, emb_dim):
-        with open(embedding_path, 'r') as f:
+        with open(embedding_path, "r") as f:
             emb_list = []
             for line in f:
                 parts = line.split()
@@ -76,28 +77,26 @@ class Vocab:
         if not os.path.exists(self.base_folder):
             os.makedirs(self.base_folder)
 
-        path = os.path.join(self.base_folder, self.name + '.pickle')
+        path = os.path.join(self.base_folder, self.name + ".pickle")
         if not os.path.exists(path):
-            with open(path, 'wb') as p:
+            with open(path, "wb") as p:
                 pickle.dump(dict(self.token2i), p)
 
     def load_map(self):
-        path = os.path.join(self.base_folder, self.name + '.pickle')
+        path = os.path.join(self.base_folder, self.name + ".pickle")
         if os.path.exists(path):
-            with open(path, 'rb') as p:
+            with open(path, "rb") as p:
                 self.token2i = pickle.load(p)
-                logging.info(
-                    "Loaded existing vocabulary mapping at: {}".format(path))
+                logging.info("Loaded existing vocabulary mapping at: {}".format(path))
                 return True
         return False
 
 
 class EventReader:
     def __init__(self):
-        self.target_roles = ['arg0', 'arg1', 'prep']
-        self.entity_info_fields = ['syntactic_role', 'mention_text',
-                                   'entity_id']
-        self.entity_equal_fields = ['entity_id', 'represent']
+        self.target_roles = ["arg0", "arg1", "prep"]
+        self.entity_info_fields = ["syntactic_role", "mention_text", "entity_id"]
+        self.entity_equal_fields = ["entity_id", "represent"]
 
         self.len_arg_fields = 4
 
@@ -117,35 +116,35 @@ class EventReader:
         return left_context, right_context
 
     def read_events(self, data_in, gold_role_field):
-        JOINED_TEXT = 'joined_text_format'
-        SPLIT_SENT = 'split_sent_format'
+        JOINED_TEXT = "joined_text_format"
+        SPLIT_SENT = "split_sent_format"
 
         for line in data_in:
             doc = json.loads(line)
 
-            doc_text = ''
+            doc_text = ""
             sentence_spans = []
 
-            if 'text' in doc:
+            if "text" in doc:
                 doc_format = JOINED_TEXT
-                doc_text = doc['text']
-                sentence_spans = doc['sentences']
-            elif 'sentences' in doc:
+                doc_text = doc["text"]
+                sentence_spans = doc["sentences"]
+            elif "sentences" in doc:
                 doc_format = SPLIT_SENT
-                sentences = doc['sentences']
-                doc_text += '\n'.join(sentences)
+                sentences = doc["sentences"]
+                doc_text += "\n".join(sentences)
 
                 offset = 0
                 for sent in sentences:
                     b = offset
                     offset += len(sent)
                     e = offset
-                    sentence_spans.append({'begin': b, 'end': e})
+                    sentence_spans.append({"begin": b, "end": e})
                     offset += 1
             else:
                 raise KeyError("Unknown document format.")
 
-            docid = doc['docid']
+            docid = doc["docid"]
 
             events = []
 
@@ -155,113 +154,113 @@ class EventReader:
 
             entities = {}
 
-            if 'entities' in doc:
-                for ent in doc['entities']:
-                    entity_heads[ent['entityId']] = ent['representEntityHead']
+            if "entities" in doc:
+                for ent in doc["entities"]:
+                    entity_heads[ent["entityId"]] = ent["representEntityHead"]
 
-                    entities[ent['entityId']] = {
-                        'features': ent['entityFeatures'],
-                        'represent_entity_head': ent['representEntityHead'],
+                    entities[ent["entityId"]] = {
+                        "features": ent["entityFeatures"],
+                        "represent_entity_head": ent["representEntityHead"],
                     }
 
-                    if 'entityType' in ent:
-                        entities[ent['entityId']]['entity_type'] = ent[
-                            'entityType']
+                    if "entityType" in ent:
+                        entities[ent["entityId"]]["entity_type"] = ent["entityType"]
 
-            for event_info in doc['events']:
-                pred_start, pred_end = event_info['predicateStart'], \
-                                       event_info['predicateEnd']
+            for event_info in doc["events"]:
+                pred_start, pred_end = (
+                    event_info["predicateStart"],
+                    event_info["predicateEnd"],
+                )
 
                 if doc_format == SPLIT_SENT:
-                    arg_sent_id = event_info['sentenceId']
-                    pred_sent_begin = sentence_spans[arg_sent_id]['begin']
+                    arg_sent_id = event_info["sentenceId"]
+                    pred_sent_begin = sentence_spans[arg_sent_id]["begin"]
                     pred_start += pred_sent_begin
                     pred_end += pred_sent_begin
 
                 raw_context = self.get_context(doc_text, pred_start, pred_end)
 
                 event = {
-                    'predicate': event_info['predicate'],
-                    'predicate_context': raw_context,
-                    'frame': event_info.get('frame', 'NA'),
-                    'arguments': [],
-                    'predicate_start': pred_start,
-                    'predicate_end': pred_end,
-                    'sentence_id': event_info['sentenceId'],
-                    'event_type': event_info.get('eventType', 'NA'),
-                    'is_target': event_info.get('fromGC', False)
+                    "predicate": event_info["predicate"],
+                    "predicate_context": raw_context,
+                    "frame": event_info.get("frame", "NA"),
+                    "arguments": [],
+                    "predicate_start": pred_start,
+                    "predicate_end": pred_end,
+                    "sentence_id": event_info["sentenceId"],
+                    "event_type": event_info.get("eventType", "NA"),
+                    "is_target": event_info.get("fromGC", False),
                 }
 
-                if 'verbForm' in event_info:
-                    event['verb_form'] = event_info['verbForm']
+                if "verbForm" in event_info:
+                    event["verb_form"] = event_info["verbForm"]
 
                 events.append(event)
 
-                for arg_info in event_info['arguments']:
-                    left, right = arg_info['context'].split('___', 1)
+                for arg_info in event_info["arguments"]:
+                    left, right = arg_info["context"].split("___", 1)
                     arg_context = left.split(), right.split()
 
                     if entity_heads:
-                        represent = entity_heads[arg_info['entityId']]
+                        represent = entity_heads[arg_info["entityId"]]
                     else:
-                        represent = arg_info['text']
+                        represent = arg_info["text"]
 
-                    arg_start, arg_end = arg_info['argStart'], arg_info[
-                        'argEnd']
+                    arg_start, arg_end = arg_info["argStart"], arg_info["argEnd"]
 
                     if doc_format == SPLIT_SENT:
                         # The deprecated split sentence format forgot the
                         # sentence id for arguments, we can still use the
                         # predicate id at training time.
-                        arg_sent_id = event_info['sentenceId']
-                        arg_sent_begin = sentence_spans[arg_sent_id]['begin']
+                        arg_sent_id = event_info["sentenceId"]
+                        arg_sent_begin = sentence_spans[arg_sent_id]["begin"]
                         arg_start += arg_sent_begin
                         arg_end += arg_sent_begin
                     elif doc_format == JOINED_TEXT:
-                        arg_sent_id = arg_info['sentenceId']
+                        arg_sent_id = arg_info["sentenceId"]
 
                     arg = {
-                        'dep': revert_nmod(arg_info.get('dep', 'NA')),
-                        'fe': arg_info['feName'],
-                        'arg_context': arg_context,
-                        'entity_id': arg_info['entityId'],
-                        'resolvable': False,
-                        'arg_start': arg_start,
-                        'arg_end': arg_end,
-                        'sentence_id': arg_sent_id,
-                        'role': arg_info.get('argument_role', 'NA'),
-                        'arg_phrase': arg_info['argumentPhrase'],
-                        'text': arg_info['text'],
-                        'represent': represent,
-                        'source': arg_info.get('source', 'automatic'),
+                        "dep": revert_nmod(arg_info.get("dep", "NA")),
+                        "fe": arg_info["feName"],
+                        "arg_context": arg_context,
+                        "entity_id": arg_info["entityId"],
+                        "resolvable": False,
+                        "arg_start": arg_start,
+                        "arg_end": arg_end,
+                        "sentence_id": arg_sent_id,
+                        "role": arg_info.get("argument_role", "NA"),
+                        "arg_phrase": arg_info["argumentPhrase"],
+                        "text": arg_info["text"],
+                        "represent": represent,
+                        "source": arg_info.get("source", "automatic"),
                     }
 
-                    gold_role = arg_info.get(gold_role_field, 'NA')
-                    if not gold_role == 'NA':
-                        arg['gold_role'] = gold_role
+                    gold_role = arg_info.get(gold_role_field, "NA")
+                    if not gold_role == "NA":
+                        arg["gold_role"] = gold_role
 
-                    if 'isImplicit' in arg_info:
-                        arg['implicit'] = arg_info['isImplicit']
-                    if 'isSucceeding' in arg_info:
-                        arg['succeeding'] = arg_info['isSucceeding']
-                    if 'isIncorporated' in arg_info:
-                        arg['incorporated'] = arg_info['isIncorporated']
+                    if "isImplicit" in arg_info:
+                        arg["implicit"] = arg_info["isImplicit"]
+                    if "isSucceeding" in arg_info:
+                        arg["succeeding"] = arg_info["isSucceeding"]
+                    if "isIncorporated" in arg_info:
+                        arg["incorporated"] = arg_info["isIncorporated"]
 
-                    if 'ner' in arg_info:
-                        arg['ner'] = arg_info['ner']
+                    if "ner" in arg_info:
+                        arg["ner"] = arg_info["ner"]
                     else:
-                        its_entity = entities[arg_info['entityId']]
-                        if 'entity_type' in its_entity:
-                            arg['ner'] = its_entity['entity_type']
+                        its_entity = entities[arg_info["entityId"]]
+                        if "entity_type" in its_entity:
+                            arg["ner"] = its_entity["entity_type"]
 
-                    entity_spans[arg_info['entityId']].add((arg_start, arg_end))
+                    entity_spans[arg_info["entityId"]].add((arg_start, arg_end))
 
-                    event['arguments'].append(arg)
+                    event["arguments"].append(arg)
 
             for event in events:
-                for arg in event['arguments']:
-                    if len(entity_spans[arg['entity_id']]) > 1:
-                        arg['resolvable'] = True
+                for arg in event["arguments"]:
+                    if len(entity_spans[arg["entity_id"]]) > 1:
+                        arg["resolvable"] = True
 
             yield docid, events, entities, sentence_spans
 
@@ -273,8 +272,9 @@ class EventReader:
 
 
 class ConllUReader:
-    def __init__(self, data_files, config, token_vocab, tag_vocab, language,
-                 tag_index=-1):
+    def __init__(
+        self, data_files, config, token_vocab, tag_vocab, language, tag_index=-1
+    ):
         self.data_files = data_files
         self.data_format = config.input_format
 
@@ -286,8 +286,10 @@ class ConllUReader:
         self.window_sizes = config.window_sizes
         self.context_size = config.context_size
 
-        logging.info("Batch size is %d, context size is %d." % (
-            self.batch_size, self.context_size))
+        logging.info(
+            "Batch size is %d, context size is %d."
+            % (self.batch_size, self.context_size)
+        )
 
         self.token_vocab = token_vocab
         self.tag_vocab = tag_vocab
@@ -296,9 +298,11 @@ class ConllUReader:
 
         self.language = language
 
-        logging.info("Corpus with [%d] words and [%d] tags.",
-                     self.token_vocab.vocab_size(),
-                     self.tag_vocab.vocab_size())
+        logging.info(
+            "Corpus with [%d] words and [%d] tags.",
+            self.token_vocab.vocab_size(),
+            self.tag_vocab.vocab_size(),
+        )
 
         self.__batch_data = []
 
@@ -312,9 +316,7 @@ class ConllUReader:
                 tag_ids = []
                 features = []
                 token_meta = []
-                parsed_data = (
-                    token_ids, tag_ids, features, token_meta
-                )
+                parsed_data = (token_ids, tag_ids, features, token_meta)
 
                 sent_start = (-1, -1)
                 sent_end = (-1, -1)
@@ -331,7 +333,9 @@ class ConllUReader:
                     elif not line:
                         # Yield data when seeing sentence break.
                         yield parsed_data, (
-                            sentence_id, (sent_start[1], sent_end[1]), docid
+                            sentence_id,
+                            (sent_start[1], sent_end[1]),
+                            docid,
                         )
                         [d.clear() for d in parsed_data]
                         sentence_id += 1
@@ -345,12 +349,15 @@ class ConllUReader:
                         # (wid, token, lemma, upos, xpos, feats, head, deprel,
                         #  deps) = parts[:9]
 
-                        tag = parts[self.tag_index] if \
-                            self.tag_index >= 0 else self.tag_vocab.unk
+                        tag = (
+                            parts[self.tag_index]
+                            if self.tag_index >= 0
+                            else self.tag_vocab.unk
+                        )
 
                         span = [int(x) for x in parts[-1].split(",")]
 
-                        if xpos == 'PUNCT' or upos == 'PUNCT':
+                        if xpos == "PUNCT" or upos == "PUNCT":
                             if self.no_punct:
                                 # Simulate the non-punctuation audio input.
                                 continue
@@ -360,13 +367,9 @@ class ConllUReader:
 
                         word_feature = parts[2:-1]
 
-                        parsed_data[2].append(
-                            word_feature
-                        )
+                        parsed_data[2].append(word_feature)
 
-                        parsed_data[3].append(
-                            (token, span)
-                        )
+                        parsed_data[3].append((token, span))
 
                         if not sentence_id == sent_start[0]:
                             sent_start = [sentence_id, span[0]]
@@ -395,12 +398,16 @@ class ConllUReader:
                 start = i
                 end = i + self.context_size * 2 + 1
                 yield (
-                    token_ids[start:end], tag_ids[start:end],
-                    features[start:end], token_meta[start:end], meta
+                    token_ids[start:end],
+                    tag_ids[start:end],
+                    features[start:end],
+                    token_meta[start:end],
+                    meta,
                 )
 
     def convert_batch(self):
         import torch
+
         tokens, tags, features = zip(*self.__batch_data)
         tokens, tags = torch.FloatTensor(tokens), torch.FloatTensor(tags)
         if torch.cuda.is_available():

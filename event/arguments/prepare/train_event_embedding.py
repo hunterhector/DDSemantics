@@ -4,8 +4,7 @@ import glob
 from smart_open import open
 
 
-def train_event_vectors(input_pattern, vector_out_base, window_size,
-                        min_count=5):
+def train_event_vectors(input_pattern, vector_out_base, window_size, min_count=5):
     class Sentences:
         def __init__(self, pattern):
             self.input_pattern = pattern
@@ -20,29 +19,37 @@ def train_event_vectors(input_pattern, vector_out_base, window_size,
                         yield line.split()
 
     model = Word2Vec(
-        Sentences(input_pattern), workers=10, size=300, window=window_size,
-        sample=1e-4, negative=10, min_count=min_count)
-    model.save(vector_out_base + '.pickle')
-    model.wv.save_word2vec_format(vector_out_base + '.vectors',
-                                  fvocab=vector_out_base + '.voc')
+        Sentences(input_pattern),
+        workers=10,
+        size=300,
+        window=window_size,
+        sample=1e-4,
+        negative=10,
+        min_count=min_count,
+    )
+    model.save(vector_out_base + ".pickle")
+    model.wv.save_word2vec_format(
+        vector_out_base + ".vectors", fvocab=vector_out_base + ".voc"
+    )
 
 
 def main(input_pattern, event_emb_out_base, min_count=5):
     print("Input pattern is " + input_pattern)
     print("Output base is " + event_emb_out_base)
 
-    if not os.path.exists(event_emb_out_base + '.vectors'):
+    if not os.path.exists(event_emb_out_base + ".vectors"):
         print("Training embeddings.")
 
         embedding_dir = os.path.dirname(event_emb_out_base)
         if not os.path.exists(embedding_dir):
             os.makedirs(embedding_dir)
 
-        train_event_vectors(input_pattern, event_emb_out_base,
-                            window_size=10, min_count=min_count)
+        train_event_vectors(
+            input_pattern, event_emb_out_base, window_size=10, min_count=min_count
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
 
     in_pattern = sys.argv[1]

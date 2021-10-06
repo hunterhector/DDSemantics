@@ -5,20 +5,24 @@ ghost_entity_id = -1
 
 
 class ClozeInstances:
-    def __init__(self,
-                 para: ArgModelPara,
-                 event_struct: EventStruct):
+    def __init__(self, para: ArgModelPara, event_struct: EventStruct):
         self.use_frame = para.use_frame
         self.event_struct = event_struct
 
         self.num_slots = para.num_slots
 
-        if para.arg_representation_method == 'fix_slots':
-            self.instance_keys = ('event_component', 'distances', 'features')
+        if para.arg_representation_method == "fix_slots":
+            self.instance_keys = ("event_component", "distances", "features")
             self.fix_slot_mode = False
-        elif para.arg_representation_method == 'role_dynamic':
-            self.instance_keys = ('predicate', 'slot', 'slot_value',
-                                  'slot_length', 'distances', 'features')
+        elif para.arg_representation_method == "role_dynamic":
+            self.instance_keys = (
+                "predicate",
+                "slot",
+                "slot_value",
+                "slot_length",
+                "distances",
+                "features",
+            )
             self.fix_slot_mode = True
 
         self.num_extracted_features = para.num_extracted_features
@@ -35,8 +39,15 @@ class ClozeInstances:
     def label(self):
         return self.__labels
 
-    def assemble_instance(self, features_by_eid, entity_positions, sent_id,
-                          event_repr, filler_eid, label=1):
+    def assemble_instance(
+        self,
+        features_by_eid,
+        entity_positions,
+        sent_id,
+        event_repr,
+        filler_eid,
+        label=1,
+    ):
         if filler_eid == ghost_entity_id:
             self.add_ghost_instance()
         else:
@@ -44,11 +55,12 @@ class ClozeInstances:
             for key, value in event_repr.items():
                 self.__data[key].append(value)
 
-            self.__data['features'].append(features_by_eid[filler_eid])
+            self.__data["features"].append(features_by_eid[filler_eid])
 
-            self.__data['distances'].append(
-                self.get_target_distance_signature(entity_positions, sent_id,
-                                                   filler_eid)
+            self.__data["distances"].append(
+                self.get_target_distance_signature(
+                    entity_positions, sent_id, filler_eid
+                )
             )
 
         self.__labels.append(label)
@@ -58,28 +70,20 @@ class ClozeInstances:
             component_per = 2 if self.use_frame else 1
             num_event_components = (1 + self.num_slots) * component_per
 
-            self.__data['event_component'].append(
-                [self.event_struct.ghost_component] * num_event_components)
+            self.__data["event_component"].append(
+                [self.event_struct.ghost_component] * num_event_components
+            )
         else:
-            self.__data['predicate'].append(
-                self.event_struct.ghost_component
-            )
-            self.__data['slot'].append(
-                self.event_struct.ghost_component
-            )
-            self.__data['slot_value'].append(
-                self.event_struct.ghost_component
-            )
+            self.__data["predicate"].append(self.event_struct.ghost_component)
+            self.__data["slot"].append(self.event_struct.ghost_component)
+            self.__data["slot_value"].append(self.event_struct.ghost_component)
 
-        self.__data['features'].append(
-            [0.0] * self.num_extracted_features)
-        self.__data['distances'].append(
-            [0.0] * self.num_distance_features)
+        self.__data["features"].append([0.0] * self.num_extracted_features)
+        self.__data["distances"].append([0.0] * self.num_distance_features)
 
         self.__labels.append(label)
 
-    def get_target_distance_signature(self, entity_positions, sent_id,
-                                      filler_eid):
+    def get_target_distance_signature(self, entity_positions, sent_id, filler_eid):
         """Compute the distance signature of the instance's other mentions to
         the sentence.
 

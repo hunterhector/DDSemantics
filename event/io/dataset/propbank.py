@@ -22,19 +22,18 @@ class PropBank(DataLoader):
 
     def __init__(self, params, corpus, with_doc=False):
         super().__init__(params, corpus)
-        logging.info('Initialize PropBank reader.')
+        logging.info("Initialize PropBank reader.")
 
         if with_doc:
             self.wsj_treebank = BracketParseCorpusReader(
                 root=params.wsj_path,
                 fileids=params.wsj_file_pattern,
-                tagset='wsj',
-                encoding='ascii'
+                tagset="wsj",
+                encoding="ascii",
             )
 
             logging.info(
-                'Found {} treebank files.'.format(
-                    len(self.wsj_treebank.fileids()))
+                "Found {} treebank files.".format(len(self.wsj_treebank.fileids()))
             )
 
         self.propbank = PropbankCorpusReader(
@@ -47,12 +46,12 @@ class PropBank(DataLoader):
         self.propbank_annos = defaultdict(list)
         logging.info("Loading PropBank Data.")
         for inst in self.propbank.instances():
-            docid = inst.fileid.split('/')[-1]
+            docid = inst.fileid.split("/")[-1]
             self.propbank_annos[docid].append(inst)
 
         self.stats = {
-            'predicate_count': 0,
-            'argument_count': 0,
+            "predicate_count": 0,
+            "argument_count": 0,
         }
 
     def add_all_annotations(self, doc):
@@ -66,35 +65,36 @@ class PropBank(DataLoader):
             tree = parsed_sents[inst.sentnum]
 
             p_word_idx = utils.make_words_from_pointer(tree, inst.predicate)
-            pred_span = utils.get_nltk_span(doc.get_token_spans(),
-                                            inst.sentnum, p_word_idx)
+            pred_span = utils.get_nltk_span(
+                doc.get_token_spans(), inst.sentnum, p_word_idx
+            )
 
-            pred_node_repr = "%s:%d:%s" % (
-                doc.docid, inst.sentnum, inst.predicate)
+            pred_node_repr = "%s:%d:%s" % (doc.docid, inst.sentnum, inst.predicate)
 
-            self.stats['predicate_count'] += 1
+            self.stats["predicate_count"] += 1
 
             for argloc, arg_slot in inst.arguments:
                 a_word_idx = utils.make_words_from_pointer(tree, argloc)
                 arg_span = utils.get_nltk_span(
-                    doc.get_token_spans(), inst.sentnum, a_word_idx)
+                    doc.get_token_spans(), inst.sentnum, a_word_idx
+                )
 
                 if len(arg_span) == 0:
                     continue
 
-                self.stats['argument_count'] += 1
+                self.stats["argument_count"] += 1
 
-                p = doc.add_predicate(None, pred_span, frame_type='PROPBANK')
+                p = doc.add_predicate(None, pred_span, frame_type="PROPBANK")
                 arg_em = doc.add_entity_mention(None, arg_span)
-                arg_node_repr = "%s:%d:%s" % (
-                    doc.docid, inst.sentnum, argloc)
+                arg_node_repr = "%s:%d:%s" % (doc.docid, inst.sentnum, argloc)
 
                 if p and arg_em:
-                    p.add_meta('node', pred_node_repr)
+                    p.add_meta("node", pred_node_repr)
 
                     arg_mention = doc.add_argument_mention(
-                        p, arg_em.aid, arg_slot.lower())
-                    arg_mention.add_meta('node', arg_node_repr)
+                        p, arg_em.aid, arg_slot.lower()
+                    )
+                    arg_mention.add_meta("node", arg_node_repr)
 
     def print_stats(self):
         logging.info("Corpus statistics from Propbank")

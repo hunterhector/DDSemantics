@@ -11,15 +11,15 @@ class OntologyLoader:
         logging.info("Loading ontology from : {}".format(ontology_file))
 
         self.g = rdflib.Graph()
-        self.g.load(ontology_file, format='ttl')
+        self.g.load(ontology_file, format="ttl")
 
-        self.aida_common = 'aidaDomainCommon'
-        self.evt = 'evt'
-        self.rdf = 'rdf'
-        self.rdfs = 'rdfs'
-        self.owl = 'owl'
-        self.schema = 'schema'
-        self.rel = 'rel'
+        self.aida_common = "aidaDomainCommon"
+        self.evt = "evt"
+        self.rdf = "rdf"
+        self.rdfs = "rdfs"
+        self.owl = "owl"
+        self.schema = "schema"
+        self.rel = "rel"
 
         self.namespaces = {}
         for prefix, ns in self.g.namespaces():
@@ -38,7 +38,8 @@ class OntologyLoader:
         self.onto_name = None
         self.version = None
         for n, _, v in self.g.triples(
-                (None, self.namespaces[self.owl].versionInfo, None)):
+            (None, self.namespaces[self.owl].versionInfo, None)
+        ):
             self.onto_name = str(n)
             self.version = str(v)
 
@@ -48,14 +49,14 @@ class OntologyLoader:
             _, _, event = self.shorten(event_key)
             args_text = {}
 
-            for arg_type_ref, arg_content in content.get('args', {}).items():
+            for arg_type_ref, arg_content in content.get("args", {}).items():
                 _, _, arg_type = self.shorten(arg_type_ref)
-                args_text[arg_type] = {'restrictions': set()}
-                for restrict_ref in arg_content.get('restrictions', {}):
+                args_text[arg_type] = {"restrictions": set()}
+                for restrict_ref in arg_content.get("restrictions", {}):
                     _, _, restrict = self.shorten(restrict_ref)
-                    args_text[arg_type]['restrictions'].add(restrict)
+                    args_text[arg_type]["restrictions"].add(restrict)
 
-            text_dict[event] = {'args': args_text}
+            text_dict[event] = {"args": args_text}
 
         return text_dict
 
@@ -64,38 +65,46 @@ class OntologyLoader:
         for event_key, content in self.event_onto.items():
             _, _, event = self.shorten(event_key)
 
-            for arg_type_ref, arg_content in content.get('args', {}).items():
+            for arg_type_ref, arg_content in content.get("args", {}).items():
                 _, _, arg_type = self.shorten(arg_type_ref)
                 arg_restrictions[(event, arg_type)] = []
-                for restrict_ref in arg_content.get('restrictions', {}):
+                for restrict_ref in arg_content.get("restrictions", {}):
                     _, _, restrict = self.shorten(restrict_ref)
                     arg_restrictions[(event, arg_type)].append(restrict)
         return arg_restrictions
 
     def __find_subclassof(self, target_class):
-        return [a for (a, b, c) in self.g.triples(
-            (None, self.namespaces[self.rdfs].subClassOf, target_class)
-        )]
+        return [
+            a
+            for (a, b, c) in self.g.triples(
+                (None, self.namespaces[self.rdfs].subClassOf, target_class)
+            )
+        ]
 
     def __find_values(self, subj):
-        return [c for (a, b, c) in self.g.triples(
-            (subj, self.namespaces[self.owl].allValuesFrom, None)
-        )]
+        return [
+            c
+            for (a, b, c) in self.g.triples(
+                (subj, self.namespaces[self.owl].allValuesFrom, None)
+            )
+        ]
 
     def shorten(self, uri):
         for prefix, ns in self.namespaces.items():
             if uri.startswith(ns):
-                return prefix, ns, re.sub('^' + ns, '', uri)
-        return '', '', uri
+                return prefix, ns, re.sub("^" + ns, "", uri)
+        return "", "", uri
 
     def __unpack_list(self, list_node):
         items = set()
         for _, _, res in self.g.triples(
-                (list_node, self.namespaces[self.rdf].first, None)):
+            (list_node, self.namespaces[self.rdf].first, None)
+        ):
             items.add(res)
 
         for _, _, rest in self.g.triples(
-                (list_node, self.namespaces[self.rdf].rest, None)):
+            (list_node, self.namespaces[self.rdf].rest, None)
+        ):
             items.update(self.__unpack_list(rest))
 
         return items
@@ -104,79 +113,85 @@ class OntologyLoader:
         # Load event arguments restrictions.
         restrictions = set()
         for _, _, arg_range in self.g.triples(
-                (arg_role, self.namespaces[self.schema].rangeIncludes, None)):
+            (arg_role, self.namespaces[self.schema].rangeIncludes, None)
+        ):
             restrictions.add(arg_range)
         return restrictions
 
     def __load(self):
         # Load entity types.
         for subj in self.__find_subclassof(
-                self.namespaces[self.aida_common].EntityType):
+            self.namespaces[self.aida_common].EntityType
+        ):
             self.entity_types.add(subj)
 
         # Load event types.
         for evm_type in self.__find_subclassof(
-                self.namespaces[self.aida_common].EventType):
+            self.namespaces[self.aida_common].EventType
+        ):
             if evm_type not in self.event_onto:
-                self.event_onto[evm_type] = {'args': {}}
+                self.event_onto[evm_type] = {"args": {}}
 
         arg_events = {}
         # Load event arguments.
         for arg_type in self.__find_subclassof(
-                self.namespaces[self.aida_common].EventArgumentType
+            self.namespaces[self.aida_common].EventArgumentType
         ):
             for _, _, evm_type in self.g.triples(
-                    (arg_type, self.namespaces[self.rdfs].domain, None)):
-                self.event_onto[evm_type]['args'][arg_type] = {}
+                (arg_type, self.namespaces[self.rdfs].domain, None)
+            ):
+                self.event_onto[evm_type]["args"][arg_type] = {}
                 arg_events[arg_type] = evm_type
 
         for arg_type, evm_type in arg_events.items():
-            for _, _, restrictions in self.g.triples((
-                    arg_type, self.namespaces[self.schema].rangeIncludes, None
-            )):
-                self.event_onto[evm_type]['args'][arg_type][
-                    'restrictions'] = set()
+            for _, _, restrictions in self.g.triples(
+                (arg_type, self.namespaces[self.schema].rangeIncludes, None)
+            ):
+                self.event_onto[evm_type]["args"][arg_type]["restrictions"] = set()
                 restrictions = self.__get_arg_range(arg_type)
-                self.event_onto[evm_type]['args'][arg_type][
-                    'restrictions'].update(restrictions)
+                self.event_onto[evm_type]["args"][arg_type]["restrictions"].update(
+                    restrictions
+                )
 
-            for _, _, label in self.g.triples((
-                    arg_type, self.namespaces[self.rdfs].label, None
-            )):
-                self.event_onto[evm_type]['args'][arg_type][
-                    'label'] = label
+            for _, _, label in self.g.triples(
+                (arg_type, self.namespaces[self.rdfs].label, None)
+            ):
+                self.event_onto[evm_type]["args"][arg_type]["label"] = label
 
         # Load relation types.
         for relation_type in self.__find_subclassof(
-                self.namespaces[self.aida_common].RelationType):
+            self.namespaces[self.aida_common].RelationType
+        ):
             if relation_type not in self.relation_onto:
-                self.relation_onto[relation_type] = {'args': {}}
+                self.relation_onto[relation_type] = {"args": {}}
 
         arg_relations = {}
         # Load relation arguments.
         for arg_type in self.__find_subclassof(
-                self.namespaces[self.aida_common].RelationArgumentType
+            self.namespaces[self.aida_common].RelationArgumentType
         ):
             for _, _, relation_type in self.g.triples(
-                    (arg_type, self.namespaces[self.rdfs].domain, None)):
-                self.relation_onto[relation_type]['args'][arg_type] = {}
+                (arg_type, self.namespaces[self.rdfs].domain, None)
+            ):
+                self.relation_onto[relation_type]["args"][arg_type] = {}
                 arg_relations[arg_type] = relation_type
 
         for arg_type, relation_type in arg_relations.items():
-            for _, _, restrictions in self.g.triples((
-                    arg_type, self.namespaces[self.schema].rangeIncludes, None
-            )):
-                self.relation_onto[relation_type]['args'][arg_type][
-                    'restrictions'] = set()
+            for _, _, restrictions in self.g.triples(
+                (arg_type, self.namespaces[self.schema].rangeIncludes, None)
+            ):
+                self.relation_onto[relation_type]["args"][arg_type][
+                    "restrictions"
+                ] = set()
                 restrictions = self.__get_arg_range(arg_type)
-                self.relation_onto[relation_type]['args'][arg_type][
-                    'restrictions'].update(restrictions)
+                self.relation_onto[relation_type]["args"][arg_type][
+                    "restrictions"
+                ].update(restrictions)
 
-            for _, _, label in self.g.triples((
-                    arg_type, self.namespaces[self.rdfs].label, None
-            )):
-                self.relation_onto[relation_type]['args'][arg_type][
-                    'label'] = label
+            for _, _, label in self.g.triples(
+                (arg_type, self.namespaces[self.rdfs].label, None)
+            ):
+                self.relation_onto[relation_type]["args"][arg_type]["label"] = label
 
         # # Load labels.
         # for origin, _, label in self.g.triples((
@@ -188,230 +203,230 @@ class OntologyLoader:
         #             self.labels[origin] = label
 
     def as_text(self, output_path):
-        with open(output_path, 'w') as out:
-            out.write('#Event:\n')
+        with open(output_path, "w") as out:
+            out.write("#Event:\n")
             for full_type, event_info in self.event_onto.items():
                 _, _, evm_type = self.shorten(full_type)
                 restricts = {}
 
-                for full_arg_name, arg_info in event_info['args'].items():
+                for full_arg_name, arg_info in event_info["args"].items():
 
                     _, _, arg_name = self.shorten(full_arg_name)
                     restricts[arg_name] = []
 
-                    for restrict in arg_info['restrictions']:
+                    for restrict in arg_info["restrictions"]:
                         _, _, ent_name = self.shorten(restrict)
                         restricts[arg_name].append(ent_name)
 
                 for restrict_arg, l_restrict_ent in restricts.items():
                     out.write(
-                        '%s\t%s\t%s\t' % (
-                            evm_type, restrict_arg, ' '.join(l_restrict_ent)
-                        )
+                        "%s\t%s\t%s\t"
+                        % (evm_type, restrict_arg, " ".join(l_restrict_ent))
                     )
-                    out.write('\n')
-            out.write('\n')
+                    out.write("\n")
+            out.write("\n")
 
-            out.write('#Entity\n')
+            out.write("#Entity\n")
             for full_type in self.entity_types:
                 _, _, entity_type = self.shorten(full_type)
-                out.write(entity_type + '\n')
-            out.write('\n')
+                out.write(entity_type + "\n")
+            out.write("\n")
 
-            out.write('#Filler\n')
+            out.write("#Filler\n")
             for full_type in self.filler_types:
                 _, _, filler_type = self.shorten(full_type)
-                out.write(filler_type + '\n')
-            out.write('\n')
+                out.write(filler_type + "\n")
+            out.write("\n")
 
-            out.write('#Relation\n')
+            out.write("#Relation\n")
             for full_type, relation_info in self.relation_onto.items():
                 _, _, relation_type = self.shorten(full_type)
                 restricts = {}
 
-                for full_arg_name, arg_info in relation_info['args'].items():
+                for full_arg_name, arg_info in relation_info["args"].items():
                     _, _, arg_name = self.shorten(full_arg_name)
                     restricts[arg_name] = []
 
-                    for restrict in arg_info['restrictions']:
+                    for restrict in arg_info["restrictions"]:
                         _, _, ent_name = self.shorten(restrict)
                         restricts[arg_name].append(ent_name)
 
                 for restrict_arg, l_restrict_ent in restricts.items():
                     out.write(
-                        '%s\t%s\t%s\t' % (
-                            relation_type, restrict_arg,
-                            ' '.join(l_restrict_ent)
-                        )
+                        "%s\t%s\t%s\t"
+                        % (relation_type, restrict_arg, " ".join(l_restrict_ent))
                     )
-                    out.write('\n')
-            out.write('\n')
+                    out.write("\n")
+            out.write("\n")
 
     def as_brat_conf(self, conf_path, visual_path=None):
         """Demonstrate how to convert ontology to a Brat config.
         :return:
 
         Args:
-          conf_path: 
+          conf_path:
           visual_path:  (Default value = None)
 
         Returns:
 
         """
         from collections import defaultdict
+
         grouped_ent_types = defaultdict(list)
         for full_type in self.entity_types:
             prefix, ns, short = self.shorten(full_type)
-            short = short.replace('.', '_')
+            short = short.replace(".", "_")
             grouped_ent_types[prefix].append((short, full_type))
 
         grouped_filler_types = defaultdict(list)
         for full_type in self.filler_types:
             prefix, ns, short = self.shorten(full_type)
-            short = short.replace('.', '_')
+            short = short.replace(".", "_")
             grouped_filler_types[prefix].append((short, full_type))
 
         grouped_evm_types = defaultdict(list)
         for full_type in self.event_onto.keys():
             prefix, ns, short = self.shorten(full_type)
-            short = short.replace('.', '_')
+            short = short.replace(".", "_")
             grouped_evm_types[prefix].append((short, full_type))
 
         grouped_relation_types = defaultdict(list)
         for full_type in self.relation_onto.keys():
             prefix, ns, short = self.shorten(full_type)
-            short = short.replace('.', '_')
+            short = short.replace(".", "_")
             grouped_relation_types[prefix].append((short, full_type))
 
-        with open(conf_path, 'w') as out:
-            out.write('[entities]\n\n')
+        with open(conf_path, "w") as out:
+            out.write("[entities]\n\n")
 
             for onto, types in grouped_ent_types.items():
-                out.write('!{}\n'.format(onto + '_entity'))
+                out.write("!{}\n".format(onto + "_entity"))
                 for t, full_type in sorted(types):
-                    out.write('\t' + t + '\n')
-                out.write('\n')
+                    out.write("\t" + t + "\n")
+                out.write("\n")
 
             for onto, types in grouped_filler_types.items():
-                out.write('!{}\n'.format(onto + '_filler'))
+                out.write("!{}\n".format(onto + "_filler"))
                 for t, full_type in sorted(types):
-                    out.write('\t' + t + '\n')
+                    out.write("\t" + t + "\n")
                 # Put a special other type here.
-                out.write('\tOTHER\n')
-                out.write('\n')
+                out.write("\tOTHER\n")
+                out.write("\n")
 
-            out.write('[relations]\n\n')
+            out.write("[relations]\n\n")
             for onto, types in grouped_relation_types.items():
-                out.write('!{}\n'.format(onto + '_relation'))
+                out.write("!{}\n".format(onto + "_relation"))
                 for t, full_type in sorted(types):
-                    sep = '\t'
+                    sep = "\t"
 
-                    out.write(t + '\t')
+                    out.write(t + "\t")
 
-                    args = self.relation_onto[full_type]['args']
+                    args = self.relation_onto[full_type]["args"]
                     for arg, arg_content in args.items():
                         arg_prefix, arg_ns, arg_type = self.shorten(arg)
-                        restricts = arg_content['restrictions']
+                        restricts = arg_content["restrictions"]
                         plain_res = []
 
                         for r in restricts:
                             _, _, restrict_type = self.shorten(r)
-                            plain_res.append(restrict_type.replace('.', '_'))
+                            plain_res.append(restrict_type.replace(".", "_"))
 
                         out.write(
-                            '{}{}:{}'.format(sep, arg_type.replace('.', '_'),
-                                             '|'.join(plain_res))
+                            "{}{}:{}".format(
+                                sep, arg_type.replace(".", "_"), "|".join(plain_res)
+                            )
                         )
-                        sep = ', '
+                        sep = ", "
 
                     if len(args) == 1:
                         # Fill unspecified role with general entity.
-                        out.write(', Arg:<ENTITY>')
+                        out.write(", Arg:<ENTITY>")
 
-                    out.write('\n')
+                    out.write("\n")
 
-                out.write('\n')
+                out.write("\n")
 
-            out.write(
-                'ENT_COREF\tArg1:<ENTITY>, Arg2:<ENTITY>\n'
-            )
-            out.write(
-                'EVM_COREF\tArg1:<EVENT>, Arg2:<EVENT>\n'
-            )
-            out.write(
-                '<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, '
-                '<OVL-TYPE>:<ANY>\n'
-            )
-            out.write('\n')
+            out.write("ENT_COREF\tArg1:<ENTITY>, Arg2:<ENTITY>\n")
+            out.write("EVM_COREF\tArg1:<EVENT>, Arg2:<EVENT>\n")
+            out.write("<OVERLAP>\tArg1:<ENTITY>, Arg2:<ENTITY>, " "<OVL-TYPE>:<ANY>\n")
+            out.write("\n")
 
-            out.write('[attributes]\n\n')
+            out.write("[attributes]\n\n")
 
-            out.write('[events]\n\n')
-            out.write('#Definition of events.\n\n')
+            out.write("[events]\n\n")
+            out.write("#Definition of events.\n\n")
 
             for onto, types in grouped_evm_types.items():
-                out.write('!{}\n'.format(onto + '_event'))
+                out.write("!{}\n".format(onto + "_event"))
                 for t, full_type in sorted(types):
-                    out.write('\t' + t)
-                    sep = '\t'
+                    out.write("\t" + t)
+                    sep = "\t"
 
-                    args = self.event_onto[full_type]['args']
+                    args = self.event_onto[full_type]["args"]
                     for arg, arg_content in args.items():
                         arg_prefix, arg_ns, arg_type = self.shorten(arg)
 
-                        restricts = arg_content['restrictions']
+                        restricts = arg_content["restrictions"]
                         plain_res = []
 
                         for r in restricts:
                             _, _, restrict_type = self.shorten(r)
-                            plain_res.append(restrict_type.replace('.', '_'))
+                            plain_res.append(restrict_type.replace(".", "_"))
 
                         out.write(
-                            '{}{}:{}'.format(sep, arg_type.replace('.', '_'),
-                                             '|'.join(plain_res))
+                            "{}{}:{}".format(
+                                sep, arg_type.replace(".", "_"), "|".join(plain_res)
+                            )
                         )
-                        sep = ', '
+                        sep = ", "
 
                     # Add a general arg.
-                    out.write(', Arg:<ENTITY>')
+                    out.write(", Arg:<ENTITY>")
 
-                    out.write('\n')
+                    out.write("\n")
 
             # Put a special other type here.
-            out.write('\tOTHER_EVENT\n')
+            out.write("\tOTHER_EVENT\n")
 
         if visual_path:
-            with open(visual_path, 'w') as out:
-                out.write('[labels]\n\n')
+            with open(visual_path, "w") as out:
+                out.write("[labels]\n\n")
                 for origin, label in self.labels.items():
                     prefix, ns, t = self.shorten(origin)
-                    out.write((t + ' | ' + label).replace('.', '_'))
+                    out.write((t + " | " + label).replace(".", "_"))
                     if len(t) < len(label):
-                        out.write(' | ' + t.replace('.', '_'))
-                    out.write('\n')
+                        out.write(" | " + t.replace(".", "_"))
+                    out.write("\n")
 
-                out.write('\n[drawing]\n')
-                out.write('SPAN_DEFAULT	fgColor:black, bgColor:lightgreen, '
-                          'borderColor:darken\n')
+                out.write("\n[drawing]\n")
+                out.write(
+                    "SPAN_DEFAULT	fgColor:black, bgColor:lightgreen, "
+                    "borderColor:darken\n"
+                )
 
                 for t in self.entity_types:
-                    out.write('{}	fgColor:black, bgColor:yellow, '
-                              'borderColor:darken\n'.format(t.split('#')[1]))
+                    out.write(
+                        "{}	fgColor:black, bgColor:yellow, "
+                        "borderColor:darken\n".format(t.split("#")[1])
+                    )
 
                 for t in self.filler_types:
-                    out.write('{}	fgColor:black, bgColor:lightblue, '
-                              'borderColor:darken\n'.format(t.split('#')[1]))
+                    out.write(
+                        "{}	fgColor:black, bgColor:lightblue, "
+                        "borderColor:darken\n".format(t.split("#")[1])
+                    )
 
                 for t in self.event_onto:
-                    out.write('{}	fgColor:black, bgColor:cyan, '
-                              'borderColor:darken\n'.format(
-                        t.split('#')[1].replace('.', '_')))
+                    out.write(
+                        "{}	fgColor:black, bgColor:cyan, "
+                        "borderColor:darken\n".format(t.split("#")[1].replace(".", "_"))
+                    )
 
     def __find_arg_restrictions(self):
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from event import util
 
     util.set_basic_log()
@@ -420,10 +435,12 @@ if __name__ == '__main__':
     #                 '/gaia-interchange/master/src/main/resources' \
     #                 '/edu/isi/gaia/seedling-ontology.ttl'
 
-    ontology_path = "https://raw.githubusercontent.com/NextCenturyCorporation" \
-                    "/AIDA-Interchange-Format/master/src/main/resources/com" \
-                    "/ncc/aif/ontologies/EventOntology"
+    ontology_path = (
+        "https://raw.githubusercontent.com/NextCenturyCorporation"
+        "/AIDA-Interchange-Format/master/src/main/resources/com"
+        "/ncc/aif/ontologies/EventOntology"
+    )
 
     loader = OntologyLoader(ontology_path)
-    loader.as_brat_conf('annotation.conf', 'visual.conf')
-    loader.as_text('ontology.txt')
+    loader.as_brat_conf("annotation.conf", "visual.conf")
+    loader.as_text("ontology.txt")

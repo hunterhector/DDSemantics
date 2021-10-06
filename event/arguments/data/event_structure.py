@@ -6,26 +6,33 @@ from event.arguments.prepare.event_vocab import EmbbedingVocab, TypedEventVocab
 
 
 class EventStruct:
-    def __init__(self,
-                 event_emb_vocab: EmbbedingVocab,
-                 typed_event_vocab: TypedEventVocab,
-                 use_frame=True,
-                 fix_slot_mode=True):
+    def __init__(
+        self,
+        event_emb_vocab: EmbbedingVocab,
+        typed_event_vocab: TypedEventVocab,
+        use_frame=True,
+        fix_slot_mode=True,
+    ):
         self.fix_slot_mode = fix_slot_mode
         self.use_frame = use_frame
 
         self.unk_frame_idx = event_emb_vocab.get_index(
-            typed_event_vocab.unk_frame, None)
-        self.unk_fe_idx = event_emb_vocab.get_index(
-            typed_event_vocab.unk_fe, None
+            typed_event_vocab.unk_frame, None
         )
+        self.unk_fe_idx = event_emb_vocab.get_index(typed_event_vocab.unk_fe, None)
         self.unobserved_arg_idx = event_emb_vocab.get_index(
-            typed_event_vocab.unobserved_arg, None)
+            typed_event_vocab.unobserved_arg, None
+        )
         self.unobserved_fe_idx = event_emb_vocab.get_index(
-            typed_event_vocab.unobserved_fe, None)
+            typed_event_vocab.unobserved_fe, None
+        )
 
         # The cloze data are organized by the following slots.
-        self.fix_slot_names = ['subj', 'obj', 'prep', ]
+        self.fix_slot_names = [
+            "subj",
+            "obj",
+            "prep",
+        ]
 
     def event_repr(self, predicate, frame_id, args):
         if self.fix_slot_mode:
@@ -53,7 +60,7 @@ class EventStruct:
             if slot == -1:
                 slot = self.unk_fe_idx
             slot_comps.append(slot)
-            slot_value_comps.append(arg['arg_role'])
+            slot_value_comps.append(arg["arg_role"])
 
         if len(slot_comps) == 0:
             slot_comps.append(TypedEventVocab.unobserved_fe)
@@ -62,10 +69,10 @@ class EventStruct:
         frame_id = self.unk_frame_idx if frame_id == -1 else frame_id
 
         return {
-            'predicate': [predicate, frame_id],
-            'slot': slot_comps,
-            'slot_value': slot_value_comps,
-            'slot_length': len(slot_comps)
+            "predicate": [predicate, frame_id],
+            "slot": slot_comps,
+            "slot_value": slot_value_comps,
+            "slot_length": len(slot_comps),
         }
 
     def _take_fixed_size_event_parts(self, predicate, frame_id, args):
@@ -94,12 +101,12 @@ class EventStruct:
                 arg = args[slot_name]
                 # Adding frame elements in argument representation.
                 if self.use_frame:
-                    fe = arg['fe']
+                    fe = arg["fe"]
                     if fe == -1:
                         event_components.append(self.unk_fe_idx)
                     else:
                         event_components.append(fe)
-                event_components.append(arg['arg_role'])
+                event_components.append(arg["arg_role"])
             else:
                 # Adding unobserved id.
                 if self.use_frame:
@@ -111,5 +118,5 @@ class EventStruct:
             pdb.set_trace()
 
         return {
-            'event_component': event_components,
+            "event_component": event_components,
         }

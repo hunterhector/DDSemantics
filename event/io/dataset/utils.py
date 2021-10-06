@@ -6,7 +6,7 @@ from nltk.corpus.reader.nombank import (
 )
 from nltk.corpus.reader.propbank import (
     PropbankChainTreePointer,
-    PropbankSplitTreePointer
+    PropbankSplitTreePointer,
 )
 from event.io.dataset.base import Span
 
@@ -14,11 +14,13 @@ from event.io.dataset.base import Span
 def get_tree_pointers(tree_pointer):
     pointers = []
     if isinstance(tree_pointer, NombankSplitTreePointer) or isinstance(
-            tree_pointer, NombankChainTreePointer):
+        tree_pointer, NombankChainTreePointer
+    ):
         for p in tree_pointer.pieces:
             pointers.extend(get_tree_pointers(p))
     elif isinstance(tree_pointer, PropbankSplitTreePointer) or isinstance(
-            tree_pointer, PropbankChainTreePointer):
+        tree_pointer, PropbankChainTreePointer
+    ):
         for p in tree_pointer.pieces:
             pointers.extend(get_tree_pointers(p))
     else:
@@ -46,14 +48,13 @@ def make_words_from_pointer(tree, tree_pointer):
 
         idx_list = []
         for idx in range(len(tree.leaves())):
-            if tree.leaf_treeposition(idx)[:len(treepos)] == treepos:
+            if tree.leaf_treeposition(idx)[: len(treepos)] == treepos:
                 idx_list.append(idx)
 
         idx_list.sort()
         word_list = [tree.leaves()[idx] for idx in idx_list]
 
-        if len(all_word_idx) > 0 and \
-                idx_list[0] - 1 == all_word_idx[-1][-1]:
+        if len(all_word_idx) > 0 and idx_list[0] - 1 == all_word_idx[-1][-1]:
             all_word_idx[-1].extend(idx_list)
             all_word_surface[-1].extend(word_list)
         else:
@@ -83,17 +84,17 @@ def get_nltk_span(token_spans, sent_num, indice_groups):
 def normalize_pred_text(raw_text):
     p_text = raw_text.lower()
 
-    if p_text.startswith('not_'):
+    if p_text.startswith("not_"):
         p_text = p_text[4:]
 
-    if p_text == 'losses' or p_text == 'loss' or p_text == 'tax-loss':
-        p_text = 'loss'
+    if p_text == "losses" or p_text == "loss" or p_text == "tax-loss":
+        p_text = "loss"
     else:
-        p_text = p_text.rstrip('s')
+        p_text = p_text.rstrip("s")
 
-    if p_text == 'savings-and-loan':
-        p_text = 'loan'
+    if p_text == "savings-and-loan":
+        p_text = "loan"
 
-    if '-' in p_text:
-        p_text = p_text.split('-')[1]
+    if "-" in p_text:
+        p_text = p_text.split("-")[1]
     return p_text

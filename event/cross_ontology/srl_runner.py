@@ -1,8 +1,5 @@
 from traitlets.config import Configurable
-from traitlets import (
-    Unicode,
-    Integer
-)
+from traitlets import Unicode, Integer
 import logging
 import sys
 from event.cross_ontology.srl_data_reader import SrlDataReader
@@ -27,13 +24,12 @@ class SrlRunner(Configurable):
             print(tags)
 
 
-if __name__ == '__main__':
-    class Basic(Configurable):
-        train_in = Unicode(help='training data directory').tag(config=True)
-        model_name = Unicode(help='model name', default_value='basic').tag(
-            config=True)
-        model_dir = Unicode(help='model directory').tag(config=True)
+if __name__ == "__main__":
 
+    class Basic(Configurable):
+        train_in = Unicode(help="training data directory").tag(config=True)
+        model_name = Unicode(help="model name", default_value="basic").tag(config=True)
+        model_dir = Unicode(help="model directory").tag(config=True)
 
     from event.util import basic_console_log
     from event.util import load_config_with_cmd

@@ -8,7 +8,7 @@ from json.decoder import JSONDecodeError
 
 
 def open_func(data_in):
-    if data_in.endswith('.gz'):
+    if data_in.endswith(".gz"):
         return gzip.open
     else:
         return open
@@ -29,26 +29,26 @@ class ArgFrameCollector:
 
         logging.info("Reading: " + data_in)
 
-        with open_func(data_in)(data_in, 'rt') as data:
+        with open_func(data_in)(data_in, "rt") as data:
             for line in data:
                 try:
                     doc_info = json.loads(line)
                 except JSONDecodeError:
                     continue
 
-                doc_name = doc_info['docid']
+                doc_name = doc_info["docid"]
 
                 doc_count += 1
 
-                for event in doc_info['events']:
-                    predicate = event['predicate']
-                    frame_name = event.get('frame')
+                for event in doc_info["events"]:
+                    predicate = event["predicate"]
+                    frame_name = event.get("frame")
 
                     event_count += 1
 
-                    for argument in event['arguments']:
-                        syn_role = argument['dep']
-                        fe = argument['feName'].replace(' ', '_')
+                    for argument in event["arguments"]:
+                        syn_role = argument["dep"]
+                        fe = argument["feName"].replace(" ", "_")
 
                         prop_entry = (predicate, syn_role)
                         fe_entry = (frame_name, fe)
@@ -64,49 +64,54 @@ class ArgFrameCollector:
                             self.fe_args_map[fe_entry][prop_entry] += 1
 
                 if doc_count % batch == 0:
-                    print("\rProcessed %d documents (%d events)." % (
-                        doc_count, event_count), end='')
+                    print(
+                        "\rProcessed %d documents (%d events)."
+                        % (doc_count, event_count),
+                        end="",
+                    )
 
-        print("\rProcessed %d documents (%d events).\n" % (
-            doc_count, event_count), end='')
+        print(
+            "\rProcessed %d documents (%d events).\n" % (doc_count, event_count), end=""
+        )
 
     def write(self, out_dir):
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
-        with open(os.path.join(out_dir, 'args_frames.tsv'), 'w') as out:
+        with open(os.path.join(out_dir, "args_frames.tsv"), "w") as out:
             for key, count in self.arg_count.items():
                 roles = ""
                 if key in self.args_fe_map:
-                    roles = ' '.join(
-                        ['{},{}:{}'.format(p[0], p[1], c) for p, c in
-                         self.args_fe_map[key].most_common()]
+                    roles = " ".join(
+                        [
+                            "{},{}:{}".format(p[0], p[1], c)
+                            for p, c in self.args_fe_map[key].most_common()
+                        ]
                     )
-                out.write("%s %s\t%s\n" % (
-                    ' '.join(key), count, roles
-                ))
+                out.write("%s %s\t%s\n" % (" ".join(key), count, roles))
 
-        with open(os.path.join(out_dir, 'frames_args.tsv'), 'w') as out:
+        with open(os.path.join(out_dir, "frames_args.tsv"), "w") as out:
             for key, count in self.fe_count.items():
                 roles = ""
                 if key in self.fe_args_map:
-                    roles = ' '.join(
-                        ['{},{}:{}'.format(p[0], p[1], c) for p, c in
-                         self.fe_args_map[key].most_common()]
+                    roles = " ".join(
+                        [
+                            "{},{}:{}".format(p[0], p[1], c)
+                            for p, c in self.fe_args_map[key].most_common()
+                        ]
                     )
 
-                out.write("%s %s\t%s\n" % (
-                    ' '.join(key), count, roles
-                ))
+                out.write("%s %s\t%s\n" % (" ".join(key), count, roles))
 
     @staticmethod
     def sorted_counts(item_counts):
-        sorted_items = sorted(item_counts.items(), reverse=True,
-                              key=operator.itemgetter(1))
-        return ' '.join(["%s %d" % (' '.join(k), v) for k, v in sorted_items])
+        sorted_items = sorted(
+            item_counts.items(), reverse=True, key=operator.itemgetter(1)
+        )
+        return " ".join(["%s %d" % (" ".join(k), v) for k, v in sorted_items])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
 
     logging.basicConfig(level=logging.INFO)

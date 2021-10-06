@@ -22,18 +22,19 @@ class PredictedWikiAnchor(Annotation):
     Attributes:
         _target_page_name (Optional[str])
     """
+
     def __init__(self, pack: DataPack, begin: int, end: int):
         super().__init__(pack, begin, end)
         self._target_page_name: Optional[str] = None
 
-    def __getstate__(self): 
+    def __getstate__(self):
         state = super().__getstate__()
-        state['target_page_name'] = state.pop('_target_page_name')
+        state["target_page_name"] = state.pop("_target_page_name")
         return state
 
-    def __setstate__(self, state): 
+    def __setstate__(self, state):
         super().__setstate__(state)
-        self._target_page_name = state.get('target_page_name', None) 
+        self._target_page_name = state.get("target_page_name", None)
 
     @property
     def target_page_name(self):

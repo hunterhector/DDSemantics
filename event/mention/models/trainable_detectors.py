@@ -26,14 +26,12 @@ class TextCNN(DLMentionDetector):
         self.fix_embedding = config.fix_embedding
         position_embed_dim = config.position_embedding_dim
         self.word_embed = Embedding(vocab_size, w_embed_dim)
-        self.position_embed = Embedding(2 * max_filter_size + 1,
-                                        position_embed_dim)
+        self.position_embed = Embedding(2 * max_filter_size + 1, position_embed_dim)
 
         self.full_embed_dim = w_embed_dim + position_embed_dim
 
         self.convs1 = ModuleList(
-            [Conv2d(1, filter_num, (fs, self.full_embed_dim)) for fs in
-             filter_sizes]
+            [Conv2d(1, filter_num, (fs, self.full_embed_dim)) for fs in filter_sizes]
         )
 
         self.dropout = nn.Dropout(config.dropout)

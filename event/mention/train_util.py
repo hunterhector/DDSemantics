@@ -38,8 +38,6 @@ def train(model, train_reader, dev_reader, model_dir, model_name):
                 torch.save(model, os.path.join(model_dir, model_name))
             else:
                 if step - best_step > early_patience:
-                    logging.info(
-                        "Early stop with patience %d." % early_patience
-                    )
+                    logging.info("Early stop with patience %d." % early_patience)
 
     train_reader.tag_vocab.fix()

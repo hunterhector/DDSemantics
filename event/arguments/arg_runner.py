@@ -22,8 +22,11 @@ from torch.nn import functional as F
 import numpy as np
 
 from event.arguments.data.cloze_readers import HashedClozeReader
-from event.arguments.NIFDetector import GoldNullArgDetector, \
-    TrainableNullArgDetector, ResolvableArgDetector
+from event.arguments.NIFDetector import (
+    GoldNullArgDetector,
+    TrainableNullArgDetector,
+    ResolvableArgDetector,
+)
 from event.arguments.implicit_arg_params import ArgModelPara
 from event.arguments.arg_models import (
     EventCoherenceModel,
@@ -35,9 +38,7 @@ from event.arguments.implicit_arg_resources import ImplicitArgResources
 from event.arguments.evaluation import ImplicitEval
 from event.arguments.data.cloze_gen import ClozeSampler
 from event.util import load_mixed_configs
-from event.util import (
-    set_file_log, set_basic_log, ensure_dir, append_num_to_path
-)
+from event.util import set_file_log, set_basic_log, ensure_dir, append_num_to_path
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def data_gen(data_path, from_line=None, until_line=None):
     if os.path.isdir(data_path):
         last_file = None
         for f in sorted(os.listdir(data_path)):
-            if not f.startswith('.') and f.endswith('.gz'):
+            if not f.startswith(".") and f.endswith(".gz"):
                 with open(os.path.join(data_path, f)) as fin:
                     for line in fin:
                         line_num += 1
@@ -83,8 +84,9 @@ def to_device(data, device):
 
 
 class CachableDataSource:
-    def __init__(self, reader, data_iter, train_sampler, device,
-                 cache_size=-1, dump_dir=None):
+    def __init__(
+        self, reader, data_iter, train_sampler, device, cache_size=-1, dump_dir=None
+    ):
         self.data_source = data_iter
         self.train_sampler = train_sampler
         self.dump_dir = dump_dir
@@ -93,13 +95,14 @@ class CachableDataSource:
         self.device = device
 
     def check_dump_dir(self):
-        return (self.dump_dir is not None and os.path.exists(
-            self.dump_dir) and os.path.exists(
-            os.path.join(self.dump_dir, '.success')))
+        return (
+            self.dump_dir is not None
+            and os.path.exists(self.dump_dir)
+            and os.path.exists(os.path.join(self.dump_dir, ".success"))
+        )
 
     def get_dump_files(self):
-        file_list = [f for f in os.listdir(self.dump_dir) if
-                     f.endswith('.cache')]
+        file_list = [f for f in os.listdir(self.dump_dir) if f.endswith(".cache")]
         random.shuffle(file_list)
         return file_list
 
@@ -107,7 +110,7 @@ class CachableDataSource:
         if self.check_dump_dir():
             logger.info("Reading from dumped instances.")
             for dump_f in self.get_dump_files():
-                with open(os.path.join(self.dump_dir, dump_f), 'rb') as f:
+                with open(os.path.join(self.dump_dir, dump_f), "rb") as f:
                     try:
                         while True:
                             yield to_device(pickle.load(f), self.device)
@@ -118,8 +121,9 @@ class CachableDataSource:
                         pdb.set_trace()
         else:
             logger.info("Reading from raw data source.")
-            train_gen = self.reader.read_train_batch(self.data_source,
-                                                     self.train_sampler)
+            train_gen = self.reader.read_train_batch(
+                self.data_source, self.train_sampler
+            )
 
             if self.dump_dir is not None and not os.path.exists(self.dump_dir):
                 os.makedirs(self.dump_dir)
@@ -128,8 +132,8 @@ class CachableDataSource:
             #  sampling if we don't sample inside the reader, we can do them
             #  here?
             if self.dump_dir is not None:
-                cache_path = os.path.join(self.dump_dir, f'dump_{0}.cache')
-                cache_file = open(cache_path, 'wb')
+                cache_path = os.path.join(self.dump_dir, f"dump_{0}.cache")
+                cache_file = open(cache_path, "wb")
                 cache_pair = 0, cache_file
 
             instance_idx = 0
@@ -143,15 +147,15 @@ class CachableDataSource:
                         cache_file = cache_pair[1]
                     else:
                         cache_file = open(
-                            os.path.join(self.dump_dir,
-                                         f'dump_{cache_idx}.cache'), 'wb')
+                            os.path.join(self.dump_dir, f"dump_{cache_idx}.cache"), "wb"
+                        )
                         cache_pair = cache_idx, cache_file
 
                     pickle.dump(data_batch, cache_file)
 
             if self.dump_dir is not None:
-                with open(os.path.join(self.dump_dir, '.success'), 'w') as f:
-                    f.write('success')
+                with open(os.path.join(self.dump_dir, ".success"), "w") as f:
+                    f.write("success")
 
 
 class ArgRunner(Configurable):
@@ -171,8 +175,9 @@ class ArgRunner(Configurable):
         model_suffix = self.basic_para.model_name
         self.model_dir = os.path.join(self.basic_para.model_dir, model_suffix)
         self.debug_dir = os.path.join(self.basic_para.debug_dir, model_suffix)
-        self.train_cache_dir = os.path.join(self.basic_para.train_cache_dir,
-                                            self.basic_para.model_name)
+        self.train_cache_dir = os.path.join(
+            self.basic_para.train_cache_dir, self.basic_para.model_name
+        )
 
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -182,43 +187,43 @@ class ArgRunner(Configurable):
 
         logger.info("Model saving directory: " + self.model_dir)
 
-        self.checkpoint_name = 'checkpoint.pth'
-        self.best_model_name = 'model_best.pth'
+        self.checkpoint_name = "checkpoint.pth"
+        self.best_model_name = "model_best.pth"
 
         if self.para.use_gpu:
             if torch.cuda.is_available():
-                self.device = 'cuda'
+                self.device = "cuda"
             else:
                 raise RuntimeError("CUDA not available.")
         else:
-            self.device = 'cpu'
+            self.device = "cpu"
 
         self.nb_epochs = self.para.nb_epochs
 
         if self.para.model_type:
-            if self.para.model_type == 'EventPairComposition':
+            if self.para.model_type == "EventPairComposition":
                 self.model = EventCoherenceModel(
-                    self.para, self.resources, self.device,
-                    self.basic_para.model_name
+                    self.para, self.resources, self.device, self.basic_para.model_name
                 ).to(self.device)
                 logger.info("Initialize model")
                 logger.info(str(self.model))
 
         # Set up Null Instantiation detector.
-        if self.para.nid_method == 'gold':
+        if self.para.nid_method == "gold":
             self.nid_detector = GoldNullArgDetector()
-        elif self.para.nid_method == 'train':
+        elif self.para.nid_method == "train":
             self.nid_detector = TrainableNullArgDetector()
 
         self.resolvable_detector = ResolvableArgDetector()
 
     def _assert(self):
         if self.resources.word_embedding:
-            assert self.para.word_vocab_size == \
-                   self.resources.word_embedding.shape[0]
+            assert self.para.word_vocab_size == self.resources.word_embedding.shape[0]
         if self.resources.event_embedding:
-            assert self.para.event_arg_vocab_size == \
-                   self.resources.event_embedding.shape[0]
+            assert (
+                self.para.event_arg_vocab_size
+                == self.resources.event_embedding.shape[0]
+            )
 
     def _get_loss(self, labels, batch_instance, batch_common, mask):
         coh = self.model(batch_instance, batch_common)
@@ -227,12 +232,12 @@ class ArgRunner(Configurable):
 
     def __dump_stuff(self, key, obj):
         logger.info("Saving object: {}.".format(key))
-        with open(os.path.join(self.debug_dir, key + '.pickle'), 'wb') as out:
+        with open(os.path.join(self.debug_dir, key + ".pickle"), "wb") as out:
             pickle.dump(obj, out)
 
     def __load_stuff(self, key):
         logger.info("Loading object: {}.".format(key))
-        with open(os.path.join(self.debug_dir, key + '.pickle'), 'rb') as fin:
+        with open(os.path.join(self.debug_dir, key + ".pickle"), "rb") as fin:
             return pickle.load(fin)
 
     def __save_checkpoint(self, state, name):
@@ -247,7 +252,7 @@ class ArgRunner(Configurable):
         num_batches = 0
         num_instances = 0
 
-        logger.info(f'Validation with {len(all_dev_data)} batches.')
+        logger.info(f"Validation with {len(all_dev_data)} batches.")
         dev_sampler.reset()
 
         for dev_data in all_dev_data:
@@ -255,16 +260,17 @@ class ArgRunner(Configurable):
             loss = self._get_loss(labels, instances, common_data, mask)
 
             if not loss:
-                raise ValueError('Error in computing loss.')
+                raise ValueError("Error in computing loss.")
             dev_loss += loss.item()
 
             num_batches += 1
             num_instances += b_size
 
-        logger.info("Validation loss is [%.4f] on [%d] batches, [%d] "
-                    "instances. Average loss is [%.4f]." % (
-                        dev_loss, num_batches, num_instances,
-                        dev_loss / num_batches))
+        logger.info(
+            "Validation loss is [%.4f] on [%d] batches, [%d] "
+            "instances. Average loss is [%.4f]."
+            % (dev_loss, num_batches, num_instances, dev_loss / num_batches)
+        )
 
         return dev_loss, num_batches, num_instances
 
@@ -273,7 +279,7 @@ class ArgRunner(Configurable):
         if os.path.isfile(checkpoint_path):
             logger.info("Loading checkpoint '{}'".format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
-            self.model.load_state_dict(checkpoint['state_dict'])
+            self.model.load_state_dict(checkpoint["state_dict"])
 
         for name, param in self.model.named_parameters():
             if torch.isnan(param).any():
@@ -286,14 +292,12 @@ class ArgRunner(Configurable):
         if os.path.exists(best_model_path):
             logger.info("Loading best model from '{}'".format(best_model_path))
             checkpoint = torch.load(best_model_path)
-            self.model.load_state_dict(checkpoint['state_dict'])
+            self.model.load_state_dict(checkpoint["state_dict"])
         else:
-            logger.warning(
-                "Serialized model not existing, test without loading.")
+            logger.warning("Serialized model not existing, test without loading.")
 
     @torch.no_grad()
-    def __test(self, model, test_lines, nid_detector,
-               auto_test=False, eval_dir=None):
+    def __test(self, model, test_lines, nid_detector, auto_test=False, eval_dir=None):
         self.model.eval()
 
         evaluator = ImplicitEval(eval_dir)
@@ -307,15 +311,17 @@ class ArgRunner(Configurable):
         logger.info(
             f"During testing, factor role is [{self.reader.factor_role}], "
             f"use gold mention: {self.reader.use_gold_mention}, "
-            f"use auto mention: {self.reader.use_auto_mention}")
+            f"use auto mention: {self.reader.use_auto_mention}"
+        )
 
         logger.info(f"Evaluation result will be stored at {eval_dir}")
 
         for test_data in self.reader.read_test_docs(test_lines, nid_detector):
             (labels, instances, common_data, _, _, metadata) = test_data
 
-            coh = model(to_device(instances, self.device),
-                        to_device(common_data, self.device))
+            coh = model(
+                to_device(instances, self.device), to_device(common_data, self.device)
+            )
 
             coh_scores = np.squeeze(coh.data.cpu().numpy()).tolist()
 
@@ -340,19 +346,24 @@ class ArgRunner(Configurable):
         self.model.train()
 
     def self_study_baseline(self, basic_para):
-        dev_lines = [l for l in data_gen(
-            basic_para.train_in, until_line=basic_para.self_test_size)]
+        dev_lines = [
+            l
+            for l in data_gen(basic_para.train_in, until_line=basic_para.self_test_size)
+        ]
 
         # Random baseline.
         logger.info("Run self study with random baseline.")
-        random_baseline = RandomBaseline(
-            self.para, self.resources, self.device).to(self.device)
+        random_baseline = RandomBaseline(self.para, self.resources, self.device).to(
+            self.device
+        )
         self.__test(
-            random_baseline, dev_lines,
+            random_baseline,
+            dev_lines,
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, random_baseline.name,
-                f'self_study_{basic_para.self_test_size}',
+                basic_para.log_dir,
+                random_baseline.name,
+                f"self_study_{basic_para.self_test_size}",
             ),
             test_factor_role=basic_para.test_factor_role,
             auto_test=True,
@@ -361,13 +372,16 @@ class ArgRunner(Configurable):
         # W2v baseline.
         logger.info("Run self study with w2v baseline.")
         w2v_baseline = BaselineEmbeddingModel(
-            self.para, self.resources, self.device).to(self.device)
+            self.para, self.resources, self.device
+        ).to(self.device)
         self.__test(
-            w2v_baseline, test_lines=dev_lines,
+            w2v_baseline,
+            test_lines=dev_lines,
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, w2v_baseline.name,
-                f'self_study_{basic_para.self_test_size}',
+                basic_para.log_dir,
+                w2v_baseline.name,
+                f"self_study_{basic_para.self_test_size}",
             ),
             auto_test=True,
         )
@@ -375,13 +389,16 @@ class ArgRunner(Configurable):
         # Frequency baseline.
         logger.info("Run self study with frequency baseline.")
         most_freq_baseline = MostFrequentModel(
-            self.para, self.resources, self.device).to(self.device)
+            self.para, self.resources, self.device
+        ).to(self.device)
         self.__test(
-            most_freq_baseline, test_lines=dev_lines,
+            most_freq_baseline,
+            test_lines=dev_lines,
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, most_freq_baseline.name,
-                f'self_study_{basic_para.self_test_size}',
+                basic_para.log_dir,
+                most_freq_baseline.name,
+                f"self_study_{basic_para.self_test_size}",
             ),
             auto_test=True,
         )
@@ -389,26 +406,29 @@ class ArgRunner(Configurable):
     def self_study_model(self, basic_para, suffix, load_checkpoint=False):
         if load_checkpoint:
             # Checkpoint test.
-            logger.info(
-                f"Run self study with the checkpoint at {self.model_dir}.")
+            logger.info(f"Run self study with the checkpoint at {self.model_dir}.")
 
             checkpoint_path = os.path.join(self.model_dir, self.checkpoint_name)
             if os.path.isfile(checkpoint_path):
                 logger.info("Loading checkpoint '{}'".format(checkpoint_path))
                 checkpoint = torch.load(checkpoint_path)
-                self.model.load_state_dict(checkpoint['state_dict'])
+                self.model.load_state_dict(checkpoint["state_dict"])
         else:
-            logger.info('Run self model with current parameters.')
+            logger.info("Run self model with current parameters.")
 
-        dev_lines = [l for l in data_gen(
-            basic_para.train_in, until_line=basic_para.self_test_size)]
+        dev_lines = [
+            l
+            for l in data_gen(basic_para.train_in, until_line=basic_para.self_test_size)
+        ]
 
         self.__test(
-            self.model, test_lines=dev_lines,
+            self.model,
+            test_lines=dev_lines,
             nid_detector=self.resolvable_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, self.model.name,
-                f'self_test_{basic_para.self_test_size}_{suffix}',
+                basic_para.log_dir,
+                self.model.name,
+                f"self_test_{basic_para.self_test_size}_{suffix}",
             ),
             auto_test=True,
         )
@@ -447,31 +467,37 @@ class ArgRunner(Configurable):
 
         # Frequency baseline.
         most_freq_baseline = MostFrequentModel(
-            self.para, self.resources, self.device).to(self.device)
+            self.para, self.resources, self.device
+        ).to(self.device)
         self.__test(
-            most_freq_baseline, data_gen(basic_para.test_in),
+            most_freq_baseline,
+            data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, most_freq_baseline.name, 'test', 'default',
+                basic_para.log_dir,
+                most_freq_baseline.name,
+                "test",
+                "default",
             ),
         )
 
         # Random baseline.
-        random_baseline = RandomBaseline(
-            self.para, self.resources, self.device).to(self.device)
+        random_baseline = RandomBaseline(self.para, self.resources, self.device).to(
+            self.device
+        )
         self.__test(
-            random_baseline, data_gen(basic_para.test_in),
+            random_baseline,
+            data_gen(basic_para.test_in),
             nid_detector=self.nid_detector,
             eval_dir=os.path.join(
-                basic_para.log_dir, random_baseline.name, 'test', 'default'
+                basic_para.log_dir, random_baseline.name, "test", "default"
             ),
         )
 
     def test(self, test_in, eval_dir):
         logger.info("Test on [%s]." % test_in)
         self.__load_best()
-        self.__test(self.model, data_gen(test_in), self.nid_detector,
-                    eval_dir=eval_dir)
+        self.__test(self.model, data_gen(test_in), self.nid_detector, eval_dir=eval_dir)
 
     def train(self, basic_para, resume=False):
         train_in = basic_para.train_in
@@ -486,17 +512,18 @@ class ArgRunner(Configurable):
         logger.info(
             f"During training, factor role is [{self.reader.factor_role}], "
             f"use gold mention: {self.reader.use_gold_mention}, "
-            f"use auto mention: {self.reader.use_auto_mention}")
+            f"use auto mention: {self.reader.use_auto_mention}"
+        )
 
         logger.info("Training with data from [%s]", train_in)
 
         if self.basic_para.valid_in:
-            logger.info("Validation with data from [%s]",
-                        self.basic_para.valid_in)
+            logger.info("Validation with data from [%s]", self.basic_para.valid_in)
         elif self.basic_para.validation_size:
             logger.info(
                 "Will use first [%d] lines for "
-                "validation." % self.basic_para.validation_size)
+                "validation." % self.basic_para.validation_size
+            )
         else:
             logging.error("No validation!")
 
@@ -514,13 +541,13 @@ class ArgRunner(Configurable):
             if os.path.isfile(checkpoint_path):
                 logger.info("Loading checkpoint '{}'".format(checkpoint_path))
                 checkpoint = torch.load(checkpoint_path)
-                self.model.load_state_dict(checkpoint['state_dict'])
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                self.model.load_state_dict(checkpoint["state_dict"])
+                optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-                start_epoch = checkpoint['epoch']
-                best_loss = checkpoint['best_loss']
-                previous_dev_loss = checkpoint['previous_dev_loss']
-                worse = checkpoint['worse']
+                start_epoch = checkpoint["epoch"]
+                best_loss = checkpoint["best_loss"]
+                previous_dev_loss = checkpoint["previous_dev_loss"]
+                worse = checkpoint["worse"]
 
                 # https://discuss.pytorch.org/t/gpu-memory-usage-increases-by-90-after-torch-load/9213/3
                 del checkpoint
@@ -535,25 +562,31 @@ class ArgRunner(Configurable):
             else:
                 logger.info(
                     "No model to resume at '{}', starting from scratch.".format(
-                        checkpoint_path))
+                        checkpoint_path
+                    )
+                )
 
         # Read development lines.
         dev_lines = None
         if self.basic_para.valid_in:
             dev_lines = [l for l in data_gen(self.basic_para.valid_in)]
         if self.basic_para.validation_size:
-            dev_lines = [l for l in
-                         data_gen(train_in,
-                                  until_line=self.basic_para.validation_size)]
+            dev_lines = [
+                l
+                for l in data_gen(train_in, until_line=self.basic_para.validation_size)
+            ]
 
         all_dev_data = []
-        for dev_data in CachableDataSource(self.reader, dev_lines, dev_sampler,
-                                           self.device).data():
+        for dev_data in CachableDataSource(
+            self.reader, dev_lines, dev_sampler, self.device
+        ).data():
             all_dev_data.append(dev_data)
 
         if self.basic_para.pre_val:
-            logger.info("Conduct a pre-validation, this will overwrite best "
-                        "loss from the check point.")
+            logger.info(
+                "Conduct a pre-validation, this will overwrite best "
+                "loss from the check point."
+            )
 
             dev_loss, n_batches, n_instances = self.validation(
                 all_dev_data, dev_sampler
@@ -573,8 +606,10 @@ class ArgRunner(Configurable):
         train_dataset = CachableDataSource(
             self.reader,
             data_gen(train_in, from_line=self.basic_para.validation_size),
-            train_sampler, self.device, self.basic_para.train_cache_size,
-            self.train_cache_dir
+            train_sampler,
+            self.device,
+            self.basic_para.train_cache_size,
+            self.train_cache_dir,
         )
 
         for epoch in range(start_epoch, self.nb_epochs):
@@ -584,9 +619,11 @@ class ArgRunner(Configurable):
 
             train_sampler.reset()
 
-            logger.info(f'Will ignore the first '
-                        f'{self.basic_para.validation_size} validation lines '
-                        f'for training.')
+            logger.info(
+                f"Will ignore the first "
+                f"{self.basic_para.validation_size} validation lines "
+                f"for training."
+            )
 
             for instance_data in train_dataset.data():
                 labels, instances, batch_info, b_size, mask, _ = instance_data
@@ -595,23 +632,26 @@ class ArgRunner(Configurable):
 
                 # Case of a bug.
                 if not loss:
-                    self.__save_checkpoint({
-                        'epoch': epoch + 1,
-                        'best_loss': best_loss,
-                        'previous_dev_loss': previous_dev_loss,
-                        'worse': worse,
-                        'state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                    }, 'model_debug.pth')
+                    self.__save_checkpoint(
+                        {
+                            "epoch": epoch + 1,
+                            "best_loss": best_loss,
+                            "previous_dev_loss": previous_dev_loss,
+                            "worse": worse,
+                            "state_dict": self.model.state_dict(),
+                            "optimizer_state_dict": optimizer.state_dict(),
+                        },
+                        "model_debug.pth",
+                    )
 
                     for name, weight in self.model.named_parameters():
-                        if name.startswith('event_to_var_layer'):
+                        if name.startswith("event_to_var_layer"):
                             logging.error(name, weight)
 
-                    self.__dump_stuff('batch_instance', instances)
-                    self.__dump_stuff('batch_info', batch_info)
+                    self.__dump_stuff("batch_instance", instances)
+                    self.__dump_stuff("batch_info", batch_info)
 
-                    raise ValueError('Error in computing loss.')
+                    raise ValueError("Error in computing loss.")
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -619,7 +659,8 @@ class ArgRunner(Configurable):
 
                 # TODO: found nan in the weights.
                 nans_in_weight = torch.isnan(
-                    self.model._linear_combine.weight).nonzero()
+                    self.model._linear_combine.weight
+                ).nonzero()
                 if nans_in_weight.shape[0] > 0:
                     pdb.set_trace()
 
@@ -644,13 +685,14 @@ class ArgRunner(Configurable):
                     )
 
                     if basic_para.self_test_size > 0:
-                        self.self_study_model(basic_para, f'epoch_{epoch}')
+                        self.self_study_model(basic_para, f"epoch_{epoch}")
 
                     recent_loss = 0
 
             logger.info("Computing validation loss.")
             dev_loss, n_batches, n_instances = self.validation(
-                all_dev_data, dev_sampler)
+                all_dev_data, dev_sampler
+            )
 
             logger.info(
                 f"Finished epoch {epoch:d}, "
@@ -663,12 +705,16 @@ class ArgRunner(Configurable):
                 best_loss = dev_loss
                 new_best = True
 
-                logger.info(f"Best loss is {best_loss:.4f} "
-                            f"(avg. {best_loss / n_batches:.4f}). "
-                            f"This is a new best.")
+                logger.info(
+                    f"Best loss is {best_loss:.4f} "
+                    f"(avg. {best_loss / n_batches:.4f}). "
+                    f"This is a new best."
+                )
             else:
-                logger.info(f"Best loss is {best_loss:.4f} "
-                            f"(avg. {best_loss / n_batches:.4f}).")
+                logger.info(
+                    f"Best loss is {best_loss:.4f} "
+                    f"(avg. {best_loss / n_batches:.4f})."
+                )
 
             if dev_loss < previous_dev_loss:
                 previous_dev_loss = dev_loss
@@ -676,14 +722,17 @@ class ArgRunner(Configurable):
             else:
                 worse += 1
 
-            checkpoint_path = self.__save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': self.model.state_dict(),
-                'best_loss': best_loss,
-                'previous_dev_loss': previous_dev_loss,
-                'optimizer_state_dict': optimizer.state_dict(),
-                'worse': worse,
-            }, self.checkpoint_name)
+            checkpoint_path = self.__save_checkpoint(
+                {
+                    "epoch": epoch + 1,
+                    "state_dict": self.model.state_dict(),
+                    "best_loss": best_loss,
+                    "previous_dev_loss": previous_dev_loss,
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "worse": worse,
+                },
+                self.checkpoint_name,
+            )
 
             if new_best:
                 best_path = os.path.join(self.model_dir, self.best_model_name)
@@ -693,8 +742,10 @@ class ArgRunner(Configurable):
             # Whether stop now.
             if worse == self.para.early_stop_patience:
                 logger.info(
-                    (f"Dev loss increase from {previous_dev_loss:.4f} "
-                     f"to {dev_loss:.4f}, stop at Epoch {epoch:d}")
+                    (
+                        f"Dev loss increase from {previous_dev_loss:.4f} "
+                        f"to {dev_loss:.4f}, stop at Epoch {epoch:d}"
+                    )
                 )
                 break
 
@@ -706,17 +757,18 @@ def main(conf):
     basic_para = Basic(config=conf)
 
     if not basic_para.cmd_log and basic_para.log_dir:
-        mode = ''
+        mode = ""
 
         if basic_para.do_training:
-            mode += '_train'
+            mode += "_train"
         if basic_para.do_test:
-            mode += '_test'
+            mode += "_test"
 
         log_path = os.path.join(
             basic_para.log_dir,
             basic_para.model_name,
-            basic_para.run_name + mode + '.log')
+            basic_para.run_name + mode + ".log",
+        )
 
         append_num_to_path(log_path)
         ensure_dir(log_path)
@@ -728,8 +780,7 @@ def main(conf):
     else:
         set_basic_log()
 
-    logger.info(
-        "Started the runner at " + strftime("%Y-%m-%d_%H-%M-%S", localtime()))
+    logger.info("Started the runner at " + strftime("%Y-%m-%d_%H-%M-%S", localtime()))
     logger.info(json.dumps(conf, indent=2))
 
     runner = ArgRunner(config=conf)
@@ -748,8 +799,10 @@ def main(conf):
             logger.error(f"Cannot find test path at {basic_para.test_in}")
 
         result_dir = os.path.join(
-            basic_para.log_dir, basic_para.model_name, basic_para.run_name,
-            basic_para.test_data
+            basic_para.log_dir,
+            basic_para.model_name,
+            basic_para.run_name,
+            basic_para.test_data,
         )
         logger.info("Evaluation results will be saved in: " + result_dir)
 
@@ -759,47 +812,48 @@ def main(conf):
         )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+
     class Basic(Configurable):
-        train_in = Unicode(help='Training data directory.').tag(config=True)
-        test_data = Unicode(help='Test data name.').tag(config=True)
-        test_in = Unicode(help='Testing data.').tag(config=True)
-        test_out = Unicode(help='Test res.').tag(config=True)
-        valid_in = Unicode(help='Validation in.').tag(config=True)
-        validation_size = Integer(help='Validation size.').tag(config=True)
-        self_test_size = Integer(help='Self test document size.',
-                                 default_value=-1).tag(config=True)
-        debug_dir = Unicode(help='Debug output.').tag(config=True)
-        model_name = Unicode(help='Model name.', default_value='basic').tag(
-            config=True)
-        run_name = Unicode(help='Run name.', default_value='default').tag(
-            config=True)
-        train_cache_dir = Unicode(help='Path to training dump.').tag(
-            config=True)
-        train_cache_size = Integer(help='Number of items per cache').tag(
-            config=True)
-        model_dir = Unicode(help='Model directory.').tag(config=True)
-        log_dir = Unicode(help='Logging directory.').tag(config=True)
-        cmd_log = Bool(help='Log on command prompt only.',
-                       default_value=False).tag(config=True)
-        pre_val = Bool(help='Pre-validate on the dev set.',
-                       default_value=False).tag(config=True)
-        do_training = Bool(help='Flag for conducting training.',
-                           default_value=False).tag(config=True)
-        do_test = Bool(help='Flag for conducting testing.',
-                       default_value=False).tag(config=True)
-        run_baselines = Bool(help='Run baseline.', default_value=False).tag(
-            config=True)
-        debug_mode = Bool(help='Debug mode', default_value=False).tag(
-            config=True)
+        train_in = Unicode(help="Training data directory.").tag(config=True)
+        test_data = Unicode(help="Test data name.").tag(config=True)
+        test_in = Unicode(help="Testing data.").tag(config=True)
+        test_out = Unicode(help="Test res.").tag(config=True)
+        valid_in = Unicode(help="Validation in.").tag(config=True)
+        validation_size = Integer(help="Validation size.").tag(config=True)
+        self_test_size = Integer(help="Self test document size.", default_value=-1).tag(
+            config=True
+        )
+        debug_dir = Unicode(help="Debug output.").tag(config=True)
+        model_name = Unicode(help="Model name.", default_value="basic").tag(config=True)
+        run_name = Unicode(help="Run name.", default_value="default").tag(config=True)
+        train_cache_dir = Unicode(help="Path to training dump.").tag(config=True)
+        train_cache_size = Integer(help="Number of items per cache").tag(config=True)
+        model_dir = Unicode(help="Model directory.").tag(config=True)
+        log_dir = Unicode(help="Logging directory.").tag(config=True)
+        cmd_log = Bool(help="Log on command prompt only.", default_value=False).tag(
+            config=True
+        )
+        pre_val = Bool(help="Pre-validate on the dev set.", default_value=False).tag(
+            config=True
+        )
+        do_training = Bool(
+            help="Flag for conducting training.", default_value=False
+        ).tag(config=True)
+        do_test = Bool(help="Flag for conducting testing.", default_value=False).tag(
+            config=True
+        )
+        run_baselines = Bool(help="Run baseline.", default_value=False).tag(config=True)
+        debug_mode = Bool(help="Debug mode", default_value=False).tag(config=True)
 
         test_factor_role = Unicode(
-            help='The field name of the role that is used to '
-                 'determine the slot type.').tag(config=True)
+            help="The field name of the role that is used to "
+            "determine the slot type."
+        ).tag(config=True)
         train_factor_role = Unicode(
-            help='The field name of the role that is used to '
-                 'determine the slot type.').tag(config=True)
-
+            help="The field name of the role that is used to "
+            "determine the slot type."
+        ).tag(config=True)
 
     conf = load_mixed_configs()
     main(conf)

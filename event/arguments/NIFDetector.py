@@ -13,7 +13,7 @@ class GoldNullArgDetector(NullArgDetector):
         super().__init__()
 
     def should_fill(self, event_info, slot, arg):
-        return arg.get('implicit', False) and not arg.get('incorporated', False)
+        return arg.get("implicit", False) and not arg.get("incorporated", False)
 
 
 class AllArgDetector(NullArgDetector):
@@ -33,7 +33,7 @@ class ResolvableArgDetector(NullArgDetector):
         super().__init__()
 
     def should_fill(self, event_info, slot, arg):
-        return len(arg) > 0 and arg['resolvable']
+        return len(arg) > 0 and arg["resolvable"]
 
 
 class TrainableNullArgDetector(NullArgDetector):

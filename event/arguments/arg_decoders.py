@@ -27,16 +27,14 @@ class LocalBestDecoder(ArgDecoder):
 
     def get_filled_list(self, doc_event_data, doc_event_info):
         # These are pre-extracted information of the events.
-        mtx_event_rep = doc_event_data['rep']
-        mtx_distances = doc_event_data['distances']
-        mtx_features = doc_event_data['features']
+        mtx_event_rep = doc_event_data["rep"]
+        mtx_distances = doc_event_data["distances"]
+        mtx_features = doc_event_data["features"]
 
         # Some fields needed to dynamically compute features.
-        raw_event_info = doc_event_data['raw']
+        raw_event_info = doc_event_data["raw"]
 
         # Context information
-        mtx_context = doc_event_info['context']
-        l_slots = doc_event_info['slot_indices']
-        l_event_indices = doc_event_info['event_indices']
-
-
+        mtx_context = doc_event_info["context"]
+        l_slots = doc_event_info["slot_indices"]
+        l_event_indices = doc_event_info["event_indices"]

@@ -34,13 +34,12 @@ class NomBank(DataLoader):
         self.wsj_treebank = BracketParseCorpusReader(
             root=params.wsj_path,
             fileids=params.wsj_file_pattern,
-            tagset='wsj',
-            encoding='ascii'
+            tagset="wsj",
+            encoding="ascii",
         )
 
         logging.info(
-            'Found {} treebank files.'.format(
-                len(self.wsj_treebank.fileids()))
+            "Found {} treebank files.".format(len(self.wsj_treebank.fileids()))
         )
 
         self.nombank = NombankCorpusReader(
@@ -49,7 +48,7 @@ class NomBank(DataLoader):
             framefiles=params.frame_file_pattern,
             nounsfile=params.nombank_nouns_file,
             parse_fileid_xform=lambda s: s[4:],
-            parse_corpus=self.wsj_treebank
+            parse_corpus=self.wsj_treebank,
         )
 
         logging.info("Loading G&C annotations.")
@@ -60,13 +59,13 @@ class NomBank(DataLoader):
         logging.info("Loading Nombank annotations")
         self.nombank_annos = defaultdict(list)
         for nb_instance in self.nombank.instances():
-            docid = nb_instance.fileid.split('/')[-1]
+            docid = nb_instance.fileid.split("/")[-1]
             self.nombank_annos[docid].append(nb_instance)
 
         self.stats = {
-            'target_pred_count': Counter(),
-            'predicates_with_implicit': Counter(),
-            'implicit_slots': Counter(),
+            "target_pred_count": Counter(),
+            "predicates_with_implicit": Counter(),
+            "implicit_slots": Counter(),
         }
 
         self.stat_dir = params.stat_dir
@@ -79,26 +78,26 @@ class NomBank(DataLoader):
 
         @staticmethod
         def from_text(pointer_text):
-            parts = pointer_text.split(':')
+            parts = pointer_text.split(":")
             if len(parts) != 4:
                 raise ValueError("Invalid pointer text.")
 
             read_id = parts[0]
-            full_id = read_id.split('_')[1][:2] + '/' + read_id + '.mrg'
+            full_id = read_id.split("_")[1][:2] + "/" + read_id + ".mrg"
 
             return NomBank.NomElement(
-                full_id, int(parts[1]),
-                NombankTreePointer(int(parts[2]), int(parts[3]))
+                full_id, int(parts[1]), NombankTreePointer(int(parts[2]), int(parts[3]))
             )
 
         def __str__(self):
-            return 'Node-%s-%s:%s' % (
-                self.article_id, self.sent_num, self.pointer.__repr__())
+            return "Node-%s-%s:%s" % (
+                self.article_id,
+                self.sent_num,
+                self.pointer.__repr__(),
+            )
 
         def __hash__(self):
-            return hash(
-                (self.article_id, self.sent_num, self.pointer.__repr__())
-            )
+            return hash((self.article_id, self.sent_num, self.pointer.__repr__()))
 
         def __eq__(self, other):
             return other and other.__str__() == self.__str__()
@@ -131,7 +130,7 @@ class NomBank(DataLoader):
         total_preds = 0
 
         for annotations in root:
-            pred_node_pos = annotations.attrib['for_node']
+            pred_node_pos = annotations.attrib["for_node"]
             predicate = NomBank.NomElement.from_text(pred_node_pos)
 
             article_id = predicate.article_id
@@ -143,19 +142,23 @@ class NomBank(DataLoader):
             arg_annos = defaultdict(list)
 
             for annotation in annotations:
-                arg_type = annotation.attrib['value']
-                arg_node_pos = annotation.attrib['node']
+                arg_type = annotation.attrib["value"]
+                arg_node_pos = annotation.attrib["node"]
 
-                (arg_article_id, arg_sent_id, arg_terminal_id,
-                 arg_height) = arg_node_pos.split(':')
+                (
+                    arg_article_id,
+                    arg_sent_id,
+                    arg_terminal_id,
+                    arg_height,
+                ) = arg_node_pos.split(":")
 
                 is_split = False
                 is_explicit = False
 
                 for attribute in annotation[0]:
-                    if attribute.text == 'Split':
+                    if attribute.text == "Split":
                         is_split = True
-                    elif attribute.text == 'Explicit':
+                    elif attribute.text == "Explicit":
                         is_explicit = True
 
                 if pred_node_pos == arg_node_pos:
@@ -165,8 +168,7 @@ class NomBank(DataLoader):
                 if is_explicit:
                     explicit_roles.add(arg_type)
                 else:
-                    p = NombankTreePointer(int(arg_terminal_id),
-                                           int(arg_height))
+                    p = NombankTreePointer(int(arg_terminal_id), int(arg_height))
                     # Arguments are group by their sentences.
                     arg_annos[(arg_sent_id, arg_type)].append((p, is_split))
 
@@ -179,54 +181,64 @@ class NomBank(DataLoader):
 
                 if arg_type not in explicit_roles:
                     for p in merge_split_pointers(l_pointers):
-                        arg_element = NomBank.NomElement(
-                            article_id, arg_sent_id, p)
+                        arg_element = NomBank.NomElement(article_id, arg_sent_id, p)
 
                         if not predicate.pointer == arg_element.pointer:
                             # Ignoring incorporated ones.
                             all_args[arg_type].append(arg_element)
                             implicit_role_here.add(arg_type)
 
-            gc_annotations[article_id.split('/')[-1]][predicate] = all_args
+            gc_annotations[article_id.split("/")[-1]][predicate] = all_args
 
             total_implicit_count += len(implicit_role_here)
 
-        logging.info(f"Loaded {total_preds} predicates, "
-                     f"{total_implicit_count} implicit arguments.")
+        logging.info(
+            f"Loaded {total_preds} predicates, "
+            f"{total_implicit_count} implicit arguments."
+        )
 
         return gc_annotations
 
     def add_predicate(self, doc, parsed_sents, predicate_node):
         pred_node_repr = "%s:%d:%s" % (
-            doc.docid, predicate_node.sent_num, predicate_node.pointer)
+            doc.docid,
+            predicate_node.sent_num,
+            predicate_node.pointer,
+        )
         p_tree = parsed_sents[predicate_node.sent_num]
-        p_word_idx = utils.make_words_from_pointer(
-            p_tree, predicate_node.pointer)
+        p_word_idx = utils.make_words_from_pointer(p_tree, predicate_node.pointer)
         predicate_span = utils.get_nltk_span(
-            doc.token_spans, predicate_node.sent_num, p_word_idx)
+            doc.token_spans, predicate_node.sent_num, p_word_idx
+        )
 
         if len(predicate_span) == 0:
             logging.warning("Zero length predicate found")
             return
 
-        p = doc.add_predicate(None, predicate_span, frame_type='NOMBANK')
+        p = doc.add_predicate(None, predicate_span, frame_type="NOMBANK")
 
         if p:
-            p.add_meta('node', pred_node_repr)
+            p.add_meta("node", pred_node_repr)
 
         return p
 
-    def add_nombank_arg(self, doc, parsed_sents, wsj_spans, arg_type,
-                        predicate, arg_node, implicit=False):
+    def add_nombank_arg(
+        self,
+        doc,
+        parsed_sents,
+        wsj_spans,
+        arg_type,
+        predicate,
+        arg_node,
+        implicit=False,
+    ):
         arg_type = arg_type.lower()
 
         a_tree = parsed_sents[arg_node.sent_num]
         a_word_idx = utils.make_words_from_pointer(a_tree, arg_node.pointer)
 
-        arg_node_repr = "%s:%d:%s" % (
-            doc.docid, arg_node.sent_num, arg_node.pointer)
-        argument_span = utils.get_nltk_span(wsj_spans, arg_node.sent_num,
-                                            a_word_idx)
+        arg_node_repr = "%s:%d:%s" % (doc.docid, arg_node.sent_num, arg_node.pointer)
+        argument_span = utils.get_nltk_span(wsj_spans, arg_node.sent_num, a_word_idx)
 
         if len(argument_span) == 0:
             # Some arguments are empty nodes, they will be ignored.
@@ -236,30 +248,30 @@ class NomBank(DataLoader):
 
         if em:
             if implicit:
-                arg_type = 'i_' + arg_type
+                arg_type = "i_" + arg_type
 
             arg_mention = doc.add_argument_mention(predicate, em.aid, arg_type)
-            arg_mention.add_meta('node', arg_node_repr)
+            arg_mention.add_meta("node", arg_node_repr)
 
             if implicit:
-                arg_mention.add_meta('implicit', True)
-                arg_mention.add_meta('sent_num', arg_node.sent_num)
-                arg_mention.add_meta('text', em.text)
+                arg_mention.add_meta("implicit", True)
+                arg_mention.add_meta("sent_num", arg_node.sent_num)
+                arg_mention.add_meta("text", em.text)
 
             return arg_mention
 
     def get_predicate_text(self, p):
         p_text = p.text.lower()
-        if p_text == 'losses' or p_text == 'loss' or p_text == 'tax-loss':
-            p_text = 'loss'
+        if p_text == "losses" or p_text == "loss" or p_text == "tax-loss":
+            p_text = "loss"
         else:
-            p_text = p_text.rstrip('s')
+            p_text = p_text.rstrip("s")
 
-        if p_text == 'savings-and-loan':
-            p_text = 'loan'
+        if p_text == "savings-and-loan":
+            p_text = "loan"
 
-        if '-' in p_text:
-            p_text = p_text.split('-')[1]
+        if "-" in p_text:
+            p_text = p_text.split("-")[1]
         return p_text
 
     def add_all_annotations(self, doc, parsed_sents):
@@ -274,14 +286,13 @@ class NomBank(DataLoader):
             p = self.add_predicate(doc, parsed_sents, predicate_node)
 
             for argloc, argid in nb_instance.arguments:
-                arg_node = NomBank.NomElement(
-                    doc.docid, nb_instance.sentnum, argloc
-                )
+                arg_node = NomBank.NomElement(doc.docid, nb_instance.sentnum, argloc)
                 arg = self.add_nombank_arg(
-                    doc, parsed_sents, doc.token_spans, argid, p, arg_node)
+                    doc, parsed_sents, doc.token_spans, argid, p, arg_node
+                )
 
                 if arg_node.pointer == predicate_node.pointer:
-                    arg.add_meta('incorporated', True)
+                    arg.add_meta("incorporated", True)
 
         if not self.params.explicit_only and doc.docid in self.gc_annos:
             for predicate_node, gc_args in self.gc_annos[doc.docid].items():
@@ -290,31 +301,36 @@ class NomBank(DataLoader):
                 p = self.add_predicate(doc, parsed_sents, predicate_node)
                 p_text = utils.normalize_pred_text(p.text)
 
-                p.add_meta('from_gc', True)
+                p.add_meta("from_gc", True)
 
-                self.stats['target_pred_count'][p_text] += 1
+                self.stats["target_pred_count"][p_text] += 1
 
                 for arg_type, arg_nodes in gc_args.items():
                     for arg_node in arg_nodes:
                         arg = self.add_nombank_arg(
-                            doc, parsed_sents, doc.token_spans,
-                            arg_type, p, arg_node, True
+                            doc,
+                            parsed_sents,
+                            doc.token_spans,
+                            arg_type,
+                            p,
+                            arg_node,
+                            True,
                         )
                         added_args[arg_type].append(arg)
 
                         # The following should be useless already.
                         if arg_node.pointer == predicate_node.pointer:
-                            arg.add_meta('incorporated', True)
+                            arg.add_meta("incorporated", True)
 
                         if arg_node.sent_num > predicate_node.sent_num:
-                            arg.add_meta('succeeding', True)
+                            arg.add_meta("succeeding", True)
 
                 if len(added_args) > 0:
-                    self.stats['predicates_with_implicit'][p_text] += 1
-                    self.stats['implicit_slots'][p_text] += len(added_args)
+                    self.stats["predicates_with_implicit"][p_text] += 1
+                    self.stats["implicit_slots"][p_text] += len(added_args)
 
     def set_wsj_text(self, doc, fileid):
-        text = ''
+        text = ""
         w_start = 0
 
         spans = []
@@ -322,15 +338,15 @@ class NomBank(DataLoader):
             word_spans = []
 
             for word, tag in tagged_sent:
-                if not tag == '-NONE-':
-                    text += word + ' '
+                if not tag == "-NONE-":
+                    text += word + " "
                     word_spans.append((w_start, w_start + len(word)))
                     w_start += len(word) + 1
                 else:
                     # Ignoring these words.
                     word_spans.append(None)
 
-            text += '\n'
+            text += "\n"
             w_start += 1
 
             spans.append(word_spans)
@@ -353,7 +369,7 @@ class NomBank(DataLoader):
             doc = DEDocument(self.corpus)
             doc.set_id(docid)
 
-            fileid = docid.split('_')[-1][:2] + '/' + docid
+            fileid = docid.split("_")[-1][:2] + "/" + docid
 
             parsed_sents = self.wsj_treebank.parsed_sents(fileids=fileid)
             doc.set_parsed_sents(parsed_sents)
@@ -369,17 +385,17 @@ class NomBank(DataLoader):
         logging.info("Corpus statistics from Nombank")
 
         keys = self.stats.keys()
-        headline = 'predicate\t' + '\t'.join(keys)
+        headline = "predicate\t" + "\t".join(keys)
         sums = Counter()
 
         if not os.path.exists(self.stat_dir):
             os.makedirs(self.stat_dir)
 
-        preds = sorted(self.stats['predicates_with_implicit'].keys())
+        preds = sorted(self.stats["predicates_with_implicit"].keys())
 
-        with open(os.path.join(self.stat_dir, 'counts.txt'), 'w') as out:
+        with open(os.path.join(self.stat_dir, "counts.txt"), "w") as out:
             print(headline)
-            out.write(f'{headline}\n')
+            out.write(f"{headline}\n")
 
             for pred in preds:
                 line = f"{pred}:"
@@ -387,8 +403,8 @@ class NomBank(DataLoader):
                     line += f"\t{self.stats[key][pred]}"
                     sums[key] += self.stats[key][pred]
                 print(line)
-                out.write(f'{line}\n')
+                out.write(f"{line}\n")
 
-            sum_line = 'Total\t' + '\t'.join([str(sums[k]) for k in keys])
+            sum_line = "Total\t" + "\t".join([str(sums[k]) for k in keys])
             print(sum_line)
-            out.write(f'{sum_line}\n')
+            out.write(f"{sum_line}\n")

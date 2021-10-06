@@ -33,8 +33,7 @@ class KernelPooling(nn.Module):
         self.v_sigma = Parameter(torch.FloatTensor(l_sigma))
 
         logging.info(
-            '[%d] pooling kernels: %s', self.K,
-            json.dumps(list(zip(l_mu, l_sigma)))
+            "[%d] pooling kernels: %s", self.K, json.dumps(list(zip(l_mu, l_sigma)))
         )
         return
 
@@ -53,6 +52,7 @@ class KernelPooling(nn.Module):
 
         # TODO: The sum here causes nan.
         sum_kernel_value = torch.sum(weighted_kernel_value, dim=-2).clamp(
-            min=1e-10)  # add freq/weight
+            min=1e-10
+        )  # add freq/weight
         sum_kernel_value = torch.log(sum_kernel_value)
         return sum_kernel_value

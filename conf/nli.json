@@ -1,0 +1,34 @@
+{
+  "name": "facet",
+  "additional_prefixes": [
+    "onto.facets"
+  ],
+  "imports": [
+    "base_ontology.json",
+    "wikipedia.json"
+  ],
+  "definitions": [
+    {
+      "entry_name": "onto.facets.Premise",
+      "parent_entry": "forte.data.ontology.top.Annotation"
+    },
+    {
+      "entry_name": "onto.facets.Hypothesis",
+      "parent_entry": "forte.data.ontology.top.Annotation"
+    },
+    {
+      "entry_name": "onto.facets.NLIPair",
+      "parent_entry": "forte.data.ontology.top.Link",
+      "parent_type": "onto.facets.Premise",
+      "child_type": "onto.facets.Hypothesis",
+      "attributes": [
+        {
+          "name": "entailment",
+          "type": "Dict",
+          "key_type": "str",
+          "value_type": "float"
+        }
+      ]
+    }
+  ]
+}

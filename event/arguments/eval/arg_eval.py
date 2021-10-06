@@ -2,10 +2,7 @@
 Evaluate the Gerber & Chai corpus.
 """
 from traitlets.config import Configurable
-from traitlets import (
-    Unicode,
-    Integer
-)
+from traitlets import Unicode, Integer
 from event.util import load_file_config
 from nltk.corpus import (
     NombankCorpusReader,
@@ -31,16 +28,16 @@ class ArgDataSet:
 
 class GCDataSet(ArgDataSet):
     class GCConfig(Configurable):
-        nombank_path = Unicode(help='Nombank corpus.').tag(config=True)
-        nomfile = Unicode(help='Nombank file.').tag(config=True)
-        frame_file_pattern = Unicode(help='Frame file pattern.').tag(
-            config=True)
-        nombank_nouns_file = Unicode(help='Nomank nous.').tag(config=True)
+        nombank_path = Unicode(help="Nombank corpus.").tag(config=True)
+        nomfile = Unicode(help="Nombank file.").tag(config=True)
+        frame_file_pattern = Unicode(help="Frame file pattern.").tag(config=True)
+        nombank_nouns_file = Unicode(help="Nomank nous.").tag(config=True)
 
         # PennTree Bank config.
-        wsj_path = Unicode(help='PennTree Bank path.').tag(config=True)
-        wsj_file_pattern = Unicode(help='File pattern to read PTD data').tag(
-            config=True)
+        wsj_path = Unicode(help="PennTree Bank path.").tag(config=True)
+        wsj_file_pattern = Unicode(help="File pattern to read PTD data").tag(
+            config=True
+        )
 
     def __init__(self, config_path):
         conf = load_file_config(config_path)
@@ -52,8 +49,8 @@ class GCDataSet(ArgDataSet):
         wsj_treebank = BracketParseCorpusReader(
             root=params.wsj_path,
             fileids=params.wsj_file_pattern,
-            tagset='wsj',
-            encoding='ascii'
+            tagset="wsj",
+            encoding="ascii",
         )
 
         self.nombank = NombankCorpusReader(
@@ -62,7 +59,7 @@ class GCDataSet(ArgDataSet):
             framefiles=params.frame_file_pattern,
             nounsfile=params.nombank_nouns_file,
             parse_fileid_xform=lambda s: s[4:],
-            parse_corpus=wsj_treebank
+            parse_corpus=wsj_treebank,
         )
 
     def next_arg(self):
@@ -80,8 +77,8 @@ class SemEval10DataSet(ArgDataSet):
         super().__init__(config)
 
 
-if __name__ == '__main__':
-    gc_dataset = GCDataSet('conf/implicit/nombank_data.py')
+if __name__ == "__main__":
+    gc_dataset = GCDataSet("conf/implicit/nombank_data.py")
     for arg in gc_dataset.next_arg():
         print(arg)
-        input('arg!')
+        input("arg!")

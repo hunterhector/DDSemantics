@@ -2,13 +2,13 @@ import os
 
 
 def guess_entity_form(upos, xpos):
-    if not upos == '_':
-        if upos == 'PRON':
-            return 'pronominal'
-        elif upos == 'PROPN':
-            return 'named'
+    if not upos == "_":
+        if upos == "PRON":
+            return "pronominal"
+        elif upos == "PROPN":
+            return "named"
         else:
-            return 'nominal'
+            return "nominal"
 
 
 class DetectionRunner:
@@ -21,22 +21,24 @@ class DetectionRunner:
         self.init_model(config, token_vocab, tag_vocab)
 
     def init_model(self, config, token_vocab, tag_vocab):
-        if self.model_name == 'cnn':
+        if self.model_name == "cnn":
             import torch
             from event.mention.models.trainable_detectors import TextCNN
-            self.model = TextCNN(config, tag_vocab.vocab_size(),
-                                 token_vocab.vocab_size())
+
+            self.model = TextCNN(
+                config, tag_vocab.vocab_size(), token_vocab.vocab_size()
+            )
             # Load model here.
             if torch.cuda.is_available():
                 self.model.cuda()
-        elif self.model_name == 'frame_rule':
-            from event.mention.models.rule_detectors import \
-                FrameMappingDetector
+        elif self.model_name == "frame_rule":
+            from event.mention.models.rule_detectors import FrameMappingDetector
+
             self.model = FrameMappingDetector(config, token_vocab)
             self.trainable = False
-        elif self.model_name == 'marked_field':
-            from event.mention.models.rule_detectors import \
-                MarkedDetector
+        elif self.model_name == "marked_field":
+            from event.mention.models.rule_detectors import MarkedDetector
+
             self.model = MarkedDetector(config, token_vocab)
             self.trainable = False
 
@@ -54,8 +56,12 @@ class DetectionRunner:
 
             if event_type:
                 evm = csr.add_event_mention(
-                    span, span, token, 'aida', this_feature[-1],
-                    component=component_name
+                    span,
+                    span,
+                    token,
+                    "aida",
+                    this_feature[-1],
+                    component=component_name,
                 )
 
                 if not evm:
@@ -73,7 +79,12 @@ class DetectionRunner:
                         entity_form = guess_entity_form(upos, xpos)
 
                         csr.add_event_arg_by_span(
-                            evm, arg_span, arg_span, arg_text, 'aida',
-                            rel_type, component=self.model_name,
-                            arg_entity_form=entity_form
+                            evm,
+                            arg_span,
+                            arg_span,
+                            arg_text,
+                            "aida",
+                            rel_type,
+                            component=self.model_name,
+                            arg_entity_form=entity_form,
                         )

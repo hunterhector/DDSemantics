@@ -1,7 +1,4 @@
-from event.io.readers import (
-    ConllUReader,
-    Vocab
-)
+from event.io.readers import ConllUReader, Vocab
 from event.io.csr import CSR
 from event.mention.models.trainable_detectors import (
     TextCNN,
@@ -22,10 +19,12 @@ class DetectionTrainer:
             os.makedirs(config.model_dir)
 
     def init_model(self, config, token_vocab, tag_vocab):
-        if self.model_name == 'cnn':
+        if self.model_name == "cnn":
             import torch
-            self.model = TextCNN(config, tag_vocab.vocab_size(),
-                                 token_vocab.vocab_size())
+
+            self.model = TextCNN(
+                config, tag_vocab.vocab_size(), token_vocab.vocab_size()
+            )
             if torch.cuda.is_available():
                 self.model.cuda()
 
@@ -33,8 +32,10 @@ class DetectionTrainer:
         if not self.trainable:
             return
         from event.mention import train_util
-        train_util.train(self.model, train_reader, dev_reader, self.model_dir,
-                         self.model_name)
+
+        train_util.train(
+            self.model, train_reader, dev_reader, self.model_dir, self.model_name
+        )
 
     def eval(self, dev_reader):
         return 0
@@ -60,49 +61,66 @@ class DetectionTrainer:
                     if a_span[1] > extent_span[1]:
                         extent_span[1] = a_span[1]
 
-                evm = csr.add_event_mention(span, span, token, 'aida',
-                                            event_type, component='aida')
+                evm = csr.add_event_mention(
+                    span, span, token, "aida", event_type, component="aida"
+                )
 
                 if evm:
                     for role, (index, entity_type) in args.items():
                         a_token, a_span = l_word_meta[index]
 
-                        csr.add_entity_mention(a_span, a_span, a_token, 'aida',
-                                               entity_type=entity_type,
-                                               component='implicit')
+                        csr.add_entity_mention(
+                            a_span,
+                            a_span,
+                            a_token,
+                            "aida",
+                            entity_type=entity_type,
+                            component="implicit",
+                        )
 
-                        csr.add_event_arg_by_span(evm, a_span, a_span, a_token,
-                                                  'aida', role,
-                                                  component='Implicit')
+                        csr.add_event_arg_by_span(
+                            evm,
+                            a_span,
+                            a_span,
+                            a_token,
+                            "aida",
+                            role,
+                            component="Implicit",
+                        )
 
 
 def main(config):
-    token_vocab = Vocab(config.experiment_folder, 'tokens',
-                        embedding_path=config.word_embedding,
-                        emb_dim=config.word_embedding_dim)
+    token_vocab = Vocab(
+        config.experiment_folder,
+        "tokens",
+        embedding_path=config.word_embedding,
+        emb_dim=config.word_embedding_dim,
+    )
 
-    tag_vocab = Vocab(config.experiment_folder, 'tag',
-                      embedding_path=config.tag_list)
+    tag_vocab = Vocab(config.experiment_folder, "tag", embedding_path=config.tag_list)
 
-    train_reader = ConllUReader(config.train_files, config, token_vocab,
-                                tag_vocab, config.language)
-    dev_reader = ConllUReader(config.dev_files, config, token_vocab,
-                              train_reader.tag_vocab, config.language)
+    train_reader = ConllUReader(
+        config.train_files, config, token_vocab, tag_vocab, config.language
+    )
+    dev_reader = ConllUReader(
+        config.dev_files, config, token_vocab, train_reader.tag_vocab, config.language
+    )
     detector = DetectionTrainer(config, token_vocab, tag_vocab)
     detector.train(train_reader, dev_reader)
 
     #     def __init__(self, component_name, run_id, out_path):
-    res_collector = CSR('Event_hector_frames', 1, config.output, 'belcat')
+    res_collector = CSR("Event_hector_frames", 1, config.output, "belcat")
 
-    test_reader = ConllUReader(config.test_files, config, token_vocab,
-                               train_reader.tag_vocab)
+    test_reader = ConllUReader(
+        config.test_files, config, token_vocab, train_reader.tag_vocab
+    )
 
     detector.predict(test_reader, res_collector)
 
     res_collector.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from event import util
 
     parser = util.evm_args()

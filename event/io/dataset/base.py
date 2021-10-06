@@ -69,14 +69,17 @@ class Span:
             return False
 
     def __eq__(self, other):
-        return self.__class__ == other.__class__ and \
-               self.begin == other.begin and self.end == other.end
+        return (
+            self.__class__ == other.__class__
+            and self.begin == other.begin
+            and self.end == other.end
+        )
 
     def __hash__(self):
         return hash((self.begin, self.end))
 
     def __str__(self):
-        return '[Span] %d:%d' % (self.begin, self.end)
+        return "[Span] %d:%d" % (self.begin, self.end)
 
     __repr__ = __str__
 
@@ -84,7 +87,7 @@ class Span:
 def get_text_from_span(doc_text, spans):
     if isinstance(spans, Span):
         spans = [spans]
-    return ' '.join([doc_text[s.begin: s.end] for s in spans])
+    return " ".join([doc_text[s.begin : s.end] for s in spans])
 
 
 class Top:
@@ -100,13 +103,13 @@ class Top:
 
     def to_json(self):
         data = {
-            'id': self.eid,
-            'annotation': self.top_type,
-            'meta': self.meta,
+            "id": self.eid,
+            "annotation": self.top_type,
+            "meta": self.meta,
         }
 
         if self.object_type:
-            data['type'] = self.object_type
+            data["type"] = self.object_type
 
         return data
 
@@ -130,8 +133,8 @@ class ClusterObject(Top):
 
     def to_json(self):
         data = super().to_json()
-        data['mentions'] = [m.to_json() for m in sorted(self.mentions.values())]
-        data['is_singleton'] = len(self.mentions) == 1
+        data["mentions"] = [m.to_json() for m in sorted(self.mentions.values())]
+        data["is_singleton"] = len(self.mentions) == 1
         return data
 
     def __lt__(self, other):
@@ -144,7 +147,7 @@ class ClusterObject(Top):
 class Annotation:
     def __init__(self, doc, aid, anno_type, text, spans):
         self.aid = aid
-        self.text = text.replace('\n', ' ').strip()
+        self.text = text.replace("\n", " ").strip()
         self.anno_type = anno_type
 
         if isinstance(spans, Span):
@@ -187,7 +190,8 @@ class Annotation:
         if not source_anno == self.text:
             logging.warning(
                 "Non-matching mention at [%s] between doc [%s] and "
-                "provided [%s]" % (self.spans, source_anno, self.text))
+                "provided [%s]" % (self.spans, source_anno, self.text)
+            )
             return False
         return True
 
@@ -195,7 +199,7 @@ class Annotation:
         all_spans = []
 
         for s in self.spans:
-            source_anno = source_text[s.begin: s.end]
+            source_anno = source_text[s.begin : s.end]
             leadings = len(source_anno) - len(source_anno.lstrip())
             trailings = len(source_anno) - len(source_anno.rstrip())
 
@@ -221,27 +225,29 @@ class Annotation:
 
     def to_json(self):
         data = {
-            'id': self.aid,
-            'annotation': self.anno_type,
-            'meta': self.meta,
+            "id": self.aid,
+            "annotation": self.anno_type,
+            "meta": self.meta,
         }
 
         if self.text:
-            data['text'] = self.text
+            data["text"] = self.text
 
         if self.spans:
-            data['spans'] = []
+            data["spans"] = []
             for span in self.spans:
-                data['spans'].append({
-                    'begin': span.begin,
-                    'end': span.end,
-                })
+                data["spans"].append(
+                    {
+                        "begin": span.begin,
+                        "end": span.end,
+                    }
+                )
         return data
 
 
 class Argument(Top):
     def __init__(self, doc, aid, predicate, arg, arg_type):
-        super().__init__(doc, aid, 'Argument')
+        super().__init__(doc, aid, "Argument")
         self.meta = {}
         self.predicate = predicate
         self.arg = arg
@@ -250,15 +256,15 @@ class Argument(Top):
     def to_json(self):
         data = super().to_json()
 
-        data['arg'] = self.arg
-        data['role'] = self.arg_type
+        data["arg"] = self.arg
+        data["role"] = self.arg_type
 
         return data
 
 
 class Predicate(Annotation):
     def __init__(self, doc, eid, spans, text, frame_type=None, realis=None):
-        super().__init__(doc, eid, 'Predicate', text, spans)
+        super().__init__(doc, eid, "Predicate", text, spans)
         self.arguments = defaultdict(list)
         self.frame_type = frame_type
         self.realis = realis
@@ -270,7 +276,7 @@ class Predicate(Annotation):
     def add_arg(self, argument):
         assert isinstance(argument, Argument)
         self.arguments[argument.arg_type].append(argument)
-        self.doc.add_arg_type(self.frame_type, argument.arg_type, 'Entity')
+        self.doc.add_arg_type(self.frame_type, argument.arg_type, "Entity")
 
     def merge(self, anno_b):
         assert isinstance(anno_b, Predicate)
@@ -281,28 +287,27 @@ class Predicate(Annotation):
         data = super().to_json()
 
         if self.frame_type:
-            data['type'] = self.frame_type
+            data["type"] = self.frame_type
 
         if self.realis:
-            data['realis'] = self.realis
+            data["realis"] = self.realis
 
-        data['arguments'] = []
+        data["arguments"] = []
         for key, l_arg in self.arguments.items():
             for arg in l_arg:
-                data['arguments'].append(arg.to_json())
+                data["arguments"].append(arg.to_json())
 
         return data
 
 
 class EntityMention(Annotation):
-    def __init__(self, doc, eid, spans, text, noun_type=None,
-                 entity_type=None):
-        super().__init__(doc, eid, 'EntityMention', text, spans)
+    def __init__(self, doc, eid, spans, text, noun_type=None, entity_type=None):
+        super().__init__(doc, eid, "EntityMention", text, spans)
         self.entity_type = entity_type
         self.noun_type = noun_type
 
     def get_span_key(self):
-        return 'entity', super().get_span_key(), self.entity_type
+        return "entity", super().get_span_key(), self.entity_type
 
     def merge(self, anno_b):
         # If two entities are have the same unique key, then they should have
@@ -313,17 +318,17 @@ class EntityMention(Annotation):
         data = super().to_json()
 
         if self.entity_type:
-            data['type'] = self.entity_type
+            data["type"] = self.entity_type
 
         if self.noun_type:
-            data['noun_type'] = self.noun_type
+            data["noun_type"] = self.noun_type
 
         return data
 
 
 class Filler(Annotation):
     def __init__(self, doc, eid, spans, text, filler_type=None):
-        super().__init__(doc, eid, 'Filler', text, spans)
+        super().__init__(doc, eid, "Filler", text, spans)
         self.entity_type = filler_type
 
     def get_span_key(self):
@@ -335,13 +340,13 @@ class Filler(Annotation):
     def to_json(self):
         data = super().to_json()
         if self.entity_type:
-            data['type'] = self.entity_type
+            data["type"] = self.entity_type
         return data
 
 
 class RelationMention(Annotation):
     def __init__(self, doc, rid, spans, text, realis=None, relation_type=None):
-        super().__init__(doc, rid, 'RelationMention', text, spans)
+        super().__init__(doc, rid, "RelationMention", text, spans)
         self.args = {}
         self.relation_type = relation_type
         self.realis = realis
@@ -354,13 +359,15 @@ class RelationMention(Annotation):
 
     def to_json(self):
         data = super().to_json()
-        more = {'args': self.args, }
+        more = {
+            "args": self.args,
+        }
 
         if self.realis:
-            data['realis'] = self.realis
+            data["realis"] = self.realis
 
         if self.relation_type:
-            data['relation_type'] = self.relation_type
+            data["relation_type"] = self.relation_type
 
         data.update(more)
         return data
@@ -368,12 +375,12 @@ class RelationMention(Annotation):
 
 class Entity(ClusterObject):
     def __init__(self, doc, eid, object_type):
-        super().__init__(doc, eid, 'Entity', object_type)
+        super().__init__(doc, eid, "Entity", object_type)
 
 
 class Event(ClusterObject):
     def __init__(self, doc, eid):
-        super().__init__(doc, eid, 'Event')
+        super().__init__(doc, eid, "Event")
 
 
 class Relation:
@@ -387,14 +394,14 @@ class Relation:
 
     def to_json(self):
         data = {
-            'annotation': 'Relation',
-            'id': self.rid,
-            'type': self.relation_type,
-            'mentions': [],
+            "annotation": "Relation",
+            "id": self.rid,
+            "type": self.relation_type,
+            "mentions": [],
         }
 
         for mention in self.mentions:
-            data['mentions'].append(mention.to_json())
+            data["mentions"].append(mention.to_json())
 
         return data
 
@@ -433,28 +440,28 @@ class Corpus:
         print("This corpus contains %d entity types." % len(self.entity_types))
         print("This corpus contains %d event types." % len(self.event_ontos))
 
-        config = '[entities]\n'
-        config += '\n'.join(self.entity_types)
+        config = "[entities]\n"
+        config += "\n".join(self.entity_types)
 
-        config += '\n\n[relations]\n'
-        config += 'Event_Coref\tArg1:<EVENT>, Arg2:<EVENT>\n'
-        config += 'Entity_Coref\tArg1:<ENTITY>, Arg2:<ENTITY>\n'
+        config += "\n\n[relations]\n"
+        config += "Event_Coref\tArg1:<EVENT>, Arg2:<EVENT>\n"
+        config += "Entity_Coref\tArg1:<ENTITY>, Arg2:<ENTITY>\n"
 
-        config += '\n\n[events]\n'
+        config += "\n\n[events]\n"
 
         for t, arg_types in self.event_ontos.items():
             config += t
-            config += '\t'
+            config += "\t"
 
             role_pairs = []
             for role, ent_set in arg_types.items():
-                role_pairs.append(role + ':' + '|'.join(ent_set))
+                role_pairs.append(role + ":" + "|".join(ent_set))
 
-            config += ', '.join(role_pairs)
+            config += ", ".join(role_pairs)
 
-            config += '\n'
+            config += "\n"
 
-        config += '\n\n[attributes]'
+        config += "\n\n[attributes]"
 
         return config
 
@@ -507,20 +514,21 @@ class DEDocument:
 
         origin_len = len(self.doc_text)
 
-        for stuff in re.finditer(r'<quote', self.doc_text):
+        for stuff in re.finditer(r"<quote", self.doc_text):
             lqs.append((stuff.start(), stuff.end()))
 
-        for stuff in re.finditer(r'</quote>', self.doc_text):
+        for stuff in re.finditer(r"</quote>", self.doc_text):
             lqe.append((stuff.start(), stuff.end()))
 
         if len(lqs) == len(lqe):
             quoted = zip([e for s, e in lqs], [s for s, e in lqe])
             for s, e in quoted:
-                self.doc_text = self.doc_text[:s] + '>' + '_' * (e - s - 1) \
-                                + self.doc_text[e:]
+                self.doc_text = (
+                    self.doc_text[:s] + ">" + "_" * (e - s - 1) + self.doc_text[e:]
+                )
         else:
             logging.warning("Unbalanced quoted region.")
-            input('Checking.')
+            input("Checking.")
 
         new_len = len(self.doc_text)
 
@@ -542,7 +550,7 @@ class DEDocument:
         for s, e in unannotated:
             logging.info("Marking {}:{} as unannotated".format(s, e))
             old_len = len(text)
-            text = text[:s] + ['-'] * len(e - s) + text[e:]
+            text = text[:s] + ["-"] * len(e - s) + text[e:]
             new_len = len(text)
             assert old_len == new_len
 
@@ -557,13 +565,13 @@ class DEDocument:
     def set_text(self, text):
         self.doc_text = text
 
-    def add_entity(self, entity_type='Entity', eid=None):
+    def add_entity(self, entity_type="Entity", eid=None):
         if eid is None:
-            eid = 'ent-%d' % self.indices['entity']
-            self.indices['entity'] += 1
+            eid = "ent-%d" % self.indices["entity"]
+            self.indices["entity"] += 1
 
         if entity_type is None:
-            entity_type = 'Entity'
+            entity_type = "Entity"
 
         ent = Entity(self, eid, entity_type)
         self.entities[eid] = ent
@@ -598,8 +606,8 @@ class DEDocument:
 
     def add_hopper(self, eid=None):
         if eid is None:
-            eid = 'h-%d' % self.indices['event']
-            self.indices['event'] += 1
+            eid = "h-%d" % self.indices["event"]
+            self.indices["event"] += 1
 
         event = Event(self, eid)
         self.events[eid] = event
@@ -631,18 +639,25 @@ class DEDocument:
 
     def add_argument_mention(self, predicate, filler, arg_type, aid=None):
         if not aid:
-            aid = 'arg-%d' % self.indices['argument']
-            self.indices['argument'] += 1
+            aid = "arg-%d" % self.indices["argument"]
+            self.indices["argument"] += 1
         arg = Argument(self, aid, predicate, filler, arg_type)
         predicate.add_arg(arg)
         return arg
 
-    def add_entity_mention(self, ent, spans, text=None,
-                           eid=None, noun_type=None, entity_type='Entity',
-                           validate=True):
+    def add_entity_mention(
+        self,
+        ent,
+        spans,
+        text=None,
+        eid=None,
+        noun_type=None,
+        entity_type="Entity",
+        validate=True,
+    ):
         if not eid:
-            eid = 'em-%d' % self.indices['entity_mention']
-            self.indices['entity_mention'] += 1
+            eid = "em-%d" % self.indices["entity_mention"]
+            self.indices["entity_mention"] += 1
 
         if not text:
             text = get_text_from_span(self.doc_text, spans)
@@ -658,11 +673,19 @@ class DEDocument:
             self.join_entity(added_em, ent)
         return added_em
 
-    def add_predicate(self, hopper, spans, text=None,
-                      eid=None, frame_type='Event', realis=None, validate=True):
+    def add_predicate(
+        self,
+        hopper,
+        spans,
+        text=None,
+        eid=None,
+        frame_type="Event",
+        realis=None,
+        validate=True,
+    ):
         if eid is None:
-            eid = 'evm-%d' % self.indices['event_mention']
-            self.indices['event_mention'] += 1
+            eid = "evm-%d" % self.indices["event_mention"]
+            self.indices["event_mention"] += 1
 
         if not text:
             text = get_text_from_span(self.doc_text, spans)
@@ -681,8 +704,8 @@ class DEDocument:
 
     def add_filler(self, spans, text, eid=None, filler_type=None):
         if eid is None:
-            eid = 'em-%d' % self.indices['entity_mention']
-            self.indices['entity_mention'] += 1
+            eid = "em-%d" % self.indices["entity_mention"]
+            self.indices["entity_mention"] += 1
 
         if not text:
             text = get_text_from_span(self.doc_text, spans)
@@ -700,8 +723,8 @@ class DEDocument:
         return relation
 
     def to_brat(self):
-        ann_text = ''
-        relation_text = ''
+        ann_text = ""
+        relation_text = ""
 
         t_count = 1
         e_count = 1
@@ -715,16 +738,16 @@ class DEDocument:
             for span in spans:
                 brat_spans.append([span.begin, -1])
 
-                span_text = self.doc_text[span.begin: span.end]
+                span_text = self.doc_text[span.begin : span.end]
 
                 for i_offset, c in enumerate(span_text):
-                    if c == '\n':
+                    if c == "\n":
                         offset = span.begin + i_offset
                         brat_spans[-1][1] = offset
                         brat_spans.append([offset + 1, -1])
                 brat_spans[-1][1] = span.end
 
-            return ';'.join(['%d %d' % (s[0], s[1]) for s in brat_spans])
+            return ";".join(["%d %d" % (s[0], s[1]) for s in brat_spans])
 
         def get_links(cluster):
             if len(cluster) == 1:
@@ -741,15 +764,15 @@ class DEDocument:
         for ent in self.entities.values():
             ent_cluster = []
             for em in ent.get_mentions():
-                tid = 'T%d' % t_count
+                tid = "T%d" % t_count
                 t_count += 1
 
                 text_bound = [
                     tid,
-                    '%s %s' % (em.entity_type, get_brat_span(em.spans)),
+                    "%s %s" % (em.entity_type, get_brat_span(em.spans)),
                     em.text,
                 ]
-                ann_text += '\t'.join(text_bound) + '\n'
+                ann_text += "\t".join(text_bound) + "\n"
 
                 ent_map[em.aid] = tid
 
@@ -763,12 +786,12 @@ class DEDocument:
         for event in self.events.values():
             evm_cluster = []
             for em in event.get_mentions():
-                tid = 'T%d' % t_count
+                tid = "T%d" % t_count
                 t_count += 1
 
                 text_bound = [
                     tid,
-                    '%s %s' % (em.frame_type, get_brat_span(em.spans)),
+                    "%s %s" % (em.frame_type, get_brat_span(em.spans)),
                     em.text,
                 ]
 
@@ -778,18 +801,15 @@ class DEDocument:
                         ent = arg.arg
                         if ent in ent_map:
                             ent_tid = ent_map[ent]
-                            args.append('%s:%s' % (arg_type, ent_tid))
+                            args.append("%s:%s" % (arg_type, ent_tid))
 
-                eid = 'E%d' % e_count
+                eid = "E%d" % e_count
                 e_count += 1
 
-                event_info = [
-                    eid,
-                    '%s:%s %s' % (em.frame_type, tid, ' '.join(args))
-                ]
+                event_info = [eid, "%s:%s %s" % (em.frame_type, tid, " ".join(args))]
 
-                ann_text += '\t'.join(text_bound) + '\n'
-                ann_text += '\t'.join(event_info) + '\n'
+                ann_text += "\t".join(text_bound) + "\n"
+                ann_text += "\t".join(event_info) + "\n"
 
                 evm_cluster.append((em.spans[0].begin, eid))
 
@@ -804,11 +824,11 @@ class DEDocument:
 
     def dump(self, indent=None):
         doc = {
-            'text': self.doc_text,
-            'events': [e.to_json() for e in sorted(self.events.values())],
-            'entities': [e.to_json() for e in sorted(self.entities.values())],
-            'fillers': [e.to_json() for e in self.fillers],
-            'relations': [e.to_json() for e in self.relations],
+            "text": self.doc_text,
+            "events": [e.to_json() for e in sorted(self.events.values())],
+            "entities": [e.to_json() for e in sorted(self.entities.values())],
+            "fillers": [e.to_json() for e in self.fillers],
+            "relations": [e.to_json() for e in self.relations],
         }
 
         return json.dumps(doc, indent=indent)

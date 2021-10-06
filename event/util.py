@@ -36,7 +36,7 @@ def tokens_to_sent(tokens, sent_start):
 
     for token, span in tokens:
         if span[0] > len(sent) + sent_start:
-            padding = ' ' * (span[0] - len(sent) - sent_start)
+            padding = " " * (span[0] - len(sent) - sent_start)
             sent += padding
         sent += token
     return sent
@@ -50,21 +50,21 @@ def find_by_id(folder, docid):
 
 def rm_prefix(text, prefix):
     if text.startswith(prefix):
-        return text[len(prefix):]
+        return text[len(prefix) :]
     return text
 
 
 def get_date_stamp():
-    return datetime.today().strftime('%Y%m%d')
+    return datetime.today().strftime("%Y%m%d")
 
 
 def set_basic_log(log_level=logging.INFO):
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     logging.basicConfig(level=log_level, format=log_format)
 
 
 def set_file_log(log_file, log_level=logging.INFO):
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     logging.basicConfig(level=log_level, format=log_format, filename=log_file)
 
 
@@ -73,7 +73,8 @@ def basic_console_log(log_level=logging.INFO):
     root.setLevel(log_level)
     ch = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     ch.setFormatter(formatter)
 
 
@@ -99,8 +100,8 @@ def load_config_with_cmd(args):
 
 
 def load_mixed_configs():
-    file_confs = [a for a in sys.argv[1:] if a.endswith('.py')]
-    arg_confs = [a for a in sys.argv[1:] if a.startswith('--')]
+    file_confs = [a for a in sys.argv[1:] if a.endswith(".py")]
+    arg_confs = [a for a in sys.argv[1:] if a.startswith("--")]
     return load_multi_configs(file_confs, arg_confs)
 
 
@@ -110,7 +111,7 @@ def load_multi_configs(file_args, cmd_args):
 
     Args:
       file_args:
-      cmd_args: 
+      cmd_args:
 
     Returns:
 
@@ -135,12 +136,11 @@ def load_multi_configs(file_args, cmd_args):
 
 
 def file_md5(file):
-    hashlib.md5(open(file, 'rb').read()).hexdigest()
+    hashlib.md5(open(file, "rb").read()).hexdigest()
 
 
 tbl = dict.fromkeys(
-    i for i in range(sys.maxunicode) if
-    unicodedata.category(chr(i)).startswith('P')
+    i for i in range(sys.maxunicode) if unicodedata.category(chr(i)).startswith("P")
 )
 
 
@@ -150,15 +150,17 @@ def remove_punctuation(text):
 
 def get_env(var_name):
     if var_name not in os.environ:
-        raise KeyError("Please supply the directory as environment "
-                       "variable: {}".format(var_name))
+        raise KeyError(
+            "Please supply the directory as environment "
+            "variable: {}".format(var_name)
+        )
     else:
         return os.environ[var_name]
 
 
 def append_num_to_path(file_path, suffix=0):
     if os.path.exists(file_path):
-        new_path = f'{file_path}_{suffix}'
+        new_path = f"{file_path}_{suffix}"
         if os.path.exists(new_path):
             append_num_to_path(file_path, suffix + 1)
         else:
@@ -166,9 +168,7 @@ def append_num_to_path(file_path, suffix=0):
 
 
 def batch_combine(l_data):
-    data = torch.cat(
-        [torch.unsqueeze(d, 0) for d in l_data], dim=0
-    )
+    data = torch.cat([torch.unsqueeze(d, 0) for d in l_data], dim=0)
     return data
 
 
@@ -179,9 +179,9 @@ def to_torch(data, data_type):
 def remove_neg(raw_predicate):
     # Frames of verb with or without negation should be the same.
 
-    neg = 'not_'
+    neg = "not_"
     if raw_predicate.startswith(neg):
-        return raw_predicate[len(neg):]
+        return raw_predicate[len(neg) :]
 
     return raw_predicate
 
@@ -207,7 +207,7 @@ def show_tensors():
     print("Number of tensors: [%d]." % num_allocated)
     print("Cell by type")
     for key, num in cell_sum.items():
-        print('\t', key, num)
+        print("\t", key, num)
 
 
 def gpu_mem_report():
@@ -220,8 +220,8 @@ def cpu_stats():
     print(psutil.virtual_memory())  # physical memory usage
     pid = os.getpid()
     py = psutil.Process(pid)
-    memoryUse = py.memory_info()[0] / 2. ** 30  # memory use in GB...I think
-    print('memory GB:', memoryUse)
+    memoryUse = py.memory_info()[0] / 2.0 ** 30  # memory use in GB...I think
+    print("memory GB:", memoryUse)
 
 
 def make_2d_one_hot(batched_indices, max_length, device):
@@ -245,8 +245,9 @@ def make_one_hot(labels, C=2):
 
 
     """
-    one_hot = torch.FloatTensor(labels.size(0), C, labels.size(2),
-                                labels.size(3)).zero_()
+    one_hot = torch.FloatTensor(
+        labels.size(0), C, labels.size(2), labels.size(3)
+    ).zero_()
     target = one_hot.scatter_(1, labels.data, 1)
 
     return target

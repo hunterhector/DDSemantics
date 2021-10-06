@@ -14,7 +14,7 @@ class Conll(DataLoader):
         self.params = params
 
     def parse_conll_data(self, corpus, conll_in):
-        text = ''
+        text = ""
         offset = 0
 
         arg_text = []
@@ -27,7 +27,7 @@ class Conll(DataLoader):
         for line in conll_in:
             parts = line.strip().split()
             if len(parts) < 8:
-                text += '\n'
+                text += "\n"
                 offset += 1
 
                 for index, predicate in enumerate(sent_predicates):
@@ -46,41 +46,40 @@ class Conll(DataLoader):
             if len(arg_text) == 0:
                 arg_text = [None] * len(pb_annos)
 
-            domain = fname.split('/')[1]
+            domain = fname.split("/")[1]
 
             start = offset
             end = start + len(token)
 
-            text += token + ' '
+            text += token + " "
             offset += len(token) + 1
 
             for index, t in enumerate(arg_text):
                 if t:
-                    arg_text[index] += ' ' + token
+                    arg_text[index] += " " + token
 
-            if not sense == '-':
+            if not sense == "-":
                 sent_predicates.append((start, end, token))
 
             for index, anno in enumerate(pb_annos):
-                if anno == '(V*)':
+                if anno == "(V*)":
                     continue
 
-                if anno.startswith('('):
-                    role = anno.strip('(').strip(')').strip('*')
+                if anno.startswith("("):
+                    role = anno.strip("(").strip(")").strip("*")
                     sent_args[index].append([role, start])
                     arg_text[index] = token
-                if anno.endswith(')'):
+                if anno.endswith(")"):
                     sent_args[index][-1].append(end)
                     sent_args[index][-1].append(arg_text[index])
-                    arg_text[index] = ''
+                    arg_text[index] = ""
 
         doc.set_text(text)
 
         for (p_start, p_end, p_token), args in props:
             hopper = doc.add_hopper()
 
-            pred = doc.add_predicate(
-                hopper, Span(p_start, p_end), p_token)
+            pred = doc.add_predicate(hopper, Span(p_start, p_end), p_token)
 
             if pred is not None:
                 for role, arg_start, arg_end, arg_text in args:
@@ -95,7 +94,7 @@ class Conll(DataLoader):
             full_dir = os.path.join(self.params.in_dir, dirname)
             for root, dirs, files in os.walk(full_dir):
                 for f in files:
-                    if not f.endswith('gold_conll'):
+                    if not f.endswith("gold_conll"):
                         continue
 
                     full_path = os.path.join(root, f)
@@ -105,7 +104,7 @@ class Conll(DataLoader):
                     if not os.path.exists(out_dir):
                         os.makedirs(out_dir)
 
-                    docid = f.replace('gold_conll', '')
+                    docid = f.replace("gold_conll", "")
 
                     with open(full_path) as conll_in:
                         doc = self.parse_conll_data(self.corpus, conll_in)

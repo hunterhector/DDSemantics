@@ -8,9 +8,9 @@ class FrameSlots:
         self.frame_dep_map = resources.h_frame_dep_map
         self.nom_dep_map = resources.h_nom_dep_map
 
-        if self.frame_formalism == 'FrameNet':
+        if self.frame_formalism == "FrameNet":
             self.frame_slots = resources.h_frame_slots
-        elif self.frame_formalism == 'Propbank':
+        elif self.frame_formalism == "Propbank":
             self.frame_slots = resources.h_nom_slots
         else:
             raise ValueError("Unknown frame formalism.")
@@ -26,16 +26,16 @@ class FrameSlots:
         Returns:
 
         """
-        dep = 'unk_dep'
+        dep = "unk_dep"
 
-        if self.frame_formalism == 'FrameNet':
-            fid = event['frame']
-            pred = event['predicate']
+        if self.frame_formalism == "FrameNet":
+            fid = event["frame"]
+            pred = event["predicate"]
             if not fid == -1:
                 if (fid, slot, pred) in self.frame_dep_map:
                     dep = self.frame_dep_map[(fid, slot, pred)]
-        elif self.frame_formalism == 'Propbank':
-            pred = event['predicate']
+        elif self.frame_formalism == "Propbank":
+            pred = event["predicate"]
             if (pred, slot) in self.nom_dep_map:
                 dep = self.nom_dep_map[(pred, slot)]
         return dep
@@ -52,12 +52,12 @@ class FrameSlots:
         Returns:
 
         """
-        if self.frame_formalism == 'FrameNet':
-            frame = event['frame']
+        if self.frame_formalism == "FrameNet":
+            frame = event["frame"]
             if not frame == -1 and frame in self.frame_slots:
                 return self.frame_slots[frame]
-        elif self.frame_formalism == 'Propbank':
-            pred = event['predicate']
+        elif self.frame_formalism == "Propbank":
+            pred = event["predicate"]
             if pred in self.frame_slots:
                 return self.frame_slots[pred]
             else:
