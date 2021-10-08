@@ -28,9 +28,6 @@ class TweakData(MultiPackProcessor):
         pre_deps = list(premise.get(Dependency))
         hypo_deps = list(premise.get(Dependency))
 
-        import pdb
-        pdb.set_trace()
-
         return [(premise.text, hypo.text)]
 
     def _process(self, input_pack: MultiPack):
@@ -82,8 +79,10 @@ class NLIProcessor(PackProcessor):
         for instance in input_pack.get(NLIPair):
             premise = instance.get_parent().text
             hypo = instance.get_child().text
-
             results = self._nli_inference(premise, hypo)
+
+            import pdb
+            pdb.set_trace()
 
             for k, v in enumerate(results):
                 instance.entailment[self.__id2label[k]] = v
