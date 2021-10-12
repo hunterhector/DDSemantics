@@ -56,6 +56,7 @@ class WikiAddTitle(PackProcessor):
 
     def _process(self, input_pack: DataPack):
         title_text = input_pack.get_single(WikiPage).page_name
+        title_text = title_text.replace("_", " ")
         new_text = input_pack.text + "\n" + title_text
         title_begin = len(input_pack.text) + 1
         title_end = title_begin + len(title_text)

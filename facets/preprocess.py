@@ -37,8 +37,8 @@ def complete_and_tokens():
             "suffix": ".json.gz",
             "zip_pack": True
         },
-    ).add(
-        WikiEntityCompletion()
+    # ).add(
+    #     WikiEntityCompletion()
     ).add(
         WikiAddTitle()
     ).add(
@@ -63,7 +63,7 @@ def complete_and_tokens():
             "input_index_file": pack_input_index,
             "output_index_file": pack_output_index,
             "use_input_index": True,
-            "serialize_method": "pickle"
+            "serialize_method": "jsonpickle"
         },
     ).add(ProgressPrinter())
     pipeline.run(pack_input)

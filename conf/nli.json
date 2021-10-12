@@ -29,6 +29,81 @@
           "value_type": "float"
         }
       ]
+    },
+    {
+      "entry_name": "onto.facets.EntityMention",
+      "parent_entry": "ft.onto.base_ontology.EntityMention",
+      "attributes": [
+        {
+          "name": "id",
+          "type": "str"
+        },
+        {
+          "name": "is_filler",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.EventMention",
+      "parent_entry": "ft.onto.base_ontology.EventMention",
+      "attributes": [
+        {
+          "name": "realis",
+          "type": "str"
+        },
+        {
+          "name": "audience",
+          "type": "str"
+        },
+        {
+          "name": "formality",
+          "type": "str"
+        },
+        {
+          "name": "medium",
+          "type": "str"
+        },
+        {
+          "name": "schedule",
+          "type": "str"
+        },
+        {
+          "name": "id",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.EventArgument",
+      "parent_entry": "forte.data.ontology.top.Link",
+      "parent_type": "onto.facets.EventMention",
+      "child_type": "ft.onto.base_ontology.EntityMention",
+      "attributes": [
+        {
+          "name": "role",
+          "type": "str"
+        },
+        {
+          "name": "realis",
+          "type": "str"
+        },
+        {
+          "name": "id",
+          "type": "str"
+        }
+      ]
+    },
+    {
+        "entry_name": "onto.facets.Hopper",
+        "parent_entry": "forte.data.ontology.top.Group",
+        "member_type": "onto.facets.EventMention",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "str"
+          }
+        ]
     }
   ]
 }

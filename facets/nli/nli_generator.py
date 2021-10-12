@@ -81,9 +81,6 @@ class NLIProcessor(PackProcessor):
             hypo = instance.get_child().text
             results = self._nli_inference(premise, hypo)
 
-            import pdb
-            pdb.set_trace()
-
             for k, v in enumerate(results):
                 instance.entailment[self.__id2label[k]] = v
 
