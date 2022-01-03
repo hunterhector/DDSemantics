@@ -1,4 +1,10 @@
+# Event Coref
+1. Clean up the page tags
+2. Control sentence lengths
+
+
 # Data Preprocessing
+
 
 1. Clean ups:
     1. ~~Fix a bug in resource name parsing~~

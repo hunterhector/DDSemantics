@@ -381,6 +381,42 @@
       "description": "A span based annotation `Title`, normally used to represent a title."
     },
     {
+      "entry_name": "ft.onto.base_ontology.MCOption",
+      "parent_entry": "forte.data.ontology.top.Annotation"
+    },
+    {
+      "entry_name": "ft.onto.base_ontology.MCQuestion",
+      "parent_entry": "forte.data.ontology.top.Annotation",
+      "attributes": [
+        {
+          "name": "options",
+          "type": "List",
+          "item_type": "ft.onto.base_ontology.MCOption"
+        },
+        {
+          "name": "answers",
+          "type": "List",
+          "item_type": "int"
+        }
+      ]
+    },
+    {
+      "entry_name": "ft.onto.base_ontology.MRCQuestion",
+      "parent_entry": "forte.data.ontology.top.Annotation",
+      "description": "An `Annotation` type which represents an MRC question.",
+      "attributes": [
+        {
+          "name": "qid",
+          "type": "int"
+        },
+        {
+          "name": "answers",
+          "type": "List",
+          "item_type": "ft.onto.base_ontology.Phrase"
+        }
+      ]
+    },
+    {
       "entry_name": "ft.onto.wikipedia.WikiPage",
       "parent_entry": "forte.data.ontology.top.Annotation",
       "attributes": [
@@ -417,6 +453,13 @@
     {
       "entry_name": "ft.onto.wikipedia.WikiTitle",
       "parent_entry": "forte.data.ontology.top.Annotation",
+      "description": "Title for the wikipedia sections.",
+      "attributes": []
+    },
+    {
+      "entry_name": "ft.onto.wikipedia.WikiArticleTitle",
+      "parent_entry": "forte.data.ontology.top.Annotation",
+      "description": "The title for the whole article.",
       "attributes": []
     },
     {
@@ -470,6 +513,103 @@
           "name": "values",
           "type": "List",
           "item_type": "str"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.Premise",
+      "parent_entry": "forte.data.ontology.top.Annotation"
+    },
+    {
+      "entry_name": "onto.facets.Hypothesis",
+      "parent_entry": "forte.data.ontology.top.Annotation"
+    },
+    {
+      "entry_name": "onto.facets.NLIPair",
+      "parent_entry": "forte.data.ontology.top.Link",
+      "parent_type": "onto.facets.Premise",
+      "child_type": "onto.facets.Hypothesis",
+      "attributes": [
+        {
+          "name": "entailment",
+          "type": "Dict",
+          "key_type": "str",
+          "value_type": "float"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.EntityMention",
+      "parent_entry": "ft.onto.base_ontology.EntityMention",
+      "attributes": [
+        {
+          "name": "id",
+          "type": "str"
+        },
+        {
+          "name": "is_filler",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.EventMention",
+      "parent_entry": "ft.onto.base_ontology.EventMention",
+      "attributes": [
+        {
+          "name": "realis",
+          "type": "str"
+        },
+        {
+          "name": "audience",
+          "type": "str"
+        },
+        {
+          "name": "formality",
+          "type": "str"
+        },
+        {
+          "name": "medium",
+          "type": "str"
+        },
+        {
+          "name": "schedule",
+          "type": "str"
+        },
+        {
+          "name": "id",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.EventArgument",
+      "parent_entry": "forte.data.ontology.top.Link",
+      "parent_type": "onto.facets.EventMention",
+      "child_type": "ft.onto.base_ontology.EntityMention",
+      "attributes": [
+        {
+          "name": "role",
+          "type": "str"
+        },
+        {
+          "name": "realis",
+          "type": "str"
+        },
+        {
+          "name": "id",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "entry_name": "onto.facets.Hopper",
+      "parent_entry": "forte.data.ontology.top.Group",
+      "member_type": "onto.facets.EventMention",
+      "attributes": [
+        {
+          "name": "id",
+          "type": "str"
         }
       ]
     },

@@ -1,26 +1,12 @@
-from forte import Pipeline
-from forte.data.readers import RawDataDeserializeReader, StringReader
 from fortex.allennlp import AllenNLPProcessor
-from fortex.nltk import NLTKSentenceSegmenter
 
-# Pipeline().set_reader(
-#     StringReader()
-# ).add(
-#     NLTKSentenceSegmenter()
-# ).add(
-#     AllenNLPProcessor(),
-#     config={
-#         "processors": ["tokenize,depparse,srl"],
-#         # "srl_url": "https://storage.googleapis.com/allennlp-public-models"
-#         #            "/structured-prediction-srl-bert.2020.12.15.tar.gz"
-#     }
-# ).run("This is a test. \n This is another test. \n")
+from forte import Pipeline
+from forte.data.readers import RawDataDeserializeReader
 
 Pipeline().set_reader(RawDataDeserializeReader()).add(
     AllenNLPProcessor(),
     config={
-        "processors": ["tokenize,depparse,srl"],
-        # "srl_url": "https://storage.googleapis.com/allennlp-public-models"
-        #            "/structured-prediction-srl-bert.2020.12.15.tar.gz"
+        "processors": ["tokenize", "pos", "lemma", "depparse", "srl"],
+        "infer_batch_size": 1,
     }
 ).serve(port=8009)

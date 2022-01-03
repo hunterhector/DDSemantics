@@ -104,6 +104,16 @@
             "type": "str"
           }
         ]
+    },
+    {
+      "entry_name": "onto.facets.Facet",
+      "parent_entry": "forte.data.ontology.top.Generics",
+      "attributes": [
+        {
+          "name": "facet_name",
+          "type": "str"
+        }
+      ]
     }
   ]
 }
