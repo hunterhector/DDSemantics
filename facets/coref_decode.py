@@ -5,10 +5,9 @@ from forte.common.configuration import Config
 from forte.data import DataPack
 from forte.processors.base import PackProcessor
 from ft.onto.base_ontology import Sentence, EventMention, Token
-from transformers import AutoModel, AutoTokenizer
 
 from facets.coref_data import bracket_mention
-from facets.event_utils import all_valid_events, events2sentences
+from facets.common.event_utils import all_valid_events, events2sentences
 from onto.facets import Hopper
 
 

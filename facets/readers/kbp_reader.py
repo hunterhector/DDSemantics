@@ -2,7 +2,6 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from typing import Iterator
-import unicodedata
 
 from facets.html_parser import CustomHTMLParser
 from forte.data import DataPack, Span
@@ -22,45 +21,41 @@ def parse_ere_source_tags(text):
 
     tag_spans = []
 
-    for begin_tag in parser.get_tags()[0]:
-        if len(begin_tag) == 3:
-            (
-                b_tag_name,
-                (l_begin_b_tag, offset_begin_b_tag),
-                (l_end_b_tag, offset_end_b_tag)
-            ) = begin_tag
+    begin_tags, end_tags = parser.get_tags()
 
-            begin_tag_span = (
-                line_offsets[l_begin_b_tag - 1] + offset_begin_b_tag,
-                line_offsets[l_end_b_tag - 1] + offset_end_b_tag,
-            )
-            tag_spans.append((
-                begin_tag_span,
-                " " * (begin_tag_span[1] - begin_tag_span[0])
-            ))
+    for (b_tag_name, (l_b_tag, col_b_tag), begin_tag_text) in begin_tags:
+        b_tag_begin = line_offsets[l_b_tag - 1] + col_b_tag
+        b_tag_end = b_tag_begin + len(begin_tag_text)
+
+        tag_spans.append((
+            (b_tag_begin, b_tag_end),
+            " " * (b_tag_end - b_tag_begin)
+        ))
 
     for (
             e_tag_name,
-            (l_begin_e_tag, offset_begin_e_tag),
-            (l_end_e_tag, offset_end_e_tag),
-    ) in parser.get_tags()[1]:
-        end_tag_span = (
-            line_offsets[l_begin_e_tag - 1] + offset_begin_e_tag,
-            line_offsets[l_end_e_tag - 1] + offset_end_e_tag,
-        )
+            (l_e_tag, col_e_tag)
+    ) in end_tags:
+        e_tag_begin = line_offsets[l_e_tag - 1] + col_e_tag
+        e_tag_end = e_tag_begin + len(e_tag_name) + 3
 
-        replacement = " " * (end_tag_span[1] - end_tag_span[0])
+        end_tag_span = (e_tag_begin, e_tag_end)
+        replacement = " " * (e_tag_end - e_tag_begin)
 
         if e_tag_name.lower() == "headline":
-            if text[end_tag_span[0] - 1].isspace():
+            if text[e_tag_begin - 1].isspace():
                 replacement = "." + replacement
-                end_tag_span = (end_tag_span[0] - 1, end_tag_span[1])
+                end_tag_span = (e_tag_begin - 1, e_tag_end)
             else:
                 raise RuntimeError("Cannot handle a specific headline well.")
 
         tag_spans.append(
-            (end_tag_span, replacement)
+            (
+                end_tag_span,
+                replacement
+            )
         )
+
 
     return tag_spans
 
@@ -74,7 +69,7 @@ unicode_replace = {
     u"\u0092": "'",
     u"\u0093": '"',
     u"\u0094": '"',
-    u"\u00A7": " ", # section marker.
+    u"\u00A7": " ",  # section marker.
     u"\u00a0": " ",
     u"\u2019": "'",
     u"\u200f": " ",

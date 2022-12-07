@@ -1,7 +1,5 @@
 from typing import List, Dict, Tuple, Any, Iterator
 
-from pkg_resources import ensure_directory
-
 from forte.common import Resources
 from forte.common.configuration import Config
 from forte.data import DataPack
@@ -10,8 +8,8 @@ from forte.utils import ensure_dir
 from ft.onto.base_ontology import Sentence
 from transformers import AutoTokenizer
 
-from onto.facets import Hopper, EventMention
-from facets.event_utils import events2sentences, get_coref_chains, \
+from onto.facets import EventMention
+from facets.common.event_utils import events2sentences, get_coref_chains, \
     all_valid_events
 
 event_begin_marker = "<evm>"

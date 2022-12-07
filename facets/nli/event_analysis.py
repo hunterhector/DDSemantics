@@ -1,5 +1,4 @@
-from facets.kbp_reader import EREReader
-from facets.nli.analysis import DebugProcessor
+from facets.readers.kbp_reader import EREReader
 from forte import Pipeline
 
 import sys

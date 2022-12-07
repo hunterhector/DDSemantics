@@ -2,7 +2,7 @@ import sys
 
 import IPython
 
-from facets.utils import ProgressPrinter
+from facets.common.utils import ProgressPrinter
 from forte import Pipeline
 from forte.data import DataPack
 from forte.data.readers.deserialize_reader import DirPackReader

@@ -1,19 +1,20 @@
+"""Pipeline to clean up the wikipedia pages."""
+
 import logging
 import os
 import pickle
 import sys
 
-from smart_open import open
-
-from facets.utils import ProgressPrinter
 from forte import Pipeline
 from forte.common import Resources
 from forte.data.readers import DirPackReader
 from forte.datasets.wikipedia.dbpedia import WikiArticleWriter
-from forte.processors.nlp import SubwordTokenizer
+from forte.processors.nlp.subword_tokenizer import SubwordTokenizer
 from fortex.spacy import SpacyProcessor
+from smart_open import open
 
-from facets.wiki.processors.wiki import WikiEntityCompletion, WikiAddTitle
+from facets.common.utils import ProgressPrinter
+from facets.wiki.processors.wiki import WikiAddTitle
 
 
 def complete_and_tokens():
@@ -37,8 +38,6 @@ def complete_and_tokens():
             "suffix": ".json.gz",
             "zip_pack": True
         },
-    # ).add(
-    #     WikiEntityCompletion()
     ).add(
         WikiAddTitle()
     ).add(

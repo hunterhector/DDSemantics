@@ -6,15 +6,13 @@ print("Started")
 
     Started
 
-
-
 ```python
 from forte.data import MultiPack, DataPack
 from forte.processors.base import PackProcessor
 
 from facets.nli.nli_generator import NLIProcessor, TweakData
-from facets.nli_reader import MultiNLIReader
-from facets.utils import ProgressPrinter
+from facets.readers.nli_reader import MultiNLIReader
+from facets.common.utils import ProgressPrinter
 from forte import Pipeline
 from forte.data.caster import MultiPackBoxer
 from forte.data.selector import NameMatchSelector
@@ -323,10 +321,8 @@ infer(
     [0.7739865183830261, 0.22510668635368347, 0.00090683379676193]
     [0.02266249991953373, 0.9770776033401489, 0.00025990427820943296]
 
-
-
 ```python
-from facets.kbp_reader import EREReader
+from facets.readers.kbp_reader import EREReader
 from facets.nli.analysis import DebugProcessor
 from forte import Pipeline
 

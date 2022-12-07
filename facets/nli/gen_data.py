@@ -1,8 +1,8 @@
 import sys
 
 from facets.nli.nli_generator import NLIProcessor, TweakData
-from facets.nli_reader import MultiNLIReader
-from facets.utils import ProgressPrinter
+from facets.readers.nli_reader import MultiNLIReader
+from facets.common.utils import ProgressPrinter
 from forte import Pipeline
 from forte.data.caster import MultiPackBoxer
 from forte.data.selector import NameMatchSelector

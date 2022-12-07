@@ -1,10 +1,14 @@
+"""
+Fixing up wikipedia category paths
+"""
+
 import os
 import sys
 
 from forte.data import DataPack
 from forte.datasets.wikipedia.dbpedia.db_utils import print_progress
 
-from onto.facets import WikiCategory
+from ft.onto.wikipedia import WikiCategory
 
 if __name__ == "__main__":
     base_dir = sys.argv[1]

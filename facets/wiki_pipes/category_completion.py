@@ -1,4 +1,4 @@
-""" Preprocess wikipedia data"""
+""" Complete the category data in wikipedia"""
 import logging
 import os
 import pickle
@@ -6,9 +6,7 @@ import sys
 
 from forte import Pipeline
 from forte.common import Resources
-from forte.datasets.wikipedia.dbpedia import WikiArticleWriter
-
-from facets.wiki.processors.wiki import WikiCategoryReader
+from forte.datasets.wikipedia.dbpedia.dbpedia_datasets import WikiArticleWriter, WikiCategoryReader
 
 if __name__ == "__main__":
     base_dir = sys.argv[1]
