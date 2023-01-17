@@ -1,6 +1,7 @@
 """
 Process implicit argument datasets.
 """
+import os.path
 from typing import Any, Iterator
 import json
 
@@ -38,15 +39,39 @@ class RamsReader(PackReader):
 
     def _collect(self) -> Iterator[Any]:
         with open(self.configs.rams_json_path) as rams_file:
-            root = json.load(rams_file)
-            root["ent_spans"]
+            for line in rams_file:
+                root = json.loads(line)
+                yield (
+                    root["doc_key"],
+                    root["ent_spans"],
+                    root["evt_triggers"],
+                    root["sentences"],
+                    root["gold_evt_links"]
+                )
 
     def _parse_pack(self, collection: Any) -> Iterator[PackType]:
-        pass
+        doc_name, ent_spans, evt_triggers, tokenized_text, gold_evt_links = collection
+        pack = DataPack(doc_name)
+
+        doc_text = ""
+        splitter = ""
+        token_spans = []
+        for tokenized_sentence in tokenized_text:
+            for raw_token in tokenized_sentence:
+                doc_text += splitter + raw_token
+                token_spans.append((len(doc_text) - len(raw_token), len(doc_text)))
+                splitter = " "
+            splitter = "\n"
+
+        pack.set_text(doc_text)
+        print(pack.text)
+        print(evt_triggers)
+
+        raise Exception
 
     @classmethod
     def default_configs(cls):
         return {
             # https://nlp.jhu.edu/rams/
-            "rams_json_path": "~/Documents/projects/data/RAMS_1.0/data/train.jsonlines",
+            "rams_json_path": "../data/RAMS_1.0/data/train.jsonlines",
         }
