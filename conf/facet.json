@@ -49,6 +49,11 @@
       "parent_entry": "ft.onto.base_ontology.EventMention",
       "attributes": [
         {
+          "name": "types",
+          "type": "List",
+          "item_type": "str"
+        },
+        {
           "name": "realis",
           "type": "str"
         },
@@ -82,6 +87,14 @@
       "attributes": [
         {
           "name": "role",
+          "type": "str"
+        },
+        {
+          "name": "pb_role",
+          "type": "str"
+        },
+        {
+          "name": "vb_role",
           "type": "str"
         },
         {
