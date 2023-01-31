@@ -30,6 +30,7 @@ class GCNombankReader(PackReader):
         return {
             # https://sled.eecs.umich.edu/post/resources/nominal-semantic-role-labeling/
             "implicit_path": "~/Documents/projects/data/implicit",
+            "wsj_file_pattern": "\d\d/wsj_.*\.mrg",
             # https://nlp.cs.nyu.edu/meyers/nombank/nombank.1.0.zip
             "nombank_path": "~/Documents/projects/data/nombank",
             "wsj_path": "~/Document/projects/data/wsj",
