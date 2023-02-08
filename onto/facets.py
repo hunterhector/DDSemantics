@@ -1,5 +1,5 @@
 # ***automatically_generated***
-# ***source json:/Users/hector.liu/Documents/projects/DDSemantics/conf/facet.json***
+# ***source json:/Users/hector/Documents/projects/DDSemantics/conf/facet.json***
 # flake8: noqa
 # mypy: ignore-errors
 # pylint: skip-file
@@ -9,11 +9,13 @@ Automatically generated ontology facet. Do not change manually.
 
 from dataclasses import dataclass
 from forte.data.data_pack import DataPack
+from forte.data.multi_pack import MultiPack
 from forte.data.ontology.core import Entry
 from forte.data.ontology.top import Annotation
 from forte.data.ontology.top import Generics
 from forte.data.ontology.top import Group
 from forte.data.ontology.top import Link
+from forte.data.ontology.top import MultiPackLink
 from ft.onto.base_ontology import EntityMention as EntityMention_0
 from ft.onto.base_ontology import EventMention as EventMention_0
 from typing import Dict
@@ -30,6 +32,7 @@ __all__ = [
     "EventArgument",
     "Hopper",
     "Facet",
+    "CopyLink",
 ]
 
 
@@ -131,7 +134,7 @@ class EventArgument(Link):
     id: Optional[str]
 
     ParentType = EventMention
-    ChildType = EntityMention_0
+    ChildType = EntityMention
 
     def __init__(self, pack: DataPack, parent: Optional[Entry] = None, child: Optional[Entry] = None):
         super().__init__(pack, parent, child)
@@ -170,3 +173,16 @@ class Facet(Generics):
     def __init__(self, pack: DataPack):
         super().__init__(pack)
         self.facet_name: Optional[str] = None
+
+
+@dataclass
+class CopyLink(MultiPackLink):
+    """
+    indicate that the child entry is copied from the parent entry
+    """
+
+    ParentType = Entry
+    ChildType = Entry
+
+    def __init__(self, pack: MultiPack, parent: Optional[Entry] = None, child: Optional[Entry] = None):
+        super().__init__(pack, parent, child)

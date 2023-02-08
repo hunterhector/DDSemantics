@@ -1,6 +1,10 @@
 import datetime
+import os
 import sys
 import timeit
+from typing import Tuple, List
+
+from termcolor import colored
 
 from forte.common import Resources
 from forte.common.configuration import Config
@@ -27,6 +31,17 @@ class ProgressPrinter(PackProcessor):
     def finish(self, resource: Resources):
         print("\nProgress Printer Finished.")
 
+
 def print_progress(msg: str, end="\r"):
     sys.stdout.write("\033[K")  # Clear to the end of line.
     print(f" -- {msg}", end=end)
+
+
+def color_print(context: str, positions: List[Tuple[int, int]], colors: List[str]):
+    last = 0
+    for (b, e), color in zip(positions, colors):
+        print(context[last: b], end="")
+        print(colored(context[b: e], color), end="")
+        last = e
+
+    print(context[last:])

@@ -83,7 +83,7 @@
       "entry_name": "onto.facets.EventArgument",
       "parent_entry": "forte.data.ontology.top.Link",
       "parent_type": "onto.facets.EventMention",
-      "child_type": "ft.onto.base_ontology.EntityMention",
+      "child_type": "onto.facets.EntityMention",
       "attributes": [
         {
           "name": "role",
@@ -108,15 +108,15 @@
       ]
     },
     {
-        "entry_name": "onto.facets.Hopper",
-        "parent_entry": "forte.data.ontology.top.Group",
-        "member_type": "onto.facets.EventMention",
-        "attributes": [
-          {
-            "name": "id",
-            "type": "str"
-          }
-        ]
+      "entry_name": "onto.facets.Hopper",
+      "parent_entry": "forte.data.ontology.top.Group",
+      "member_type": "onto.facets.EventMention",
+      "attributes": [
+        {
+          "name": "id",
+          "type": "str"
+        }
+      ]
     },
     {
       "entry_name": "onto.facets.Facet",
@@ -127,6 +127,13 @@
           "type": "str"
         }
       ]
+    },
+    {
+      "entry_name": "onto.facets.CopyLink",
+      "parent_entry": "forte.data.ontology.top.MultiPackLink",
+      "parent_type": "forte.data.ontology.core.Entry",
+      "child_type": "forte.data.ontology.core.Entry",
+      "description": "indicate that the child entry is copied from the parent entry"
     }
   ]
 }

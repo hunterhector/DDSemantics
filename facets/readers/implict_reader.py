@@ -8,6 +8,7 @@ from typing import Any, Iterator
 from forte.data import DataPack
 from forte.data.base_pack import PackType
 from forte.data.base_reader import PackReader
+from forte.data.caster import MultiPackBoxer
 from ft.onto.base_ontology import Sentence
 
 from event.io.dataset.base import Corpus, DEDocument
