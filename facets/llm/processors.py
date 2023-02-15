@@ -17,16 +17,16 @@ from onto.facets import EventMention, EventArgument, EntityMention, CopyLink
 class DetectionProcessor(PackProcessor):
     def initialize(self, resources: Resources, configs: Config):
         super().initialize(resources, configs)
-        self.tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base")
-        self.model = T5ForConditionalGeneration.from_pretrained(
-            "google/flan-t5-base", device_map="auto"
-        )
+        # self.tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base")
+        # self.model = T5ForConditionalGeneration.from_pretrained(
+        #     "google/flan-t5-base", device_map="auto"
+        # )
 
     def _process(self, input_pack: DataPack):
         print(input_pack.text)
-        input_ids = self.tokenizer(input_pack.text, return_tensors="pt").input_ids.to("cuda")
-        outputs = self.model.generate(input_ids)
-        self.tokenizer.decode(outputs[0])
+        # input_ids = self.tokenizer(input_pack.text, return_tensors="pt").input_ids.to("cuda")
+        # outputs = self.model.generate(input_ids)
+        # self.tokenizer.decode(outputs[0])
 
     def _qa_style_processing(self):
         pass

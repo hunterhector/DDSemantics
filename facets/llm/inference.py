@@ -52,25 +52,8 @@ class GPTJ:
             input_ids,
             do_sample=True,
             temperature=0.9,
-            max_length=50
+            max_length=350
         )
         return self.tokenizer.batch_decode(tokens)[0]
 
 
-def console(model_name="gpt-j", loaded_engine=None):
-    if loaded_engine is None:
-        print(f"Choosing model {model_name}")
-        if model_name == "gpt-j":
-            engine = GPTJ()
-    else:
-        print(f"Using provided model.")
-        engine = loaded_engine
-
-    choice = ""
-    while True:
-        choice = input("Enter text for generation, or `exit`")
-
-        if choice == "exit":
-            break
-        else:
-            print(engine.generate(choice))
