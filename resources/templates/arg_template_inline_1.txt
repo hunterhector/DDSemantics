@@ -1,0 +1,43 @@
+Your task is to ask questions about a particular event marked by the <event> </event> tag. The question should be about the semantic roles of this event and can be answered in the context of the input.
+
+Input: Before the 31st United Nations Human Rights Council meeting in Geneva , 500 human rights organizations , law professors , former UN office holders , and high - profile rights defenders including four Nobel Peace Prize laureats and a Pulitzer Prize winner , have <event> urged </event> the governments of Sweden and the United Kingdom to respect the United Nations ’ decision to free Julian Assange .
+
+The statement was delivered to the Swedish and UK Permanent Representatives to the United Nations in Geneva .
+
+Complete the location, Output:
+
+Before the 31st United Nations Human Rights Council meeting in Geneva , 500 human rights organizations , law professors , former UN office holders , and high - profile rights defenders including four Nobel Peace Prize laureats and a Pulitzer Prize winner , have <event> urged </event> the governments of Sweden and the United Kingdom to respect the United Nations ’ decision to free Julian Assange .
+
+
+Q: Who are being urged?
+A: the governments of Sweden and the United Kingdom
+
+Q: Who urged?
+A: 500 human rights organizations , law professors , former UN office holders , and high - profile rights defenders including four Nobel Peace Prize laureats and a Pulitzer Prize winner
+
+Input: Clearly , Democrats – I should n’t say not just Democrats – but there are a lot of Bernie Sanders supporters who supported Bernie Sanders in part because they thought , on domestic policy , she was not progressive enough and , on foreign policy , she was a bit too hawkish .
+
+Obviously , Bernie Sanders clearly at this point has now endorsed her , but for those who think in advance of their convention next week that , on foreign policy , she is still a bit too hawkish , your thoughts ?
+
+Clarke : Well , I disagreed with her when she <event> voted </event> for the Iraq War , and that ’s why when Senator Obama started running for president , I supported him and I worked for him .
+
+I never thought he ’d win , but he did , thankfully .
+
+Output:
+
+Q: What's being voted?
+A: the Iraq war.
+
+Q: Who are the voters?
+A: she
+
+Q: What's the result of the vote?
+A: the Iraq war.
+
+Input: The United Nations and the Organization of American States ( OAS ) called the ouster a military coup , but the White House and Clinton ’s State Department were loath to call it such — despite the fact that a cable from the Honduran Embassy said , “ The Embassy perspective is that there is no doubt that the military , Supreme Court and national congress conspired on June 28 in what constituted an illegal and unconstitutional coup . ”
+
+Instead of condemning the figures behind the uprising , suspending support to the illegitimate government of Zelaya ’s successor , Roberto Micheletti , and demanding a restoration of the democratically elected Zelaya , Secretary Clinton decided to move on .
+
+In her memoir “ Hard Choices , ” Clinton wrote that after the coup , she went about hatching a plan with other leaders in the region “ to restore order in Honduras and ensure that free and fair elections could be held quickly and legitimately , which would render the question of Zelaya moot . ” The United States pushed for elections , and in November 2009 , despite a <event> boycott </event> by opposition leaders and international observers , elections were orchestrated by the same figures behind Zelaya ’s ouster .
+
+Since the coup , violence and assassinations , as well as persecutions of journalists and social justice advocates , have skyrocketed in Honduras .

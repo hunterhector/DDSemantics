@@ -42,7 +42,7 @@ class GPTJ:
             ).to(self.device)
         print("Done.")
 
-    def generate(self, input_text: str):
+    def generate(self, input_text: str, max_length: int = 2048):
         if self.multi_gpu:
             input_ids = self.tokenizer(input_text, return_tensors="pt").input_ids.to(0)
         else:
@@ -52,8 +52,6 @@ class GPTJ:
             input_ids,
             do_sample=True,
             temperature=0.9,
-            max_length=350
+            max_length=max_length
         )
         return self.tokenizer.batch_decode(tokens)[0]
-
-

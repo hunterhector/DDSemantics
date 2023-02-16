@@ -14,6 +14,14 @@ from facets.common.utils import color_print
 from onto.facets import EventMention, EventArgument, EntityMention, CopyLink
 
 
+
+class RamsOutputWriter(PackProcessor):
+
+    def _process(self, input_pack: DataPack):
+        evm = input_pack.get_single(EventMention)
+        args = input_pack.get_links_by_parent(evm)
+
+
 class DetectionProcessor(PackProcessor):
     def initialize(self, resources: Resources, configs: Config):
         super().initialize(resources, configs)
@@ -23,7 +31,8 @@ class DetectionProcessor(PackProcessor):
         # )
 
     def _process(self, input_pack: DataPack):
-        print(input_pack.text)
+        evm = input_pack.get_single(EventMention)
+
         # input_ids = self.tokenizer(input_pack.text, return_tensors="pt").input_ids.to("cuda")
         # outputs = self.model.generate(input_ids)
         # self.tokenizer.decode(outputs[0])
@@ -60,6 +69,11 @@ class ArgumentRoleDetection(MultiPackProcessor):
         m = context_pack.get_single(EventMention)
         source_m = get_copied_from(m)
 
+        print(context_pack.text)
+        print("=========")
+
+        print(f"The event to consider is {m.text}")
+
         arg_link: EventArgument
         for arg_link in gold_pack.get_links_by_parent(source_m):
             if isinstance(arg_link, EventArgument):
@@ -68,6 +82,10 @@ class ArgumentRoleDetection(MultiPackProcessor):
                 arg_to_fill.pb_role = arg_link.pb_role
                 arg_to_fill.role = arg_link.role
                 context_pack.add_entry(arg_to_fill)
+                print(f"The argument to consider is {arg_link.vb_role} : {arg_link.get_child().text}")
+
+        import pdb
+        pdb.set_trace()
 
     @classmethod
     def default_configs(cls) -> Dict[str, Any]:
@@ -162,7 +180,7 @@ class MatchingProcessor(MultiPackProcessor):
 
     def _process(self, pack: MultiPack):
         for pack_name, p in pack.iter_packs():
-            if pack_name is not "default":
+            if pack_name != "default":
                 # do coref
                 pass
 
