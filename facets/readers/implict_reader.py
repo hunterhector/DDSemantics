@@ -32,6 +32,9 @@ class GCNombankReader(PackReader):
         doc_text, token_spans, sentence_spans = construct_text(arg_group[0], "sentences")
         datapack.set_text(doc_text)
 
+        for begin, end in sentence_spans:
+            datapack.add_entry(Sentence(datapack, begin, end))
+
         for bnb_data in arg_group:
             trigger_data = bnb_data["trigger"]
             trigger_begin, trigger_end = token_spans[trigger_data["span"][0]][0], \
