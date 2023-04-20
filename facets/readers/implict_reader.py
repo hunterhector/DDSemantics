@@ -3,6 +3,7 @@ Process implicit argument datasets.
 """
 import json
 import re
+from collections import defaultdict
 from typing import Any, Iterator, Dict
 
 from forte.data import DataPack
@@ -10,21 +11,44 @@ from forte.data.base_pack import PackType
 from forte.data.base_reader import PackReader
 from ft.onto.base_ontology import Sentence
 
-from event.io.dataset.base import Corpus, DEDocument
-from event.io.dataset.nombank import NomBank
 from onto.facets import EventMention, EntityMention, EventArgument
 
 
 class GCNombankReader(PackReader):
     def _collect(self) -> Iterator[Any]:
+        data_by_doc = defaultdict(list)
         with open(self.configs.bnb_json_path) as bnb_file:
             for line in bnb_file:
-                yield json.loads(line)
+                data = json.loads(line)
+                data_by_doc[data["doc_key"]].append(data)
 
-    def _parse_pack(self, bnb_data: Dict) -> Iterator[PackType]:
-        datapack = DataPack(bnb_data["doc_key"])
-        doc_text, token_spans, sentence_spans = construct_text(bnb_data, "sentences")
+        yield from data_by_doc.items()
+
+    def _parse_pack(self, bnb_data) -> Iterator[PackType]:
+        doc_key, arg_group = bnb_data
+        datapack = DataPack(doc_key)
+
+        # Text data is duplicated in these groups. So just take one group to reconstruct.
+        doc_text, token_spans, sentence_spans = construct_text(arg_group[0], "sentences")
         datapack.set_text(doc_text)
+
+        for bnb_data in arg_group:
+            trigger_data = bnb_data["trigger"]
+            trigger_begin, trigger_end = token_spans[trigger_data["span"][0]][0], \
+                token_spans[trigger_data["span"][1]][1]
+            trigger = EventMention(datapack, trigger_begin, trigger_end)
+            trigger.id = trigger_data["node_id"]
+
+            for role, arg_details in bnb_data["arguments"].items():
+                for arg_detail in arg_details:
+                    arg_begin, arg_end = token_spans[arg_detail["span"][0]][0], \
+                        token_spans[arg_detail["span"][1]][1]
+                    arg_ent = EntityMention(datapack, arg_begin, arg_end)
+                    datapack.add_entry(arg_ent)
+
+                    argument = EventArgument(datapack, trigger, arg_ent)
+                    argument.role = role
+                    datapack.add_entry(argument)
 
         yield datapack
 
@@ -66,20 +90,6 @@ class GVDBReader(PackReader):
 
         doc_text, token_spans, sentence_spans = construct_text(collection, "full_text")
 
-        # doc_text = ""
-        #
-        # splitter = ""
-        # token_spans = []
-        # sentence_spans = []
-        # for tokenized_sentence in collection["full_text"]:
-        #     sent_start = len(doc_text)
-        #     for raw_token in tokenized_sentence:
-        #         doc_text += splitter + raw_token
-        #         token_spans.append((len(doc_text) - len(raw_token), len(doc_text)))
-        #         splitter = " "
-        #     sentence_spans.append((sent_start, len(doc_text)))
-        #     splitter = "\n"
-
         pack.set_text(doc_text)
 
         for b, e in sentence_spans:
@@ -92,16 +102,8 @@ class GVDBReader(PackReader):
 
         # print(f"{len(token_spans)} tokens in the article")
         for token_begin, token_end, role, text, token_text in collection["spans"]:
-            # print(f"Span is {token_begin}, {token_end}")
-
-            try:
-                char_begin = token_spans[token_begin][0]
-                char_end = token_spans[token_end - 1][1]
-            except IndexError:
-                print(f"Processing {pack.pack_id}")
-                import pdb;
-                pdb.set_trace()
-
+            char_begin = token_spans[token_begin][0]
+            char_end = token_spans[token_end - 1][1]
             entity = EntityMention(pack, char_begin, char_end)
             pack.add_entry(entity)
 
@@ -124,33 +126,12 @@ class RamsReader(PackReader):
         with open(self.configs.rams_json_path) as rams_file:
             for line in rams_file:
                 yield json.loads(line)
-                # yield (
-                #     root["doc_key"],
-                #     root["ent_spans"],
-                #     root["evt_triggers"],
-                #     root["sentences"],
-                #     root["gold_evt_links"]
-                # )
 
     def _parse_pack(self, root: Any) -> Iterator[PackType]:
         # doc_name, ent_spans, evt_triggers, tokenized_text, gold_evt_links = collection
         pack = DataPack(root["doc_key"])
 
         doc_text, token_spans, sentence_spans = construct_text(root, "sentences")
-
-        # doc_text = ""
-        #
-        # splitter = ""
-        # token_spans = []
-        # sentence_spans = []
-        # for tokenized_sentence in tokenized_text:
-        #     sent_start = len(doc_text)
-        #     for raw_token in tokenized_sentence:
-        #         doc_text += splitter + raw_token
-        #         token_spans.append((len(doc_text) - len(raw_token), len(doc_text)))
-        #         splitter = " "
-        #     sentence_spans.append((sent_start, len(doc_text)))
-        #     splitter = "\n"
 
         pack.set_text(doc_text)
 
