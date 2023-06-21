@@ -1,18 +1,13 @@
+from collections import Counter
 from typing import Dict, Any, List
 
-import ipdb
-from collections import defaultdict, Counter
-
 from forte.common import Resources, Config
-from forte.data import DataPack, MultiPack, Selector
+from forte.data import DataPack, MultiPack
 from forte.processors.base import PackProcessor, MultiPackProcessor
 from ft.onto.base_ontology import Sentence
 
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-
 from facets.common.utils import color_print
 from onto.facets import EventMention, EventArgument, EntityMention, CopyLink
-
 
 
 class RamsOutputWriter(PackProcessor):

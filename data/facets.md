@@ -323,7 +323,7 @@ infer(
 
 ```python
 from facets.readers.kbp_reader import EREReader
-from facets.nli.analysis import DebugProcessor
+from facets.analysis import DebugProcessor
 from forte import Pipeline
 
 kbp_paths = [

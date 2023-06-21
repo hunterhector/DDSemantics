@@ -13,6 +13,9 @@ def main(input_path: str):
 
     pipeline.set_reader(
         DirPackReader(),
+        config={
+            "serialize_method": "jsonpickle"
+        }
     ).add(
         TbfWriter(),
         config={
